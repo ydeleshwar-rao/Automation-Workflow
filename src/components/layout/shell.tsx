@@ -1,50 +1,47 @@
 "use client";
 
-import { useSidebar } from "@/src/components/providers/sidebar-provider";
-import { cn } from "@/src/lib/utils";
 import { usePathname } from "next/navigation";
+import { cn } from "@/src/lib/utils";
+import { useSidebar } from "@/src/components/providers/sidebar-provider";
 
 interface ShellProps {
-  children: React.ReactNode;
-  sidebar: React.ReactNode;
-  header: React.ReactNode;
+  children:  React.ReactNode;
+  sidebar:   React.ReactNode;
+  topbar:    React.ReactNode;
 }
 
-export function Shell({ children, sidebar, header }: ShellProps) {
-  const { isOpen, setIsOpen } = useSidebar();
-  const pathname = usePathname();
-  const isWorkflowPage = pathname === "/dashboard/workflow";
+export function Shell({ children, sidebar, topbar }: ShellProps) {
+  const pathname       = usePathname();
+  const { isOpen }     = useSidebar();
+  const isWorkflowPage = pathname?.startsWith("/dashboard/workflow");
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-[hsl(var(--surface))] font-sans">
-      {header}
+    <div className="flex h-screen overflow-hidden bg-[hsl(var(--surface))]">
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Mobile overlay */}
-        {isOpen && (
-          <div
-            className="fixed inset-0 bg-black/40 z-[60] lg:hidden animate-in fade-in duration-300"
-            onClick={() => setIsOpen(false)}
-          />
+      {/* ── Animated sidebar ── */}
+      <aside
+        className={cn(
+          "shrink-0 h-full z-50",
+          "transition-[width] duration-300 ease-in-out",
+          isOpen ? "w-56" : "w-16"
         )}
+      >
+        {sidebar}
+      </aside>
 
-        <div
+      {/* ── Main content column ── */}
+      <div className="flex-1 min-w-0 flex flex-col h-full overflow-hidden">
+
+        {/* Top bar */}
+        {topbar}
+
+        {/* Page content */}
+        <main
           className={cn(
-            "flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out",
-            "fixed inset-y-0 left-0 z-[70] pt-[calc(72px+0.375rem)] bg-background",
-            "lg:relative lg:bg-transparent lg:px-3 lg:pb-3 lg:pt-0.5",
-            isOpen
-              ? "w-[232px] translate-x-0"
-              : "-translate-x-full lg:translate-x-0 lg:w-[84px] w-[230px]"
+            "flex-1 min-w-0",
+            isWorkflowPage ? "overflow-hidden" : "overflow-y-auto"
           )}
         >
-          {sidebar}
-        </div>
-
-        <main className={cn(
-          "flex-1 min-w-0 overflow-y-auto lg:pr-3 lg:pb-3 lg:pt-0.5",
-          isWorkflowPage && "overflow-hidden"
-        )}>
           {children}
         </main>
       </div>

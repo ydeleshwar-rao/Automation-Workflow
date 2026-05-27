@@ -67,7 +67,7 @@ function StatCard({
 }) {
   const hasSpark = !!sparkData && sparkData.length > 0;
   return (
-    <div className="bg-card border border-border rounded-2xl p-4 flex flex-col gap-3 shadow-sm">
+    <div className="nm-card rounded-2xl p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${color}18` }}>
@@ -236,7 +236,7 @@ export function DashboardOverview() {
 
       {/* No active app — empty state */}
       {statusLoaded && !activeApp && (
-        <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
+        <div className="nm-card rounded-2xl p-8">
           <EmptyState
             message="No integration connected"
             hint="Connect ServiceM8, Commusoft or another app from the integrations page to populate this dashboard."
@@ -258,7 +258,7 @@ export function DashboardOverview() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
 
         {/* Main area chart */}
-        <div className="xl:col-span-2 bg-card border border-border rounded-2xl p-5 shadow-sm">
+        <div className="xl:col-span-2 nm-card rounded-2xl p-5">
           <div className="flex items-start justify-between mb-4 gap-3 flex-wrap">
             <div>
               <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Job Activity</p>
@@ -313,7 +313,7 @@ export function DashboardOverview() {
         </div>
 
         {/* By Category panel */}
-        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm flex flex-col gap-3">
+        <div className="nm-card rounded-2xl p-5 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-foreground">By Category</p>
             <span className="text-xs text-muted-foreground capitalize">This {period}</span>
@@ -389,7 +389,7 @@ export function DashboardOverview() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
 
         {/* Pending / urgent chart */}
-        <div className="xl:col-span-2 bg-card border border-border rounded-2xl p-5 shadow-sm">
+        <div className="xl:col-span-2 nm-card rounded-2xl p-5">
           <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
             <div>
               <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Pending Jobs</p>
@@ -426,7 +426,7 @@ export function DashboardOverview() {
         </div>
 
         {/* Donut + team */}
-        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm flex flex-col gap-4">
+        <div className="nm-card rounded-2xl p-5 flex flex-col gap-4">
           <p className="text-sm font-semibold text-foreground">Job Status</p>
 
           {aggregates.job_status.length === 0 ? (

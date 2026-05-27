@@ -163,10 +163,10 @@ export function WorkflowCanvasView({
         </div>
       </div>
 
-      {/* Zoom / Pan controls — bottom-right, Zapier-style */}
+      {/* Zoom / Pan controls — bottom-right, neumorphic */}
       <div
         className={cn(
-          "absolute bottom-4 z-20 flex items-center gap-1 rounded-xl border border-border/60 bg-background/95 p-1 shadow-lg backdrop-blur transition-[right] duration-300",
+          "absolute bottom-4 z-20 flex items-center gap-0.5 rounded-xl nm-card p-1 transition-[right] duration-300",
           isSidebarOpen ? "right-[466px]" : "right-4",
         )}
       >
@@ -174,14 +174,14 @@ export function WorkflowCanvasView({
           onClick={zoomOut}
           disabled={zoom <= MIN_ZOOM}
           aria-label="Zoom out"
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Minus className="h-4 w-4" />
         </button>
         <button
           onClick={resetView}
           aria-label={`Zoom level ${zoomPct}% — click to reset`}
-          className="min-w-[52px] rounded-md px-2 py-1 text-xs font-semibold tabular-nums text-foreground transition-colors hover:bg-muted"
+          className="min-w-[52px] rounded-lg px-2 py-1 text-xs font-semibold tabular-nums text-foreground transition-all hover:bg-muted"
         >
           {zoomPct}%
         </button>
@@ -189,22 +189,22 @@ export function WorkflowCanvasView({
           onClick={zoomIn}
           disabled={zoom >= MAX_ZOOM}
           aria-label="Zoom in"
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Plus className="h-4 w-4" />
         </button>
-        <div className="mx-1 h-5 w-px bg-border" />
+        <div className="mx-1 h-5 w-px bg-border/50" />
         <button
           onClick={resetView}
           aria-label="Fit to screen"
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-muted hover:text-foreground"
         >
           <Maximize2 className="h-4 w-4" />
         </button>
         <button
           onClick={resetView}
           aria-label="Reset view"
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-muted hover:text-foreground"
         >
           <RotateCcw className="h-4 w-4" />
         </button>

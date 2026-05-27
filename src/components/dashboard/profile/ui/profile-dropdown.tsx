@@ -13,7 +13,18 @@ import {
 import { LogOut, User, Shield, Moon, Sun } from "lucide-react";
 import type { RootState } from "@/src/store/store";
 
-export function ProfileDropdown() {
+export function ProfileDropdown({
+  side        = "bottom",
+  align       = "end",
+  sideOffset  = 14,
+  compact     = false,
+}: {
+  side?:        "bottom" | "top" | "right" | "left";
+  align?:       "start" | "center" | "end";
+  sideOffset?:  number;
+  /** When true, removes the ml-2 margin (for use in sidebar) */
+  compact?:     boolean;
+}) {
   const { theme, setTheme } = useTheme();
   const { profile, initials, logout, navigateToAdmin, navigateToProfile } = useUser();
   const isDark = theme === "dark";
@@ -23,7 +34,7 @@ export function ProfileDropdown() {
   // Still loading
   if (profile === undefined) {
     return (
-      <div className="ml-2 w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-muted-foreground font-bold text-sm ring-2 ring-background animate-pulse">
+      <div className={`${compact ? "" : "ml-2 "}w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-muted-foreground font-bold text-sm ring-2 ring-background animate-pulse`}>
         …
       </div>
     );
@@ -34,14 +45,15 @@ export function ProfileDropdown() {
       <DropdownMenuTrigger asChild>
         <button
           suppressHydrationWarning
-          className="ml-2 flex h-11 w-11 cursor-pointer items-center justify-center rounded-full bg-secondary text-sm font-bold text-foreground ring-2 ring-background transition-all hover:ring-border"
+          className={`${compact ? "" : "ml-2 "}flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-secondary text-sm font-bold text-foreground ring-2 ring-background transition-all hover:ring-border`}
         >
           {initials}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        align="end"
-        sideOffset={14}
+        side={side}
+        align={align}
+        sideOffset={sideOffset}
         className="w-64 border-border bg-popover p-0 shadow-xl"
       >
         <DropdownMenuSeparator className="my-0 opacity-50" />

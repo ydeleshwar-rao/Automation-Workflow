@@ -211,4 +211,86 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  /* ── Neumorphism utilities ─────────────────────────────────── */
+  /*
+   * Light: warm off-white (~hsl 30 20% 97%)
+   *   dark shadow  → rgba(155,170,190, 0.7)  [blue-gray tone]
+   *   light shadow → rgba(255,255,255, 1.0)  [pure white]
+   *
+   * Dark: deep navy (~hsl 222 47% 6%)
+   *   dark shadow  → rgba(0,0,0, 0.55)
+   *   light shadow → rgba(255,255,255, 0.04)
+   */
+
+  /* ── Sidebar panel ── */
+  .nm-sidebar {
+    background: hsl(var(--surface));
+    box-shadow: 4px 0 20px rgba(155,170,190,0.4);
+  }
+  .dark .nm-sidebar {
+    background: hsl(var(--surface));
+    box-shadow: 5px 0 24px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.025);
+  }
+
+  /* ── Top bar panel ── */
+  .nm-topbar {
+    background: hsl(var(--surface));
+    box-shadow: 0 3px 14px rgba(155,170,190,0.3);
+  }
+  .dark .nm-topbar {
+    background: hsl(var(--surface));
+    box-shadow: 0 3px 16px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.03);
+  }
+
+  /* ── Raised element (resting state) ── */
+  .nm-btn {
+    box-shadow:
+      6px  6px 14px rgba(148,163,184,0.75),
+      -5px -5px 12px rgba(255,255,255,1.0);
+    transition: box-shadow 0.18s ease, color 0.18s ease;
+  }
+  .dark .nm-btn {
+    box-shadow:
+      6px  6px 14px rgba(0,0,0,0.6),
+      -4px -4px 10px rgba(255,255,255,0.05);
+  }
+
+  /* ── Raised element (hover — lifts noticeably) ── */
+  .nm-btn:hover {
+    box-shadow:
+      8px  8px 18px rgba(148,163,184,0.8),
+      -6px -6px 14px rgba(255,255,255,1.0);
+  }
+  .dark .nm-btn:hover {
+    box-shadow:
+      8px  8px 18px rgba(0,0,0,0.65),
+      -6px -6px 14px rgba(255,255,255,0.06);
+  }
+
+  /* ── Pressed / active — deep inset, clearly carved in ── */
+  .nm-inset {
+    box-shadow:
+      inset 5px  5px 12px rgba(148,163,184,0.7),
+      inset -4px -4px 10px rgba(255,255,255,1.0);
+  }
+  .dark .nm-inset {
+    box-shadow:
+      inset 5px  5px 12px rgba(0,0,0,0.6),
+      inset -4px -4px 10px rgba(255,255,255,0.05);
+  }
+
+  /* ── Panel / card ── */
+  .nm-card {
+    background: hsl(var(--card));
+    box-shadow:
+      7px  7px 18px rgba(155,170,190,0.45),
+      -5px -5px 14px rgba(255,255,255,1.0);
+  }
+  .dark .nm-card {
+    background: hsl(var(--card));
+    box-shadow:
+      7px  7px 18px rgba(0,0,0,0.5),
+      -5px -5px 14px rgba(255,255,255,0.04);
+  }
 }

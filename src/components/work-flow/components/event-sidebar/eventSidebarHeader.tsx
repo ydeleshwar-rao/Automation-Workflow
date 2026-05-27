@@ -29,11 +29,11 @@ export function EventSidebarHeader({
     onClose
 }:EventSidebarHeaderProps){
     return(
-        <div className="flex-shrink-0 flex items-center justify-between border-b border-border/60 bg-muted/20 px-3 py-2.5">
+        <div className="flex-shrink-0 flex items-center justify-between border-b border-border/30 bg-card px-3 py-2.5">
                   <div className="flex items-center gap-2.5">
                     <div
                       className={cn(
-                        "rounded-lg border border-border/60 bg-card p-1.5 shadow-sm",
+                        "rounded-xl nm-card p-2",
                         selectedApp?.color,
                       )}
                     >

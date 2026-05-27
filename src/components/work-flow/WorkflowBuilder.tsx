@@ -174,7 +174,7 @@ export function WorkflowBuilder() {
   };
 
   return (
-    <div className="flex h-full w-full min-h-0 flex-col gap-1 bg-[hsl(var(--surface))] p-1">
+    <div className="flex h-full w-full min-h-0 flex-col gap-2 bg-[hsl(var(--surface))] p-2">
 
       {/* ════════════════════════════════════════════════════
           TOP BAR
@@ -196,7 +196,7 @@ export function WorkflowBuilder() {
       {/* ════════════════════════════════════════════════════
           BODY — sidebar + main area
           ════════════════════════════════════════════════════ */}
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-2xl border border-border/60 bg-background shadow-[0_2px_16px_0_hsl(var(--foreground)/0.06)]">
+      <div className="nm-card flex min-h-0 flex-1 overflow-hidden rounded-2xl">
 
         {/* Workflow list sidebar */}
         <WorkflowListSidebar
@@ -363,9 +363,9 @@ export function WorkflowBuilder() {
 
           {/* ── MONITOR VIEW ── */}
           {activeView === "monitor" && (
-            <div className="flex flex-1 overflow-hidden bg-muted/30">
+            <div className="flex flex-1 overflow-hidden bg-[hsl(var(--surface))]">
               {/* Executions list */}
-              <div className="w-[400px] shrink-0 border-r border-border overflow-hidden flex flex-col bg-background">
+              <div className="w-[400px] shrink-0 border-r border-border/40 overflow-hidden flex flex-col bg-card">
                 {currentWorkflowId ? (
                   <ExecutionList
                     workflowId={currentWorkflowId}

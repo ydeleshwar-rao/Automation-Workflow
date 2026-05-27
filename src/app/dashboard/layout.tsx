@@ -1,9 +1,9 @@
-import { SidebarProvider }    from "@/src/components/providers/sidebar-provider";
-import { Shell }              from "@/src/components/layout/shell";
-import { AccessBootstrap }    from "@/src/components/providers/access-bootstrap";
-import { AccessReadyGate }    from "@/src/components/dashboard/select-client-gate";
-import { DashboardSidebar }   from "@/src/components/dashboard/side-bar/ui/sidebar";
-import { DashboardHeader }    from "@/src/components/dashboard/header/ui/header";
+import { SidebarProvider }   from "@/src/components/providers/sidebar-provider";
+import { Shell }             from "@/src/components/layout/shell";
+import { AccessBootstrap }   from "@/src/components/providers/access-bootstrap";
+import { AccessReadyGate }   from "@/src/components/dashboard/select-client-gate";
+import { DashboardSidebar }  from "@/src/components/dashboard/side-bar/ui/sidebar";
+import { DashboardTopBar }   from "@/src/components/layout/topbar";
 
 export default function ProtectedLayout({
   children,
@@ -13,7 +13,10 @@ export default function ProtectedLayout({
   return (
     <SidebarProvider>
       <AccessBootstrap />
-      <Shell sidebar={<DashboardSidebar />} header={<DashboardHeader />}>
+      <Shell
+        sidebar={<DashboardSidebar />}
+        topbar={<DashboardTopBar />}
+      >
         <AccessReadyGate>
           {children}
         </AccessReadyGate>

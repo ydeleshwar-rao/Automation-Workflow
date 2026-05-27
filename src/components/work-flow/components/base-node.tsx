@@ -100,14 +100,17 @@ export function BaseNode({
       <div
         onClick={onClick}
         className={cn(
-          "group relative flex flex-col items-start p-5 w-[440px] bg-card border-2 border-dashed border-border rounded-xl transition-all cursor-pointer shadow-sm hover:border-primary/50 hover:shadow-md",
-          isActive && "border-primary ring-4 ring-primary/15",
+          "group relative flex flex-col items-start p-5 w-[440px] rounded-2xl transition-all cursor-pointer",
+          "border-2 border-dashed",
+          isActive
+            ? "nm-inset bg-primary/5 border-primary/50"
+            : "nm-card border-border/40 hover:border-primary/35",
           className
         )}
       >
         <div className="flex items-center justify-between w-full mb-3">
-          <div className="flex items-center gap-1.5 px-2 py-0.5 bg-muted border border-border rounded text-[11px] font-bold uppercase tracking-wider text-foreground">
-            <div className="flex items-center justify-center w-4 h-4 rounded-full bg-foreground text-background">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wider text-primary nm-inset bg-primary/8">
+            <div className="flex items-center justify-center w-4 h-4 rounded-full bg-primary text-primary-foreground">
               <Zap className="w-2.5 h-2.5 fill-current" />
             </div>
             {label}
@@ -136,8 +139,10 @@ export function BaseNode({
     <div
       onClick={onClick}
       className={cn(
-        "group relative flex flex-col items-start p-2 w-[440px] bg-card border border-border rounded-xl transition-all cursor-pointer shadow-md hover:shadow-lg",
-        isActive && "border-primary ring-2 ring-primary/25",
+        "group relative flex flex-col items-start p-3 w-[440px] rounded-2xl transition-all cursor-pointer",
+        isActive
+          ? "nm-inset bg-primary/5 border border-primary/30"
+          : "nm-card hover:brightness-[1.01]",
         className
       )}
     >
