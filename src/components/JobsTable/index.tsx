@@ -7,7 +7,6 @@ import { Filter } from "lucide-react";
 import { API_ROUTES } from "@/src/constants/api.constants";
 import { cn } from "@/src/lib/utils";
 import axiosInstance from "@/src/services/apiClient";
-import { getActiveClientKey } from "@/src/store/localStorage";
 
 import { JobsAnalytics } from "./analytics";
 import { JobsCustomers } from "./our-customers";
@@ -18,10 +17,6 @@ import type { JobRow, JobsFilters } from "./types";
 export type { JobRow, JobsFilters, JobsTabProps, MockJobRow } from "./types";
 export { getServicem8StatsFromJobs } from "./utils";
 void JobsEngineers;
-
-function getHeaders() {
-  return { clientkey: getActiveClientKey() };
-}
 
 type JobsTableRootProps = {
   integration?: IntegrationType;
@@ -143,15 +138,6 @@ export function JobsTable({
         setLoading(true);
         setLoadError(null);
 
-        const headers = getHeaders();
-        if (!headers.clientkey) {
-          setLoadError("Integration not connected. Please connect from Connections page.");
-          setJobs([]);
-          setRawGroups([]);
-          onJobsChange?.([]);
-          return;
-        }
-
         const params: Record<string, string> = { ...buildFilterParams(filters), limit: "50" };
         if (cur) params.cursor = cur;
         console.log("[JobsTable] → GET", config.endpoint, "params=", params);
@@ -160,10 +146,7 @@ export function JobsTable({
           success?: boolean;
           data?: unknown;
           meta?: { has_more: boolean; next_cursor: string | null; total_returned: number };
-        }>(config.endpoint, {
-          headers: { ...headers, "Content-Type": "application/json" },
-          params,
-        });
+        }>(config.endpoint, { params });
 
         // Both ServiceM8 and Commusoft now stream: { success, data: [...groups], meta }
         // Legacy ApiResponse wraps it as: { data: { success, data: [...groups] } }
@@ -236,12 +219,7 @@ export function JobsTable({
   const handleSync = useCallback(async () => {
     try {
       setIsSyncing(true);
-      const headers = getHeaders();
-      if (!headers.clientkey) {
-        setLoadError("Integration not connected. Please connect from Connections page.");
-        return;
-      }
-      await axiosInstance.post(config.syncEndpoint, {}, { headers });
+      await axiosInstance.post(config.syncEndpoint, {});
       // After sync always reset to page 1
       setCursorHistory([]);
       setApiCursor(undefined);

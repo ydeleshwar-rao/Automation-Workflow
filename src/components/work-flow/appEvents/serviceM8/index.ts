@@ -8,7 +8,6 @@ import type { IntegrationDescriptor, StepContext } from "../../uiOrchestrator/ty
 import type { ConfigStep } from "../../components/event-sidebar/eventSidebar";
 import { useServiceM8Status } from "@/src/components/app-connections/servicem8/hooks/useServiceM8Status";
 import axiosInstance from "@/src/services/apiClient";
-import { getActiveClientKey } from "@/src/store/localStorage";
 import { SM8_EVENT_FIELDS } from "./components/configure/fields";
 
 function useServiceM8StepProps(step: ConfigStep, context: StepContext) {
@@ -25,8 +24,6 @@ function useServiceM8StepProps(step: ConfigStep, context: StepContext) {
   const handleTestTrigger = useCallback(async () => {
     const isTrigger = context.isTrigger;
     const eventKey = context.node.eventLabel;
-    const clientkey = getActiveClientKey();
-
     if (!eventKey) {
       console.error("Missing event key");
       setTestStatus("failed");
@@ -70,8 +67,7 @@ function useServiceM8StepProps(step: ConfigStep, context: StepContext) {
             integration_key: "service_m8",
             event_key: eventKey,
             config: cleanConfig,
-          },
-          { headers: { clientkey } }
+          }
         );
 
         const subId: string | undefined = upsertRes.data?.data?.id;
@@ -90,8 +86,7 @@ function useServiceM8StepProps(step: ConfigStep, context: StepContext) {
 
         const pollRes = await axiosInstance.post(
           `/automation/polling/subscriptions/${subId}/poll-now`,
-          {},
-          { headers: { clientkey } }
+          {}
         );
 
         const result = pollRes.data?.data;
@@ -127,8 +122,7 @@ function useServiceM8StepProps(step: ConfigStep, context: StepContext) {
           action_key: eventKey,
           config: cleanConfig,
           input,
-        },
-        { headers: { clientkey } }
+        }
       );
 
       const result = actionRes.data?.data;

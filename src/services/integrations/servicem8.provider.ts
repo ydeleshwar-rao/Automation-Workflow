@@ -1,6 +1,5 @@
 import axiosInstance from "@/src/services/apiClient";
 import { API_ROUTES } from "@/src/constants/api.constants";
-import { getActiveClientKey } from "@/src/store/localStorage";
 import type { JobsDataProvider } from "./types";
 import type { JobsFilters, NormalizedJob } from "@/src/types/dashboard.types";
 
@@ -113,7 +112,6 @@ export const servicem8Provider: JobsDataProvider = {
 
   async fetchJobs(filters) {
     const { data } = await axiosInstance.get(API_ROUTES.SERVICEM8.GET_ALL_JOBS, {
-      headers: { clientkey: getActiveClientKey() ?? "" },
       params: buildParams(filters),
     });
     // ApiResponse wraps payload as { success, message, data: { success, data: [...] } }

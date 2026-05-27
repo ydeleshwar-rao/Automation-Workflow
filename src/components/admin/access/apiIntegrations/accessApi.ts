@@ -1,221 +1,214 @@
 /**
  * accessApi.ts
  * ─────────────────────────────────────────────────────────────
- * RTK Query slice for the role-based access management endpoints
- * exposed by the backend (mounted under `/access/*`).
+ * RTK Query slice for the new role-based access management API.
  *
- *   GET    /access/users?role=...
- *   GET    /access/assignments?developer_id=...
- *   POST   /access/assignments        { developer_id, client_ids[] }
- *   DELETE /access/assignments        { developer_id, client_id  }
- *   GET    /access/permissions/:id
- *   POST   /access/permissions        { user_id, page, can_read, can_write }
- *   DELETE /access/permissions        { user_id, page }
+ * New backend routes (mounted under /access):
+ *   GET    /access/me
+ *   GET    /access/developers
+ *   POST   /access/developers
+ *   GET    /access/developers/:id
+ *   PATCH  /access/developers/:id/status
+ *   DELETE /access/developers/:id
+ *   GET    /access/developers/:id/permissions
+ *   PUT    /access/developers/:id/permissions      (replace all)
+ *   PATCH  /access/developers/:id/permissions/:page_key
+ *   DELETE /access/developers/:id/permissions/:page_key
+ *
+ * Architecture changes vs old accessApi:
+ *   - Removed: user_client_access assignments (no clients concept)
+ *   - Removed: developer-scoped permissions (developer+client pairs)
+ *   - Removed: clientkey field
+ *   - New: page permissions are per-developer (no client dimension)
+ *   - New: can_view / can_edit / can_delete (replaces can_read / can_write)
  */
 
-import { createApi } from "@reduxjs/toolkit/query/react"
-import { axiosBaseQuery } from "@/src/store/axiosBaseQuery"
-import type { ApiResponse } from "@/src/components/work-flow/apiIntegrations/types/integration.types"
-import type { AccessRole } from "@/src/store/accessSlice"
+import { createApi }      from "@reduxjs/toolkit/query/react";
+import { axiosBaseQuery } from "@/src/store/axiosBaseQuery";
+import type { ApiResponse } from "@/src/components/work-flow/apiIntegrations/types/integration.types";
+import type { AccessRole } from "@/src/store/accessSlice";
 
 // ── Domain Types ────────────────────────────────────────────────────────────
 
-export interface AccessUserRecord {
-  id: string
-  email: string
-  first_name?: string | null
-  last_name?: string | null
-  phone?: string | null
-  company_name?: string | null
-  clientkey?: string | null
-  role: AccessRole | string
-  avatar_url?: string | null
-  created_at?: string
+export interface DeveloperRecord {
+  id:          string;
+  email:       string;
+  full_name?:  string | null;
+  avatar_url?: string | null;
+  role:        AccessRole | string;
+  is_active:   boolean;
+  created_at?: string;
 }
 
-/**
- * One row from `user_client_access`, joined with both sides.
- * Shape returned by `GET /access/assignments?developer_id=X`:
- *   { id, created_at, user_id, client_user_id, developer: {...}, client: {...} }
- */
-export interface AssignmentRecord {
-  id: string
-  created_at?: string
-  user_id: string
-  client_user_id: string
-  developer: AccessUserRecord
-  client: AccessUserRecord
+export interface PagePermissionRecord {
+  page_key:   string;
+  can_view:   boolean;
+  can_edit:   boolean;
+  can_delete: boolean;
 }
 
-export interface PermissionRecord {
-  page: string
-  can_read: boolean
-  can_write: boolean
+export interface CreateDeveloperDto {
+  email:        string;
+  full_name?:   string;
+  password?:    string;          // optional; backend generates temp password if omitted
+  permissions?: string[];        // initial page keys to grant
 }
 
-export interface DeveloperPermissionRecord {
-  developer_id: string
-  client_user_id: string
-  page: string
-  can_read: boolean
-  can_write: boolean
+export interface UpdatePermissionsDto {
+  permissions: Array<{
+    page_key:   string;
+    can_view?:  boolean;
+    can_edit?:  boolean;
+    can_delete?: boolean;
+  }>;
+}
+
+export interface UpsertPagePermissionDto {
+  can_view?:   boolean;
+  can_edit?:   boolean;
+  can_delete?: boolean;
 }
 
 // ── API Slice ───────────────────────────────────────────────────────────────
 
 export const accessApi = createApi({
   reducerPath: "accessApi",
-  baseQuery: axiosBaseQuery(),
-  tagTypes: ["AccessUsers", "Assignments", "Permissions", "DevPermissions"],
-  endpoints: (builder) => ({
-    // ── Users ──────────────────────────────────────────────────
-    getAccessUsers: builder.query<
-      ApiResponse<AccessUserRecord[]>,
-      { role?: AccessRole | "admin" | "developer" | "user" } | void
+  baseQuery:   axiosBaseQuery(),
+  tagTypes:    ["Developers", "Permissions"],
+  endpoints:   (builder) => ({
+
+    // ── Developers ────────────────────────────────────────────
+
+    listDevelopers: builder.query<ApiResponse<DeveloperRecord[]>, void>({
+      query: () => ({ url: "/access/developers", method: "GET" }),
+      providesTags: [{ type: "Developers", id: "LIST" }],
+    }),
+
+    getDeveloper: builder.query<ApiResponse<DeveloperRecord>, string>({
+      query: (id) => ({ url: `/access/developers/${id}`, method: "GET" }),
+      providesTags: (_r, _e, id) => [{ type: "Developers", id }],
+    }),
+
+    createDeveloper: builder.mutation<
+      ApiResponse<{ profile: DeveloperRecord; temp_password?: string }>,
+      CreateDeveloperDto
     >({
-      query: (arg) => ({
-        url: `/access/users`,
-        method: "GET",
-        params: arg && "role" in arg && arg.role ? { role: arg.role } : undefined,
+      query: (data) => ({ url: "/access/developers", method: "POST", data }),
+      invalidatesTags: [{ type: "Developers", id: "LIST" }],
+    }),
+
+    toggleDeveloperStatus: builder.mutation<
+      ApiResponse<DeveloperRecord>,
+      { id: string; is_active: boolean }
+    >({
+      query: ({ id, is_active }) => ({
+        url:    `/access/developers/${id}/status`,
+        method: "PATCH",
+        data:   { is_active },
       }),
-      providesTags: (_r, _e, arg) => [
-        { type: "AccessUsers" as const, id: (arg && "role" in arg && arg.role) || "ALL" },
+      invalidatesTags: (_r, _e, { id }) => [
+        { type: "Developers", id },
+        { type: "Developers", id: "LIST" },
       ],
     }),
 
-    // ── Developer ↔ Client Assignments ────────────────────────
-    getAssignments: builder.query<
-      ApiResponse<AssignmentRecord[]>,
-      { developer_id: string }
-    >({
-      query: ({ developer_id }) => ({
-        url: `/access/assignments`,
-        method: "GET",
-        params: { developer_id },
-      }),
-      providesTags: (_r, _e, { developer_id }) => [
-        { type: "Assignments", id: developer_id },
+    deleteDeveloper: builder.mutation<ApiResponse<unknown>, string>({
+      query: (id) => ({ url: `/access/developers/${id}`, method: "DELETE" }),
+      invalidatesTags: (_r, _e, id) => [
+        { type: "Developers", id },
+        { type: "Developers", id: "LIST" },
       ],
     }),
 
-    assignClients: builder.mutation<
-      ApiResponse<unknown>,
-      { developer_id: string; client_ids: string[] }
-    >({
-      query: (data) => ({
-        url: `/access/assignments`,
-        method: "POST",
-        data,
-      }),
-      invalidatesTags: (_r, _e, { developer_id }) => [
-        { type: "Assignments", id: developer_id },
-      ],
+    // ── Admin Management ──────────────────────────────────────
+
+    listAdmins: builder.query<ApiResponse<DeveloperRecord[]>, void>({
+      query: () => ({ url: "/access/admins", method: "GET" }),
+      providesTags: [{ type: "Developers", id: "ADMINS" }],
     }),
 
-    revokeAssignment: builder.mutation<
-      ApiResponse<unknown>,
-      { developer_id: string; client_id: string }
-    >({
-      query: (data) => ({
-        url: `/access/assignments`,
-        method: "DELETE",
-        data,
-      }),
-      invalidatesTags: (_r, _e, { developer_id }) => [
-        { type: "Assignments", id: developer_id },
-      ],
+    deleteAdmin: builder.mutation<ApiResponse<unknown>, string>({
+      query: (id) => ({ url: `/access/admins/${id}`, method: "DELETE" }),
+      invalidatesTags: [{ type: "Developers", id: "ADMINS" }],
     }),
 
-    // ── Per-page permissions ──────────────────────────────────
+    // ── Page Permissions ──────────────────────────────────────
+
     getPermissions: builder.query<
-      ApiResponse<PermissionRecord[] | Record<string, { can_read: boolean; can_write: boolean }>>,
+      ApiResponse<PagePermissionRecord[]>,
       string
     >({
-      query: (userId) => ({
-        url: `/access/permissions/${userId}`,
+      query: (developerId) => ({
+        url:    `/access/developers/${developerId}/permissions`,
         method: "GET",
       }),
-      providesTags: (_r, _e, userId) => [{ type: "Permissions", id: userId }],
-    }),
-
-    setPermission: builder.mutation<
-      ApiResponse<unknown>,
-      { user_id: string; page: string; can_read: boolean; can_write: boolean }
-    >({
-      query: (data) => ({
-        url: `/access/permissions`,
-        method: "POST",
-        data,
-      }),
-      invalidatesTags: (_r, _e, { user_id }) => [{ type: "Permissions", id: user_id }],
-    }),
-
-    removePermission: builder.mutation<
-      ApiResponse<unknown>,
-      { user_id: string; page: string }
-    >({
-      query: (data) => ({
-        url: `/access/permissions`,
-        method: "DELETE",
-        data,
-      }),
-      invalidatesTags: (_r, _e, { user_id }) => [{ type: "Permissions", id: user_id }],
-    }),
-
-    // ── Developer-scoped permissions ────────────────────────────
-    getDeveloperPermissions: builder.query<
-      ApiResponse<DeveloperPermissionRecord[]>,
-      { developer_id: string; client_user_id: string }
-    >({
-      query: ({ developer_id, client_user_id }) => ({
-        url: `/access/developer-permissions/${developer_id}/${client_user_id}`,
-        method: "GET",
-      }),
-      providesTags: (_r, _e, { developer_id, client_user_id }) => [
-        { type: "DevPermissions", id: `${developer_id}_${client_user_id}` },
+      providesTags: (_r, _e, developerId) => [
+        { type: "Permissions", id: developerId },
       ],
     }),
 
-    setDeveloperPermission: builder.mutation<
+    /** Replace ALL permissions for a developer at once. */
+    setAllPermissions: builder.mutation<
       ApiResponse<unknown>,
-      { developer_id: string; client_user_id: string; page: string; can_read: boolean; can_write: boolean }
+      { developerId: string; data: UpdatePermissionsDto }
     >({
-      query: (data) => ({
-        url: `/access/developer-permissions`,
-        method: "POST",
+      query: ({ developerId, data }) => ({
+        url:    `/access/developers/${developerId}/permissions`,
+        method: "PUT",
         data,
       }),
-      invalidatesTags: (_r, _e, { developer_id, client_user_id }) => [
-        { type: "DevPermissions", id: `${developer_id}_${client_user_id}` },
+      invalidatesTags: (_r, _e, { developerId }) => [
+        { type: "Permissions", id: developerId },
       ],
     }),
 
-    removeDeveloperPermission: builder.mutation<
+    /** Update a single page permission. */
+    upsertPagePermission: builder.mutation<
       ApiResponse<unknown>,
-      { developer_id: string; client_user_id: string; page: string }
+      { developerId: string; pageKey: string; data: UpsertPagePermissionDto }
     >({
-      query: (data) => ({
-        url: `/access/developer-permissions`,
-        method: "DELETE",
+      query: ({ developerId, pageKey, data }) => ({
+        url:    `/access/developers/${developerId}/permissions/${pageKey}`,
+        method: "PATCH",
         data,
       }),
-      invalidatesTags: (_r, _e, { developer_id, client_user_id }) => [
-        { type: "DevPermissions", id: `${developer_id}_${client_user_id}` },
+      invalidatesTags: (_r, _e, { developerId }) => [
+        { type: "Permissions", id: developerId },
+      ],
+    }),
+
+    removePagePermission: builder.mutation<
+      ApiResponse<unknown>,
+      { developerId: string; pageKey: string }
+    >({
+      query: ({ developerId, pageKey }) => ({
+        url:    `/access/developers/${developerId}/permissions/${pageKey}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (_r, _e, { developerId }) => [
+        { type: "Permissions", id: developerId },
       ],
     }),
   }),
-})
+});
 
 // ── Auto-generated hooks ────────────────────────────────────────────────────
 export const {
-  useGetAccessUsersQuery,
-  useGetAssignmentsQuery,
-  useAssignClientsMutation,
-  useRevokeAssignmentMutation,
+  useListDevelopersQuery,
+  useGetDeveloperQuery,
+  useCreateDeveloperMutation,
+  useToggleDeveloperStatusMutation,
+  useDeleteDeveloperMutation,
   useGetPermissionsQuery,
-  useSetPermissionMutation,
-  useRemovePermissionMutation,
-  useGetDeveloperPermissionsQuery,
-  useSetDeveloperPermissionMutation,
-  useRemoveDeveloperPermissionMutation,
-} = accessApi
+  useSetAllPermissionsMutation,
+  useUpsertPagePermissionMutation,
+  useRemovePagePermissionMutation,
+  useListAdminsQuery,
+  useDeleteAdminMutation,
+} = accessApi;
+
+// ── Legacy type alias ───────────────────────────────────────────────────────
+/** @deprecated Use PagePermissionRecord */
+export type PermissionRecord = PagePermissionRecord;
+/** @deprecated Use DeveloperRecord */
+export type AccessUserRecord = DeveloperRecord;

@@ -21,9 +21,6 @@ export interface MailAccount {
   config?: SmtpConfig;
 }
 
-// TODO: Replace with actual locationId from auth context/session
-const LOCATION_ID = "default-location";
-
 export function useMail() {
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
   const [selectedAccount, setSelectedAccount] = useState<MailAccount | null>(null);
@@ -36,7 +33,7 @@ export function useMail() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch(API_ROUTES.MAIL.GET_CONNECTIONS(LOCATION_ID));
+      const res = await fetch(API_ROUTES.MAIL.CONNECTIONS);
       if (!res.ok) throw new Error(`Failed to fetch connections: ${res.status}`);
       const json = await res.json();
       // Backend wraps response in { data: [...] }
@@ -62,7 +59,6 @@ export function useMail() {
   // Save a new SMTP connection to the backend, then refresh the list
   const addAccount = useCallback(async (config: SmtpConfig) => {
     const payload = {
-      location_id: LOCATION_ID,
       name: config.user,
       host: config.host,
       port: config.port,
@@ -71,7 +67,7 @@ export function useMail() {
       use_tls: config.tls,
     };
 
-    const res = await fetch(API_ROUTES.MAIL.CREATE_CONNECTION, {
+    const res = await fetch(API_ROUTES.MAIL.CONNECTIONS, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

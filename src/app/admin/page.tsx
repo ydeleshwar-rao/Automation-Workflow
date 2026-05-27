@@ -1,32 +1,5 @@
-import { Users, Briefcase, TrendingUp, PlusCircle, ArrowRight, ArrowLeft } from "lucide-react";
+import { Users, PlusCircle, ArrowRight, ArrowLeft } from "lucide-react";
 import Link from "next/link";
-
-const stats = [
-  {
-    title: "Total Clients",
-    value: "12",
-    description: "Active user accounts",
-    icon: Users,
-    iconClass: "text-blue-500",
-    iconBg: "bg-blue-500/10",
-  },
-  {
-    title: "Active Jobs",
-    value: "45",
-    description: "Current projects in progress",
-    icon: Briefcase,
-    iconClass: "text-indigo-500",
-    iconBg: "bg-indigo-500/10",
-  },
-  {
-    title: "Growth",
-    value: "+24%",
-    description: "Increase this month",
-    icon: TrendingUp,
-    iconClass: "text-emerald-500",
-    iconBg: "bg-emerald-500/10",
-  },
-];
 
 const quickActions = [
   {
@@ -55,29 +28,6 @@ export default function AdminDashboardPage() {
         <ArrowLeft className="h-4 w-4" />
         Back to Home
       </Link>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {stats.map((stat) => (
-          <div
-            key={stat.title}
-            className="rounded-2xl border border-border/60 bg-background shadow-[0_2px_16px_0_hsl(var(--foreground)/0.06)] p-5 flex items-start gap-4 transition-shadow hover:shadow-[0_4px_24px_0_hsl(var(--foreground)/0.10)]"
-          >
-            <div className={`flex-shrink-0 flex h-11 w-11 items-center justify-center rounded-xl ${stat.iconBg}`}>
-              <stat.icon className={`h-5 w-5 ${stat.iconClass}`} />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-                {stat.title}
-              </p>
-              <p className="mt-1 text-3xl font-bold text-foreground leading-none">
-                {stat.value}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">{stat.description}</p>
-            </div>
-          </div>
-        ))}
-      </div>
 
       {/* Quick Actions */}
       <div className="space-y-4">

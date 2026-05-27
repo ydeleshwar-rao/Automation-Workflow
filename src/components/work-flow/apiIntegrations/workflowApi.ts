@@ -11,7 +11,7 @@
 import { axiosBaseQuery } from "@/src/store/axiosBaseQuery";
 import { createApi } from "@reduxjs/toolkit/query/react";
 import { ApiResponse } from "./types/integration.types";
-import { getActiveClientKey } from "@/src/store/localStorage";
+// clientkey removed — all requests are JWT-only (Bearer token via axios interceptor)
 
 // ── Domain Types ────────────────────────────────────────────────────────────
 
@@ -378,7 +378,6 @@ export const workflowApi = createApi({
                 url: `/automation/polling/subscriptions`,
                 method: "POST",
                 data,
-                headers: { clientkey: getActiveClientKey() },
             }),
             invalidatesTags: ["PollingSubscription"],
         }),
@@ -390,7 +389,6 @@ export const workflowApi = createApi({
             query: (nodeId) => ({
                 url: `/automation/polling/subscriptions/by-node/${nodeId}`,
                 method: "GET",
-                headers: { clientkey: getActiveClientKey() },
             }),
             providesTags: (_r, _e, nodeId) => [
                 { type: "PollingSubscription", id: nodeId },
@@ -405,7 +403,6 @@ export const workflowApi = createApi({
                 url: `/automation/polling/subscriptions/${id}`,
                 method: "PATCH",
                 data: patch,
-                headers: { clientkey: getActiveClientKey() },
             }),
             invalidatesTags: ["PollingSubscription"],
         }),
@@ -414,7 +411,6 @@ export const workflowApi = createApi({
             query: (id) => ({
                 url: `/automation/polling/subscriptions/${id}`,
                 method: "DELETE",
-                headers: { clientkey: getActiveClientKey() },
             }),
             invalidatesTags: ["PollingSubscription"],
         }),
@@ -426,7 +422,6 @@ export const workflowApi = createApi({
             query: (subscriptionId) => ({
                 url: `/automation/polling/subscriptions/${subscriptionId}/poll-now`,
                 method: "POST",
-                headers: { clientkey: getActiveClientKey() },
             }),
         }),
 
@@ -437,7 +432,6 @@ export const workflowApi = createApi({
             query: (id) => ({
                 url: `/automation/polling/subscriptions/${id}/status`,
                 method: "GET",
-                headers: { clientkey: getActiveClientKey() },
             }),
         }),
     }),

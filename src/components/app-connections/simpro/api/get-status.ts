@@ -1,17 +1,14 @@
 import { AxiosError } from "axios";
 import axiosInstance from "@/src/services/apiClient";
 import { API_ROUTES } from "@/src/constants/api.constants";
-import { getRequestHeaders } from "@/src/services/clientkey.service";
 
 /**
- * Get simPRO integration status (backend Railway, same baseURL as axiosInstance).
+ * Get simPRO integration status.
+ * Auth is handled via JWT Bearer token in axiosInstance — no clientkey header.
  */
 export async function getSimproStatus(): Promise<{ connected: boolean }> {
   try {
-    const headers = await getRequestHeaders();
-    const { data } = await axiosInstance.get(API_ROUTES.SIMPRO.STATUS, {
-      headers: { ...headers },
-    });
+    const { data } = await axiosInstance.get(API_ROUTES.SIMPRO.STATUS);
     const connected =
       data?.data?.connected === true ||
       data?.data?.alreadyConnected === true ||

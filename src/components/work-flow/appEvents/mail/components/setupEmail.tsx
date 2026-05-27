@@ -60,7 +60,7 @@ export function MailSetupStep({
     }
   };
 
-  const displayName = selectedAccount?.username || selectedAccount?.name || null;
+  const displayName = selectedAccount?.name || null;
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">

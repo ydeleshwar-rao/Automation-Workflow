@@ -5,7 +5,6 @@ import { webhookApi } from "./webhookApi"
 import { IntegrationEngine } from "../../../apiIntegrations/types/integration.types"
 import { CreateWebhookResponse } from "./types/webhookApis.type"
 import { getStoredWebhookData, setStoredWebhookData } from "../../../uiOrchestrator/workflowStorage"
-import { getActiveClientKey } from "@/src/store/localStorage"
 
 
 /** Persist webhook data to localStorage for a given node ID */
@@ -20,7 +19,6 @@ export function getCachedWebhookData(nodeId: string): CreateWebhookResponse | nu
 
 export const webhookEngine: IntegrationEngine<CreateWebhookResponse> = {
   onSetup: async (eventData) => {
-    const client_id = getActiveClientKey();
     const payload = {
       name: `${eventData.appLabel} Trigger`,
       action_type: "save_dbfigbgjk",

@@ -17,7 +17,6 @@ import {
 
 import { COMMUSOFT_EVENT_FIELDS, CommusoftFieldDef } from "./configure/fields";
 import axiosInstance from "@/src/services/apiClient";
-import { getActiveClientKey } from "@/src/store/localStorage";
 import { API_ROUTES } from "@/src/constants/api.constants";
 import { useCommusoftStatus } from "@/src/components/app-connections/commusoft/hooks/useCommusoftStatus";
 import { Link2 } from "lucide-react";
@@ -122,9 +121,8 @@ export function CommusoftConfigureStep({
 
   useEffect(() => {
     if (!isCommusoftConnected) return;
-    const clientKey = getActiveClientKey();
     axiosInstance
-      .get(API_ROUTES.COMMUSOFT.CUSTOMER_TYPES, { headers: { clientkey: clientKey } })
+      .get(API_ROUTES.COMMUSOFT.CUSTOMER_TYPES)
       .then((res) => {
         const descriptions: string[] = res.data?.data ?? [];
         // Value must equal the raw description — backend does an ilike lookup

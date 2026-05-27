@@ -1,7 +1,24 @@
-import { Box, GitBranch, Home, LayoutGrid, LucideIcon, ShieldCheck } from "lucide-react";
+/**
+ * nav-items.ts
+ * ─────────────────────────────────────────────────────────────
+ * Navigation configuration factory — new JWT-permission model.
+ *
+ * Items are shown/hidden based on:
+ *   - Role: admin-only items (Admin Panel)
+ *   - JWT permissions[]: page keys embedded in the access token
+ *     Admin gets ['*'] → sees everything
+ *     Developer gets explicit keys: ['dashboard', 'workflow', ...]
+ */
+
+import {
+  BarChart3,
+  Box,
+  GitBranch,
+  Home,
+  LucideIcon,
+  ShieldCheck,
+} from "lucide-react";
 import { DASHBOARD_ROUTES } from "@/src/constants/domain.constants";
-import { INTEGRATION_NAV } from "@/src/constants/nav.constants";
-import { type PagePermissions } from "@/src/types/permissions.types";
 
 export interface NavSubItem {
   name: string;
@@ -9,87 +26,84 @@ export interface NavSubItem {
 }
 
 export interface NavItemConfig {
-  id: string;
-  name: string;
-  href: string;
-  icon: LucideIcon;
-  subItems?: readonly NavSubItem[];
-  adminOnly?: boolean;
+  id:           string;
+  name:         string;
+  href:         string;
+  icon:         LucideIcon;
+  subItems?:    readonly NavSubItem[];
+  adminOnly?:   boolean;
+}
+
+export interface NavBuildParams {
+  userRole:       string | null;
+  /** JWT permissions array — ['*'] for admin, page keys for developer */
+  permissions:    string[];
 }
 
 /**
- * Modular navigation configuration factory.
- * Each integration manages its own nav structure in its respective directory.
+ * Build the sidebar nav items for the current user.
+ * Uses JWT permissions[], so no extra API call is needed.
  */
-export function getDashboardNavItems(integrationStatus: {
-  isServiceM8Connected: boolean;
-  isCommusoftConnected: boolean;
-  isLeadsHubConnected: boolean;
-  isSimProConnected: boolean;
-  userRole: string | null;
-  pagePermissions: PagePermissions;
-}): NavItemConfig[] {
-  const isAdmin = integrationStatus.userRole === "admin";
-  const permissions = integrationStatus.pagePermissions;
+export function getDashboardNavItems({
+  userRole,
+  permissions,
+}: NavBuildParams): NavItemConfig[] {
+  const isAdmin = userRole === "admin";
+  /** Check if user has access to a page key (supports '*' wildcard). */
+  const can = (key: string) =>
+    permissions.includes("*") || permissions.includes(key);
 
-  // Core application routes
-  const items: NavItemConfig[] = [
-    {
-      id: "home",
+  const items: NavItemConfig[] = [];
+
+  // ── Dashboard (always visible to those with access) ───────────────────────
+  if (can("dashboard")) {
+    items.push({
+      id:   "home",
       name: "Home",
       href: DASHBOARD_ROUTES.HOME,
-      icon: Home
-    },
-    {
-      id: "integrations",
-      name: "Connections",
-      href: DASHBOARD_ROUTES.INTEGRATIONS,
-      icon: LayoutGrid,
-    },
-  ];
-
-  const connectedIntegration = integrationStatus.isServiceM8Connected
-    ? "servicem8"
-    : integrationStatus.isCommusoftConnected
-      ? "commusoft"
-      : integrationStatus.isSimProConnected
-        ? "simpro"
-        : null;
-
-  if (connectedIntegration === "servicem8" && permissions.servicem8) {
-    items.push(INTEGRATION_NAV.SERVICEM8);
-  } else if (connectedIntegration === "commusoft" && permissions.commusoft) {
-    items.push(INTEGRATION_NAV.COMMUSOFT);
-  } else if (connectedIntegration === "simpro" && permissions.simpro) {
-    items.push(INTEGRATION_NAV.SIMPRO);
-  }
-
-  // Admin-only nav items
-  if (isAdmin) {
-    items.push({
-      id: "admin",
-      name: "Admin Panel",
-      href: "/admin",
-      icon: ShieldCheck,
-      adminOnly: true,
+      icon: Home,
     });
   }
 
-  if (permissions.workflow) {
+
+  // ── Workflow ──────────────────────────────────────────────────────────────
+  if (can("workflow")) {
     items.push({
-      id: "workflow",
+      id:   "workflow",
       name: "Workflow",
       href: DASHBOARD_ROUTES.WORKFLOW,
       icon: GitBranch,
     });
   }
 
-  if (permissions.assets) {
+  // ── Assets ────────────────────────────────────────────────────────────────
+  if (can("assets")) {
     items.push({
-      id: "assets",
+      id:   "assets",
       name: "Assets",
       href: DASHBOARD_ROUTES.ASSETS,
       icon: Box,
+    });
+  }
+
+  // ── Analytics ─────────────────────────────────────────────────────────────
+  if (can("analytics")) {
+    items.push({
+      id:   "analytics",
+      name: "Analytics",
+      href: "/dashboard/analytics",
+      icon: BarChart3,
+    });
+  }
+
+  // ── Admin Panel (role-based, not page-permission-based) ───────────────────
+  if (isAdmin) {
+    items.push({
+      id:        "admin",
+      name:      "Admin Panel",
+      href:      "/admin",
+      icon:      ShieldCheck,
+      adminOnly: true,
     });
   }
 

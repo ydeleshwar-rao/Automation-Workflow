@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { getSmtpConnections } from "@/src/components/work-flow/appEvents/mail/apiIntegrations/mailApis/createSmtpConnection.api";
-import { getActiveClientKey } from "@/src/store/localStorage";
 
 interface Props {
   /** Credential type hint (e.g. "smtp", "webhook", "oauth") */
@@ -53,17 +52,10 @@ function SmtpPicker({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const locationId = getActiveClientKey();
-    if (!locationId) {
-      setError("No workspace/location found for SMTP lookup");
-      setLoading(false);
-      return;
-    }
-
     let cancelled = false;
     (async () => {
       try {
-        const rows = await getSmtpConnections(locationId);
+        const rows = await getSmtpConnections();
         if (cancelled) return;
         setOptions(
           (rows ?? []).map((row: any) => ({

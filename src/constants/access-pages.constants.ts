@@ -1,19 +1,22 @@
 /**
- * Pages that appear in the Access Control → Permissions matrix.
- * Add a new entry here to expose another page for per-user can_read / can_write.
+ * Page keys for the Access Control → Permissions matrix.
  *
- * The `key` is what gets persisted to the backend (`access_page_permissions.page`).
+ * These match exactly what is stored in `page_permissions.page_key` in the DB
+ * and embedded in the JWT `permissions[]` claim.
+ *
+ * Admin: gets ['*'] (wildcard) — bypass all checks.
+ * Developer: gets the explicit keys the admin has granted.
  */
 
 export interface AccessPage {
-  key: string
-  label: string
+  key:   string;
+  label: string;
 }
 
 export const ACCESS_PAGES: readonly AccessPage[] = [
-  { key: "servicem8", label: "ServiceM8" },
-  { key: "commusoft", label: "Commusoft" },
-  { key: "simpro", label: "SimPro" },
-  { key: "workflow", label: "Workflow" },
-  { key: "assets", label: "Assets" },
-] as const
+  { key: "dashboard",    label: "Dashboard"    },
+  { key: "workflow",     label: "Workflow"      },
+  { key: "assets",       label: "Assets"        },
+  { key: "integrations", label: "Integrations"  },
+  { key: "analytics",    label: "Analytics"     },
+] as const;

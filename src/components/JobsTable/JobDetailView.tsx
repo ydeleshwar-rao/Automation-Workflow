@@ -14,13 +14,8 @@ import { API_ROUTES } from "@/src/constants/api.constants";
 import { Button } from "@/src/components/ui/button";
 import { cn } from "@/src/lib/utils";
 import axiosInstance from "@/src/services/apiClient";
-import { getActiveClientKey } from "@/src/store/localStorage";
 
 import type { JobRow } from "./types";
-
-function getHeaders() {
-  return { clientkey: getActiveClientKey() };
-}
 
 type RawJobBundle = Record<string, unknown>;
 
@@ -298,13 +293,6 @@ export function JobDetailView({ customer, allJobs, integration, onBack, rawGroup
       setError(null);
 
       try {
-        const headers = getHeaders();
-        if (!headers.clientkey) {
-          setError("Integration not connected. Please connect from Connections page.");
-          setRawItems([]);
-          return;
-        }
-
         const endpointMap: Record<"servicem8" | "commusoft" | "simpro", string> = {
           servicem8: API_ROUTES.SERVICEM8.GET_ALL_JOBS,
           commusoft: API_ROUTES.COMMUSOFT.GET_ALL_JOBS,
@@ -316,9 +304,7 @@ export function JobDetailView({ customer, allJobs, integration, onBack, rawGroup
           success?: boolean;
           data?: unknown;
           meta?: unknown;
-        }>(endpoint, {
-          headers: { ...headers, "Content-Type": "application/json" },
-        });
+        }>(endpoint);
         // Handle streaming format (data is array) and legacy format (data.data is array)
         const rawData: RawJobBundle[] = Array.isArray(result?.data)
           ? (result.data as RawJobBundle[])

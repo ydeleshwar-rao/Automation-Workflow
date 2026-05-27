@@ -1,28 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSelector } from "react-redux";
 import {
   AlertCircle,
   AlertTriangle,
-  Building2,
   CheckCircle2,
-  ChevronDown,
   Loader2,
   Rocket,
-  Search,
-  User,
   Wifi,
   WifiOff,
   X,
 } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
-import { Input } from "@/src/components/ui/input";
+import { Input }  from "@/src/components/ui/input";
 import { cn } from "@/src/lib/utils";
 import { toast } from "sonner";
 import type { RootState } from "@/src/store/store";
-import type { AccessClient } from "@/src/store/accessSlice";
 import { useGetIntegrationStatusQuery } from "../apiIntegrations/templateFolderApi";
 import { useApplyTemplateMutation } from "../apiIntegrations/workflowTemplateApi";
 import type { WorkflowTemplate } from "../types";
@@ -65,13 +60,11 @@ export function DeployFolderWizard({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  const accessibleClients = useSelector((s: RootState) => s.access.accessibleClients);
+  // Current user — templates are always deployed to the logged-in user's account
+  const currentUser = useSelector((s: RootState) => s.access.user);
 
   const [step, setStep] = useState<Step>("configure");
-  const [selectedClient, setSelectedClient] = useState<AccessClient | null>(null);
   const [namePrefix, setNamePrefix] = useState("");
-  const [clientSearch, setClientSearch] = useState("");
-  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [results, setResults] = useState<DeployResult[]>([]);
   const [summary, setSummary] = useState<{ total: number; succeeded: number; failed: number } | null>(null);
   const [isDeploying, setIsDeploying] = useState(false);
@@ -79,7 +72,6 @@ export function DeployFolderWizard({
   // ── Which integrations the user wants to check ────────────────────────────
   const [checkedIntegrations, setCheckedIntegrations] = useState<string[]>([]);
 
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const [applyTemplate] = useApplyTemplateMutation();
 
   // ── Fetch status for manually selected integrations ───────────────────────
@@ -89,8 +81,8 @@ export function DeployFolderWizard({
     isFetching: fetchingStatus,
     isError: statusError,
   } = useGetIntegrationStatusQuery(
-    { userId: selectedClient?.id ?? "", integrations: checkedIntegrations },
-    { skip: !selectedClient || checkedIntegrations.length === 0 }
+    { userId: currentUser?.id ?? "", integrations: checkedIntegrations },
+    { skip: !currentUser?.id || checkedIntegrations.length === 0 }
   );
 
   const integrationStatus = statusData?.data ?? {};
@@ -109,43 +101,13 @@ export function DeployFolderWizard({
   useEffect(() => {
     if (isOpen) {
       setStep("configure");
-      setSelectedClient(null);
       setNamePrefix("");
-      setClientSearch("");
-      setDropdownOpen(false);
       setResults([]);
       setSummary(null);
       setIsDeploying(false);
       setCheckedIntegrations([]);
     }
   }, [isOpen]);
-
-  // ── Reset checked integrations when client changes ────────────────────────
-  useEffect(() => {
-    setCheckedIntegrations([]);
-  }, [selectedClient]);
-
-  // ── Close dropdown on outside click ──────────────────────────────────────
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  const filteredClients = useMemo(() => {
-    if (!clientSearch.trim()) return accessibleClients;
-    const q = clientSearch.toLowerCase();
-    return accessibleClients.filter(
-      (c) =>
-        c.name?.toLowerCase().includes(q) ||
-        c.email?.toLowerCase().includes(q) ||
-        c.company_name?.toLowerCase().includes(q)
-    );
-  }, [accessibleClients, clientSearch]);
 
   const activeTemplates = folderTemplates.filter((t) => t.status === "active");
 
@@ -157,7 +119,7 @@ export function DeployFolderWizard({
 
   // ── Deploy sequentially ───────────────────────────────────────────────────
   const handleDeploy = async () => {
-    if (!selectedClient || activeTemplates.length === 0) return;
+    if (!currentUser?.id || activeTemplates.length === 0) return;
 
     const initial: DeployResult[] = activeTemplates.map((t) => ({
       template_id: t.id,
@@ -183,7 +145,7 @@ export function DeployFolderWizard({
       try {
         const res = await applyTemplate({
           id: template.id,
-          body: { name: workflowName, user_id: selectedClient.id },
+          body: { name: workflowName, user_id: currentUser!.id },
         }).unwrap();
 
         succeeded++;
@@ -210,7 +172,7 @@ export function DeployFolderWizard({
 
     if (failed === 0) {
       toast.success(
-        `All ${activeTemplates.length} draft workflows created for ${selectedClient.company_name ?? selectedClient.name ?? selectedClient.email}`
+        `All ${activeTemplates.length} draft workflow${activeTemplates.length === 1 ? "" : "s"} created successfully`
       );
     } else {
       toast.warning(`${succeeded} created, ${failed} failed`);
@@ -219,10 +181,7 @@ export function DeployFolderWizard({
 
   if (!mounted || !isOpen) return null;
 
-  const clientDisplayName = (c: AccessClient) =>
-    c.company_name || c.name || c.email;
-
-  const canDeploy = !!selectedClient && activeTemplates.length > 0;
+  const canDeploy = !!currentUser?.id && activeTemplates.length > 0;
   // Block deploy only when checked integrations are not all connected
   const hasUnresolvedWarning =
     checkedIntegrations.length > 0 && statusResolved && missingIntegrations.length > 0;
@@ -248,7 +207,7 @@ export function DeployFolderWizard({
               </h2>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {activeTemplates.length} active template{activeTemplates.length === 1 ? "" : "s"} →
-                draft workflows for the selected client
+                draft workflows for your account
               </p>
             </div>
           </div>
@@ -297,116 +256,8 @@ export function DeployFolderWizard({
                 )}
               </div>
 
-              {/* Client selector */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">
-                  Select Client <span className="text-destructive">*</span>
-                </label>
-
-                {accessibleClients.length === 0 ? (
-                  <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm text-muted-foreground">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    No clients available.
-                  </div>
-                ) : (
-                  <div ref={dropdownRef} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setDropdownOpen((o) => !o)}
-                      className={cn(
-                        "flex w-full items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2.5 text-sm transition-colors",
-                        dropdownOpen
-                          ? "border-primary ring-1 ring-primary"
-                          : "border-border hover:border-foreground/30"
-                      )}
-                    >
-                      {selectedClient ? (
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                            {clientDisplayName(selectedClient).slice(0, 1).toUpperCase()}
-                          </span>
-                          <div className="min-w-0 text-left">
-                            <p className="truncate font-medium text-foreground">
-                              {clientDisplayName(selectedClient)}
-                            </p>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {selectedClient.email}
-                            </p>
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">Choose a client…</span>
-                      )}
-                      <ChevronDown
-                        className={cn(
-                          "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-                          dropdownOpen && "rotate-180"
-                        )}
-                      />
-                    </button>
-
-                    {dropdownOpen && (
-                      <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-lg border border-border bg-background shadow-xl">
-                        <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-                          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-                          <input
-                            autoFocus
-                            value={clientSearch}
-                            onChange={(e) => setClientSearch(e.target.value)}
-                            placeholder="Search clients…"
-                            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                          />
-                        </div>
-                        <div className="max-h-48 overflow-y-auto">
-                          {filteredClients.length === 0 ? (
-                            <div className="px-3 py-4 text-center text-sm text-muted-foreground">
-                              No clients found
-                            </div>
-                          ) : (
-                            filteredClients.map((client) => (
-                              <button
-                                key={client.id}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedClient(client);
-                                  setDropdownOpen(false);
-                                  setClientSearch("");
-                                }}
-                                className={cn(
-                                  "flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/60",
-                                  selectedClient?.id === client.id && "bg-primary/5"
-                                )}
-                              >
-                                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                                  {client.company_name ? (
-                                    <Building2 className="h-4 w-4" />
-                                  ) : (
-                                    <User className="h-4 w-4" />
-                                  )}
-                                </span>
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate font-medium text-foreground">
-                                    {clientDisplayName(client)}
-                                  </p>
-                                  <p className="truncate text-xs text-muted-foreground">
-                                    {client.email}
-                                  </p>
-                                </div>
-                                {selectedClient?.id === client.id && (
-                                  <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
-                                )}
-                              </button>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Integration checker — shown after client selected */}
-              {selectedClient && (
+              {/* Integration checker */}
+              {currentUser?.id && (
                 <div>
                   <div className="mb-2 flex items-center justify-between">
                     <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -418,7 +269,7 @@ export function DeployFolderWizard({
                   {/* App checkboxes */}
                   <div className="rounded-lg border border-border bg-muted/20 p-3">
                     <p className="mb-2.5 text-xs text-muted-foreground">
-                      Select the apps this template family needs — we'll check if the client has them connected.
+                      Select the apps this template family needs — we'll check if they are connected to your account.
                     </p>
                     <div className="grid grid-cols-2 gap-2">
                       {ALL_INTEGRATIONS.map(({ key, label }) => {
@@ -502,12 +353,11 @@ export function DeployFolderWizard({
                                 : `${missingIntegrations.length} integrations not connected`}
                             </p>
                             <p className="mt-0.5">
-                              Workflows will be created as <strong>drafts</strong>. The client must
-                              connect{" "}
+                              Workflows will be created as <strong>drafts</strong>. Connect{" "}
                               {missingIntegrations
                                 .map((k) => ALL_INTEGRATIONS.find((a) => a.key === k)?.label ?? k)
                                 .join(", ")}{" "}
-                              before activating.
+                              from the Connections page before activating.
                             </p>
                           </div>
                         </div>
@@ -557,11 +407,6 @@ export function DeployFolderWizard({
                   <div className="flex-1">
                     <p className="text-sm font-semibold text-foreground">
                       {summary.succeeded} / {summary.total} draft workflows created
-                      {selectedClient && (
-                        <span className="ml-1 font-normal text-muted-foreground">
-                          for {clientDisplayName(selectedClient)}
-                        </span>
-                      )}
                     </p>
                     {summary.failed > 0 && (
                       <p className="text-xs text-destructive">{summary.failed} failed</p>

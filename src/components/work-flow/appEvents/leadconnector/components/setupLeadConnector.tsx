@@ -6,6 +6,7 @@ import { LcEventSelectorPopup } from "./LcEventSelectorPopup";
 import { AppSection, SelectSection } from "@/src/components/work-flow/appEvents/mail/components/shared/SelectorFields";
 import { useLeadsHubStatus } from "@/src/components/app-connections/leadshubs/hooks/useLeadsHubStatus";
 import { useActionEventTypes } from "@/src/components/app-connections/leadshubs/hooks/useActionEventTypes";
+import { ConnectInlineSection } from "@/src/components/work-flow/appEvents/shared/ConnectInlineSection";
 
 interface LeadConnectorSetupStepProps {
   selectedEvent: string | null;
@@ -28,8 +29,6 @@ export function LeadConnectorSetupStep({
   const { events, isLoading } = useActionEventTypes(isTrigger);
 
   const AppIcon = selectedApp.icon || Link2;
-
-  // selectedEvent holds the action_key — look up the human-readable label for display
   const displayLabel = events.find((e) => e.id === selectedEvent)?.label ?? selectedEvent;
 
   return (
@@ -41,22 +40,37 @@ export function LeadConnectorSetupStep({
         connected={isConnected}
       />
 
-      <SelectSection
-        label="Action event"
-        value={displayLabel}
-        placeholder="Choose an event"
-        onClick={() => setIsEventPopupOpen(!isEventPopupOpen)}
-        isOpen={isEventPopupOpen}
-      />
+      {/* ── Connect prompt (shown only when not connected) ── */}
+      {!isConnected && (
+        <ConnectInlineSection
+          appId="leadshub"
+          appName="LeadsHub"
+          accentColor="#3fbfbb"
+          appImage="/image_2_leads_hub.png"
+        />
+      )}
 
-      <LcEventSelectorPopup
-        isOpen={isEventPopupOpen}
-        onClose={() => setIsEventPopupOpen(false)}
-        onSelect={onEventSelect}
-        selectedEvent={selectedEvent}
-        events={events}
-        isLoading={isLoading}
-      />
+      {/* ── Event picker (shown only when connected) ── */}
+      {isConnected && (
+        <>
+          <SelectSection
+            label="Action event"
+            value={displayLabel}
+            placeholder="Choose an event"
+            onClick={() => setIsEventPopupOpen(!isEventPopupOpen)}
+            isOpen={isEventPopupOpen}
+          />
+
+          <LcEventSelectorPopup
+            isOpen={isEventPopupOpen}
+            onClose={() => setIsEventPopupOpen(false)}
+            onSelect={onEventSelect}
+            selectedEvent={selectedEvent}
+            events={events}
+            isLoading={isLoading}
+          />
+        </>
+      )}
     </div>
   );
 }

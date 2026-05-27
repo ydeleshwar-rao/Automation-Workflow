@@ -177,7 +177,7 @@ export function DashboardOverview() {
 
   const { jobs, aggregates, isLoading, error, appLabel } = useDashboardJobs(filters);
 
-  const firstName = profile?.first_name || "there";
+  const firstName = profile?.full_name?.split(" ")[0] || "there";
   const totJobs = aggregates.kpis.total_jobs;
   const totRev = aggregates.kpis.total_revenue;
   const compRate = aggregates.kpis.completion_pct;

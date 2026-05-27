@@ -1,6 +1,5 @@
 import axiosInstance from "@/src/services/apiClient";
 import { API_ROUTES } from "@/src/constants/api.constants";
-import { getActiveClientKey } from "@/src/store/localStorage";
 import type { JobsDataProvider } from "./types";
 import type { JobsFilters, NormalizedJob } from "@/src/types/dashboard.types";
 
@@ -86,7 +85,6 @@ export const commusoftProvider: JobsDataProvider = {
   async fetchJobs(filters) {
     try {
       const { data } = await axiosInstance.get(API_ROUTES.COMMUSOFT.GET_ALL_JOBS, {
-        headers: { clientkey: getActiveClientKey() ?? "" },
         params: buildParams(filters),
       });
       // Response shape: { success, message, data: { success, data: JobDetailDataBlock[] } }

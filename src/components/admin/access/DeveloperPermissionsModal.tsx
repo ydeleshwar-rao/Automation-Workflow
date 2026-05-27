@@ -1,134 +1,187 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { toast } from "sonner"
-import { Modal } from "@/src/components/ui/modal"
-import { Button } from "@/src/components/ui/button"
-import { Switch } from "@/src/components/ui/switch"
-import { ACCESS_PAGES } from "@/src/constants/access-pages.constants"
+/**
+ * DeveloperPermissionsModal
+ * ─────────────────────────────────────────────────────────────
+ * Edit page permissions for a single developer.
+ * Uses can_view / can_edit / can_delete (replacing old can_read / can_write).
+ * No client dimension — permissions are user-scoped only.
+ */
+
+import { useState }             from "react";
+import { toast }                from "sonner";
+import { Modal }                from "@/src/components/ui/modal";
+import { Button }               from "@/src/components/ui/button";
+import { Switch }               from "@/src/components/ui/switch";
+import { ACCESS_PAGES }         from "@/src/constants/access-pages.constants";
 import {
-  useGetDeveloperPermissionsQuery,
-  useSetDeveloperPermissionMutation,
-  type AccessUserRecord,
-} from "@/src/components/admin/access/apiIntegrations/accessApi"
+  useGetPermissionsQuery,
+  useUpsertPagePermissionMutation,
+  useRemovePagePermissionMutation,
+  type DeveloperRecord,
+  type PagePermissionRecord,
+} from "@/src/components/admin/access/apiIntegrations/accessApi";
 
 interface Props {
-  developer: AccessUserRecord
-  client: AccessUserRecord
-  isOpen: boolean
-  onClose: () => void
+  developer: DeveloperRecord;
+  isOpen:    boolean;
+  onClose:   () => void;
 }
 
-type PermMap = Record<string, { can_read: boolean; can_write: boolean }>
+type PermMap = Record<string, PagePermissionRecord>;
 
-function fullName(u: { first_name?: string | null; last_name?: string | null; email: string }): string {
-  const full = `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim()
-  return full || u.email
-}
-
-function normalizePermissions(
-  raw: Array<{ page: string; can_read: boolean; can_write: boolean }> | undefined,
-): PermMap {
-  if (!raw) return {}
+function normPerms(raw: PagePermissionRecord[] | undefined): PermMap {
+  if (!raw) return {};
   return raw.reduce<PermMap>((acc, p) => {
-    acc[p.page] = { can_read: !!p.can_read, can_write: !!p.can_write }
-    return acc
-  }, {})
+    acc[p.page_key] = p;
+    return acc;
+  }, {});
 }
 
-export function DeveloperPermissionsModal({ developer, client, isOpen, onClose }: Props) {
-  const { data: permsResp, isFetching } = useGetDeveloperPermissionsQuery(
-    { developer_id: developer.id, client_user_id: client.id },
-    { skip: !isOpen },
-  )
-  const [setPermission, { isLoading: isSaving }] = useSetDeveloperPermissionMutation()
-  const [savingPage, setSavingPage] = useState<string | null>(null)
+function displayName(u: { full_name?: string | null; email: string }): string {
+  return u.full_name?.trim() || u.email;
+}
 
-  const perms = normalizePermissions(permsResp?.data as Array<{ page: string; can_read: boolean; can_write: boolean }> | undefined)
-  const busy = isFetching || isSaving
+export function DeveloperPermissionsModal({ developer, isOpen, onClose }: Props) {
+  const { data: permsResp, isFetching } = useGetPermissionsQuery(developer.id, {
+    skip: !isOpen,
+  });
+  const [upsertPerm, { isLoading: isSaving }] = useUpsertPagePermissionMutation();
+  const [removePerm, { isLoading: isRemoving }] = useRemovePagePermissionMutation();
+  const [savingPage, setSavingPage] = useState<string | null>(null);
+
+  const perms = normPerms(permsResp?.data);
+  const busy  = isFetching || isSaving || isRemoving;
 
   const handleToggle = async (
-    page: string,
-    field: "can_read" | "can_write",
+    pageKey: string,
+    field: "can_view" | "can_edit" | "can_delete",
     value: boolean,
   ) => {
-    const current = perms[page] ?? { can_read: false, can_write: false }
-    const next = { ...current, [field]: value }
-    if (field === "can_write" && value) next.can_read = true
-    if (field === "can_read" && !value) next.can_write = false
+    const current = perms[pageKey] ?? {
+      page_key: pageKey,
+      can_view:   false,
+      can_edit:   false,
+      can_delete: false,
+    };
 
-    setSavingPage(page)
+    const next = { ...current, [field]: value };
+
+    // Business rules:
+    // - Enabling can_edit or can_delete forces can_view = true
+    // - Disabling can_view also disables can_edit + can_delete
+    if ((field === "can_edit" || field === "can_delete") && value) {
+      next.can_view = true;
+    }
+    if (field === "can_view" && !value) {
+      next.can_edit   = false;
+      next.can_delete = false;
+    }
+
+    setSavingPage(pageKey);
     try {
-      await setPermission({
-        developer_id: developer.id,
-        client_user_id: client.id,
-        page,
-        can_read: next.can_read,
-        can_write: next.can_write,
-      }).unwrap()
+      if (!next.can_view && !next.can_edit && !next.can_delete) {
+        // No permissions at all → remove the row entirely
+        await removePerm({ developerId: developer.id, pageKey }).unwrap();
+      } else {
+        await upsertPerm({
+          developerId: developer.id,
+          pageKey,
+          data: {
+            can_view:   next.can_view,
+            can_edit:   next.can_edit,
+            can_delete: next.can_delete,
+          },
+        }).unwrap();
+      }
     } catch (err: unknown) {
       const message =
         (err as { data?: { message?: string } })?.data?.message ??
-        (err instanceof Error ? err.message : "Failed to save permission")
-      toast.error(message)
+        (err instanceof Error ? err.message : "Failed to save permission");
+      toast.error(message);
     } finally {
-      setSavingPage(null)
+      setSavingPage(null);
     }
-  }
+  };
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={`Permissions for ${fullName(developer)}`}
-      maxWidth="max-w-[540px]"
+      title={`Permissions — ${displayName(developer)}`}
+      maxWidth="max-w-[560px]"
     >
       <div className="text-left space-y-4">
         <p className="text-sm text-muted-foreground">
-          Set page access for <span className="font-medium text-foreground">{fullName(developer)}</span> on client{" "}
-          <span className="font-medium text-foreground">{fullName(client)}</span>
+          Set page access for{" "}
+          <span className="font-medium text-foreground">
+            {displayName(developer)}
+          </span>
+          . Changes take effect on the developer's next token refresh.
         </p>
 
         <div className="border border-border rounded-lg divide-y overflow-hidden">
           {/* Header */}
-          <div className="grid grid-cols-[1fr_60px_60px] gap-2 px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide bg-muted/30">
+          <div className="grid grid-cols-[1fr_72px_72px_80px] gap-2 px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted/30">
             <div>Page</div>
-            <div className="text-center">Read</div>
-            <div className="text-center">Write</div>
+            <div className="text-center">View</div>
+            <div className="text-center">Edit</div>
+            <div className="text-center">Delete</div>
           </div>
 
           {isFetching ? (
             <div className="px-4 py-8 text-sm text-muted-foreground text-center">
-              Loading permissions...
+              Loading permissions…
             </div>
           ) : (
             ACCESS_PAGES.map((page) => {
-              const p = perms[page.key] ?? { can_read: false, can_write: false }
-              const pageBusy = busy || savingPage === page.key
+              const p        = perms[page.key];
+              const canView   = p?.can_view   ?? false;
+              const canEdit   = p?.can_edit   ?? false;
+              const canDelete = p?.can_delete ?? false;
+              const pageBusy  = busy || savingPage === page.key;
+
               return (
                 <div
                   key={page.key}
-                  className="grid grid-cols-[1fr_60px_60px] gap-2 px-4 py-3 items-center"
+                  className="grid grid-cols-[1fr_72px_72px_80px] gap-2 px-4 py-3 items-center"
                 >
                   <div className="text-sm font-medium">{page.label}</div>
+
                   <div className="flex justify-center">
                     <Switch
-                      checked={p.can_read}
+                      checked={canView}
                       disabled={pageBusy}
-                      onCheckedChange={(v) => void handleToggle(page.key, "can_read", v)}
-                      aria-label={`${page.label} read`}
+                      onCheckedChange={(v) =>
+                        void handleToggle(page.key, "can_view", v)
+                      }
+                      aria-label={`${page.label} view`}
                     />
                   </div>
+
                   <div className="flex justify-center">
                     <Switch
-                      checked={p.can_write}
+                      checked={canEdit}
                       disabled={pageBusy}
-                      onCheckedChange={(v) => void handleToggle(page.key, "can_write", v)}
-                      aria-label={`${page.label} write`}
+                      onCheckedChange={(v) =>
+                        void handleToggle(page.key, "can_edit", v)
+                      }
+                      aria-label={`${page.label} edit`}
+                    />
+                  </div>
+
+                  <div className="flex justify-center">
+                    <Switch
+                      checked={canDelete}
+                      disabled={pageBusy}
+                      onCheckedChange={(v) =>
+                        void handleToggle(page.key, "can_delete", v)
+                      }
+                      aria-label={`${page.label} delete`}
                     />
                   </div>
                 </div>
-              )
+              );
             })
           )}
         </div>
@@ -140,5 +193,5 @@ export function DeveloperPermissionsModal({ developer, client, isOpen, onClose }
         </div>
       </div>
     </Modal>
-  )
+  );
 }

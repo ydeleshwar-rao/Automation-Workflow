@@ -1,14 +1,6 @@
-import axiosInstance from "@/src/services/apiClient"
-import { getActiveClientKey } from "@/src/store/localStorage"
-
+import axiosInstance from "@/src/services/apiClient";
 
 export const getCustomFileds = async () => {
-  const clientKey = getActiveClientKey()
-
-  const response = await axiosInstance.get(
-    "/leadshub/pipelines/all",
-    { headers: { clientkey: clientKey } }
-  )
-
+  const response = await axiosInstance.get("/leadshub/pipelines/all");
   return response.data.data;
-}
+};

@@ -17,7 +17,6 @@ import {
 
 import axiosInstance from "@/src/services/apiClient";
 import { API_ROUTES } from "@/src/constants/api.constants";
-import { getActiveClientKey } from "@/src/store/localStorage";
 import { SM8_EVENT_FIELDS, Sm8FieldDef } from "./configure/fields";
 
 // ─── Select field ─────────────────────────────────────────────────────────────
@@ -117,9 +116,6 @@ export function ServiceM8ConfigureStep({
   const [categoryOptions, setCategoryOptions] = useState<{ label: string; value: string }[]>([]);
 
   useEffect(() => {
-    const clientkey = getActiveClientKey();
-    if (!clientkey) return;
-
     const needsQueues =
       selectedEvent === "job_queued" ||
       selectedEvent === "move_job_to_queue" ||
@@ -133,7 +129,7 @@ export function ServiceM8ConfigureStep({
 
     if (needsQueues) {
       axiosInstance
-        .get(API_ROUTES.SERVICEM8.QUEUES, { headers: { clientkey } })
+        .get(API_ROUTES.SERVICEM8.QUEUES)
         .then((res) => {
           const queues = res.data?.data ?? res.data ?? [];
           setQueueOptions(
@@ -147,7 +143,7 @@ export function ServiceM8ConfigureStep({
 
     if (needsCategories) {
       axiosInstance
-        .get(API_ROUTES.SERVICEM8.CATEGORIES, { headers: { clientkey } })
+        .get(API_ROUTES.SERVICEM8.CATEGORIES)
         .then((res) => {
           const categories = res.data?.data ?? res.data ?? [];
           setCategoryOptions(

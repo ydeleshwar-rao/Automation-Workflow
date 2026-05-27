@@ -2,7 +2,6 @@
 
 import { useCallback, useMemo, useState } from "react";
 import axiosInstance from "@/src/services/apiClient";
-import { getActiveClientKey } from "@/src/store/localStorage";
 import { CommusoftSetupStep } from "./components/setupCommusoft";
 import { CommusoftConfigureStep } from "./components/configureCommusoft";
 import { CommusoftTestStep } from "./components/testCommusoft";
@@ -40,8 +39,6 @@ function useCommusoftStepProps(step: ConfigStep, context: StepContext) {
     const eventKey =
       context.node.eventLabel?.toLowerCase().replace(/\s+/g, "_") ?? "";
 
-    const clientkey = getActiveClientKey();
-
     // ── Trigger path: subscribe to polling, then poll-now to fetch samples ──
     if (context.isTrigger && POLLING_TRIGGER_EVENTS.has(eventKey)) {
       const workflowId = context.node.workflowId;
@@ -63,8 +60,7 @@ function useCommusoftStepProps(step: ConfigStep, context: StepContext) {
             integration_key: "commusoft",
             event_key: eventKey,
             config: payload,
-          },
-          { headers: { clientkey } }
+          }
         );
 
         const subId: string | undefined = upsertRes.data?.data?.id;
@@ -83,8 +79,7 @@ function useCommusoftStepProps(step: ConfigStep, context: StepContext) {
 
         const pollRes = await axiosInstance.post(
           `/automation/polling/subscriptions/${subId}/poll-now`,
-          {},
-          { headers: { clientkey } }
+          {}
         );
 
         const result = pollRes.data?.data;
@@ -123,9 +118,7 @@ function useCommusoftStepProps(step: ConfigStep, context: StepContext) {
 
     setTestStatus("testing");
     try {
-      await axiosInstance.post(endpoint, payload, {
-        headers: { clientkey },
-      });
+      await axiosInstance.post(endpoint, payload);
       setTestStatus("success");
     } catch (error) {
       console.error("Commusoft test trigger failed:", error);

@@ -1,34 +1,13 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
-
 /**
- * Especially important if using Fluid compute: Don't put this client in a
- * global variable. Always create a new client within each function when using
- * it.
+ * DEPRECATED — Supabase server client removed.
+ *
+ * This project no longer connects to Supabase directly from Next.js.
+ * All data access goes through the backend Express API.
+ *
+ * ❌ Do NOT import this file.
+ * ✅ Server components: use cookies() to read the JWT and pass to API
+ * ✅ Client components: use axiosInstance from "@/src/services/apiClient"
  */
-export async function createClient() {
-  const cookieStore = await cookies();
 
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options),
-            );
-          } catch {
-            // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have proxy refreshing
-            // user sessions.
-          }
-        },
-      },
-    },
-  );
-}
+export {}; // kept to prevent "no exports" TS error
+

@@ -1,153 +1,162 @@
-"use client"
+"use client";
 
-import { useEffect, useMemo, useState } from "react"
-import { toast } from "sonner"
-import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
-import { Switch } from "@/src/components/ui/switch"
-import { Button } from "@/src/components/ui/button"
-import { ACCESS_PAGES } from "@/src/constants/access-pages.constants"
+/**
+ * PermissionsTab
+ * ─────────────────────────────────────────────────────────────
+ * Shows all developer accounts in a table. Admin can:
+ *   - See each developer's name, email, status
+ *   - Click "Permissions" to open DeveloperPermissionsModal
+ *   - Toggle active / inactive status
+ *
+ * Architecture:
+ *   - Removed client-assignment logic entirely
+ *   - Uses new accessApi (listDevelopers, toggleDeveloperStatus)
+ *   - can_view / can_edit / can_delete model
+ */
+
+import { useMemo, useState } from "react";
+import { Shield, UserCheck, UserX, Search } from "lucide-react";
+import { toast } from "sonner";
+import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
+import { Button }     from "@/src/components/ui/button";
+import { Input }      from "@/src/components/ui/input";
+import { Badge }      from "@/src/components/ui/badge";
 import {
-  useGetAccessUsersQuery,
-  useGetPermissionsQuery,
-  useSetPermissionMutation,
-  type AccessUserRecord,
-  type PermissionRecord,
-} from "@/src/components/admin/access/apiIntegrations/accessApi"
+  useListDevelopersQuery,
+  useToggleDeveloperStatusMutation,
+  type DeveloperRecord,
+} from "@/src/components/admin/access/apiIntegrations/accessApi";
+import { DeveloperPermissionsModal } from "./DeveloperPermissionsModal";
 
-type PermMap = Record<string, { can_read: boolean; can_write: boolean }>
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-const ITEMS_PER_PAGE = 5
-// 1 col for user · 2 cols (R/W) per page
-const GRID_TEMPLATE = `minmax(220px, 1.6fr) repeat(${ACCESS_PAGES.length}, minmax(140px, 1fr))`
-
-function fullName(u: { first_name?: string | null; last_name?: string | null; email: string }): string {
-  const full = `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim()
-  return full || u.email
+function displayName(u: DeveloperRecord): string {
+  return u.full_name?.trim() || u.email;
 }
 
-function normalizePermissions(
-  raw: PermissionRecord[] | Record<string, { can_read: boolean; can_write: boolean }> | undefined,
-): PermMap {
-  if (!raw) return {}
-  if (Array.isArray(raw)) {
-    return raw.reduce<PermMap>((acc, p) => {
-      acc[p.page] = { can_read: !!p.can_read, can_write: !!p.can_write }
-      return acc
-    }, {})
+function initials(u: DeveloperRecord): string {
+  const name = u.full_name?.trim() ?? "";
+  if (name) {
+    const parts = name.split(" ");
+    return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase();
   }
-  return raw as PermMap
+  return (u.email[0] ?? "?").toUpperCase();
 }
 
-// ── One row per user (loads its own permissions) ────────────────────────────
+// ── Row ───────────────────────────────────────────────────────────────────────
 
-function UserPermissionRow({ user }: { user: AccessUserRecord }) {
-  const { data: permsResp, isFetching } = useGetPermissionsQuery(user.id)
-  const [setPermission, { isLoading: isSaving }] = useSetPermissionMutation()
+function DeveloperRow({ developer }: { developer: DeveloperRecord }) {
+  const [showPerms, setShowPerms] = useState(false);
+  const [toggleStatus, { isLoading: isToggling }] =
+    useToggleDeveloperStatusMutation();
 
-  const perms = normalizePermissions(permsResp?.data)
-  const busy = isFetching || isSaving
-
-  const handleToggle = async (
-    page: string,
-    field: "can_read" | "can_write",
-    value: boolean,
-  ) => {
-    const current = perms[page] ?? { can_read: false, can_write: false }
-    const next = { ...current, [field]: value }
-    if (field === "can_write" && value) next.can_read = true
-    if (field === "can_read" && !value) next.can_write = false
-
+  const handleToggle = async () => {
     try {
-      await setPermission({
-        user_id: user.id,
-        page,
-        can_read: next.can_read,
-        can_write: next.can_write,
-      }).unwrap()
+      await toggleStatus({
+        id:        developer.id,
+        is_active: !developer.is_active,
+      }).unwrap();
+      toast.success(
+        `${displayName(developer)} ${developer.is_active ? "deactivated" : "activated"}`
+      );
     } catch (err: unknown) {
       const message =
         (err as { data?: { message?: string } })?.data?.message ??
-        (err instanceof Error ? err.message : "Failed to save permission")
-      toast.error(message)
+        (err instanceof Error ? err.message : "Failed to update status");
+      toast.error(message);
     }
-  }
+  };
 
   return (
-    <div
-      className="grid gap-4 px-6 py-4 items-center"
-      style={{ gridTemplateColumns: GRID_TEMPLATE }}
-    >
-      <div>
-        <div className="font-medium">{fullName(user)}</div>
-        <div className="text-xs text-muted-foreground truncate">
-          {user.email}
-          {isSaving ? " · Saving…" : ""}
+    <>
+      <div className="flex items-center gap-4 px-5 py-4 hover:bg-muted/30 transition-colors">
+        {/* Avatar */}
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-semibold">
+          {initials(developer)}
         </div>
-      </div>
-      {ACCESS_PAGES.map((page) => {
-        const p = perms[page.key] ?? { can_read: false, can_write: false }
-        return (
-          <div key={page.key} className="flex flex-col items-center gap-2">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground w-3">
-                R
-              </span>
-              <Switch
-                checked={p.can_read}
-                disabled={busy}
-                onCheckedChange={(v) => void handleToggle(page.key, "can_read", v)}
-                aria-label={`${page.label} read for ${fullName(user)}`}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground w-3">
-                W
-              </span>
-              <Switch
-                checked={p.can_write}
-                disabled={busy}
-                onCheckedChange={(v) => void handleToggle(page.key, "can_write", v)}
-                aria-label={`${page.label} write for ${fullName(user)}`}
-              />
-            </div>
+
+        {/* Name + email */}
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium truncate">
+            {displayName(developer)}
           </div>
-        )
-      })}
-    </div>
-  )
+          <div className="text-xs text-muted-foreground truncate">
+            {developer.email}
+          </div>
+        </div>
+
+        {/* Status badge */}
+        <Badge
+          variant={developer.is_active ? "default" : "secondary"}
+          className="shrink-0 text-[11px]"
+        >
+          {developer.is_active ? "Active" : "Inactive"}
+        </Badge>
+
+        {/* Permissions button */}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setShowPerms(true)}
+          className="shrink-0"
+        >
+          <Shield className="h-4 w-4" />
+          Permissions
+        </Button>
+
+        {/* Toggle status */}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => void handleToggle()}
+          disabled={isToggling}
+          className={
+            developer.is_active
+              ? "shrink-0 text-destructive border-destructive/30 hover:bg-destructive/10"
+              : "shrink-0 text-green-600 border-green-300 hover:bg-green-50"
+          }
+        >
+          {developer.is_active ? (
+            <><UserX className="h-4 w-4" />Deactivate</>
+          ) : (
+            <><UserCheck className="h-4 w-4" />Activate</>
+          )}
+        </Button>
+      </div>
+
+      <DeveloperPermissionsModal
+        developer={developer}
+        isOpen={showPerms}
+        onClose={() => setShowPerms(false)}
+      />
+    </>
+  );
 }
 
-// ── Tab ─────────────────────────────────────────────────────────────────────
+// ── Tab ───────────────────────────────────────────────────────────────────────
 
 export function PermissionsTab() {
-  const { data: usersResp, isLoading, error } = useGetAccessUsersQuery()
+  const { data: devsResp, isLoading, error } = useListDevelopersQuery();
+  const [search, setSearch] = useState("");
 
-  const orderedUsers = useMemo(() => {
-    const list = (usersResp?.data ?? []).filter(
-      (u) => (u.role ?? "").toLowerCase() !== "admin",
-    )
-    return list.sort((a, b) => fullName(a).localeCompare(fullName(b)))
-  }, [usersResp])
+  const developers = useMemo(() => devsResp?.data ?? [], [devsResp]);
 
-  const [currentPage, setCurrentPage] = useState(1)
-  const totalPages = Math.max(1, Math.ceil(orderedUsers.length / ITEMS_PER_PAGE))
-  const paginatedUsers = orderedUsers.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE,
-  )
-
-  useEffect(() => {
-    if (currentPage > totalPages) setCurrentPage(totalPages)
-  }, [currentPage, totalPages])
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return developers;
+    return developers.filter((d) =>
+      `${displayName(d)} ${d.email}`.toLowerCase().includes(q)
+    );
+  }, [developers, search]);
 
   if (error) {
     return (
       <Card>
         <CardContent className="p-4 text-sm text-destructive">
-          Failed to load users.
+          Failed to load developers.
         </CardContent>
       </Card>
-    )
+    );
   }
 
   if (isLoading) {
@@ -156,133 +165,72 @@ export function PermissionsTab() {
         <CardHeader>
           <div className="h-5 w-36 rounded bg-muted animate-pulse" />
         </CardHeader>
-        <CardContent className="p-0 overflow-x-auto">
-          <div className="min-w-[1200px] animate-pulse">
-            {/* Header row */}
-            <div
-              className="grid gap-4 border-b px-6 py-4"
-              style={{ gridTemplateColumns: GRID_TEMPLATE }}
-            >
-              <div className="h-3.5 w-10 rounded bg-muted" />
-              {ACCESS_PAGES.map((page) => (
-                <div key={page.key} className="flex justify-center">
-                  <div className="h-3.5 w-20 rounded bg-muted" />
-                </div>
-              ))}
-            </div>
-            {/* User rows */}
-            {[...Array(5)].map((_, i) => (
+        <CardContent className="p-0">
+          <div className="animate-pulse divide-y">
+            {[...Array(4)].map((_, i) => (
               <div
                 key={i}
-                className="grid gap-4 border-b px-6 py-4 items-center"
-                style={{ gridTemplateColumns: GRID_TEMPLATE, opacity: 1 - i * 0.15 }}
+                className="flex items-center gap-4 px-5 py-4"
+                style={{ opacity: 1 - i * 0.2 }}
               >
-                {/* User cell */}
-                <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-full bg-muted shrink-0" />
-                  <div className="space-y-1.5">
-                    <div className="h-3 w-28 rounded bg-muted" />
-                    <div className="h-2.5 w-40 rounded bg-muted" />
-                  </div>
+                <div className="h-9 w-9 rounded-full bg-muted shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 w-36 rounded bg-muted" />
+                  <div className="h-2.5 w-52 rounded bg-muted" />
                 </div>
-                {/* R/W switch pairs per page */}
-                {ACCESS_PAGES.map((page) => (
-                  <div key={page.key} className="flex flex-col items-center gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="h-2.5 w-3 rounded bg-muted" />
-                      <div className="h-5 w-9 rounded-full bg-muted" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="h-2.5 w-3 rounded bg-muted" />
-                      <div className="h-5 w-9 rounded-full bg-muted" />
-                    </div>
-                  </div>
-                ))}
+                <div className="h-5 w-14 rounded-full bg-muted shrink-0" />
+                <div className="h-8 w-28 rounded-lg bg-muted shrink-0" />
+                <div className="h-8 w-24 rounded-lg bg-muted shrink-0" />
               </div>
             ))}
-            {/* Pagination footer */}
-            <div className="flex items-center justify-between px-6 py-4 border-t">
-              <div className="h-3 w-40 rounded bg-muted" />
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-20 rounded-lg bg-muted" />
-                <div className="h-8 w-8 rounded-lg bg-muted" />
-                <div className="h-8 w-16 rounded-lg bg-muted" />
-              </div>
-            </div>
           </div>
         </CardContent>
       </Card>
-    )
+    );
   }
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Non-admin Users</CardTitle>
+      <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
+        <CardTitle>Developer Permissions</CardTitle>
+        {developers.length > 0 && (
+          <span className="text-xs text-muted-foreground">
+            {filtered.length} of {developers.length}
+          </span>
+        )}
       </CardHeader>
-      <CardContent className="p-0 overflow-x-auto">
-        <div className="min-w-[1200px]">
-          <div
-            className="grid gap-4 border-b px-6 py-4 text-sm font-medium text-muted-foreground"
-            style={{ gridTemplateColumns: GRID_TEMPLATE }}
-          >
-            <div>User</div>
-            {ACCESS_PAGES.map((page) => (
-              <div key={page.key} className="text-center">
-                {page.label}
-              </div>
-            ))}
+      <CardContent className="space-y-4">
+        {/* Search */}
+        {developers.length > 0 && (
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              type="search"
+              placeholder="Search developers by name or email…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
           </div>
-          <div className="divide-y">
-            {paginatedUsers.length === 0 ? (
-              <div className="px-6 py-10 text-sm text-muted-foreground text-center">
-                No non-admin users found.
-              </div>
-            ) : (
-              paginatedUsers.map((user) => (
-                <UserPermissionRow key={user.id} user={user} />
-              ))
-            )}
-          </div>
-        </div>
+        )}
 
-        <div className="flex items-center justify-between px-6 py-4 border-t">
-          <p className="text-sm text-muted-foreground">
-            Showing{" "}
-            {orderedUsers.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1}
-            –{Math.min(currentPage * ITEMS_PER_PAGE, orderedUsers.length)} of{" "}
-            {orderedUsers.length} users
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            >
-              Previous
-            </Button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-              <Button
-                key={page}
-                variant={page === currentPage ? "default" : "outline"}
-                size="sm"
-                onClick={() => setCurrentPage(page)}
-              >
-                {page}
-              </Button>
-            ))}
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            >
-              Next
-            </Button>
-          </div>
+        <div className="border border-border rounded-lg divide-y overflow-hidden">
+          {developers.length === 0 ? (
+            <div className="px-5 py-10 text-sm text-muted-foreground text-center">
+              No developer accounts yet. Create one from the{" "}
+              <span className="font-medium">Users</span> page.
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="px-5 py-10 text-sm text-muted-foreground text-center">
+              No developers match &ldquo;{search}&rdquo;.
+            </div>
+          ) : (
+            filtered.map((dev) => (
+              <DeveloperRow key={dev.id} developer={dev} />
+            ))
+          )}
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }

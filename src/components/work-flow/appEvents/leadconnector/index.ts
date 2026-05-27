@@ -2,7 +2,6 @@
 
 import { useCallback, useMemo, useState } from "react";
 import axiosInstance from "@/src/services/apiClient";
-import { getActiveClientKey } from "@/src/store/localStorage";
 import { API_ROUTES } from "@/src/constants/api.constants";
 import { LeadConnectorSetupStep } from "./components/setupLeadConnector";
 import { LeadConnectorConfigureStep } from "./components/configureLeadConnector";
@@ -35,8 +34,6 @@ function useLeadConnectorStepProps(step: ConfigStep, context: StepContext) {
     // eventLabel holds the action_key (see setupLeadConnector — onEventSelect passes id).
     const eventKey = context.node.eventLabel ?? "";
 
-    const clientkey = getActiveClientKey();
-
     // ── Trigger path: subscribe to polling, then poll-now to fetch samples ──
     if (context.isTrigger && POLLING_TRIGGER_EVENTS.has(eventKey)) {
       const workflowId = context.node.workflowId;
@@ -58,8 +55,7 @@ function useLeadConnectorStepProps(step: ConfigStep, context: StepContext) {
             integration_key: "leadshub",
             event_key: eventKey,
             config: payload,
-          },
-          { headers: { clientkey } }
+          }
         );
 
         const subId: string | undefined = upsertRes.data?.data?.id;
@@ -78,8 +74,7 @@ function useLeadConnectorStepProps(step: ConfigStep, context: StepContext) {
 
         const pollRes = await axiosInstance.post(
           `/automation/polling/subscriptions/${subId}/poll-now`,
-          {},
-          { headers: { clientkey } }
+          {}
         );
 
         const result = pollRes.data?.data;
@@ -116,9 +111,7 @@ function useLeadConnectorStepProps(step: ConfigStep, context: StepContext) {
 
     setTestStatus("testing");
     try {
-      const res = await axiosInstance.post(endpoint, payload, {
-        headers: { clientkey },
-      });
+      const res = await axiosInstance.post(endpoint, payload);
       const result = res.data?.data ?? res.data;
       setSampleData(result ? [result] : null);
       setTestStatus("success");

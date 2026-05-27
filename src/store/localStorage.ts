@@ -1,9 +1,10 @@
 /**
- * Global localStorage persistence for workflow & webhook state.
+ * Global localStorage persistence for auth session, profile, and workflow state.
  *
- * Only the relevant slice keys are persisted — RTK Query cache,
- * execution history, and ephemeral UI state are intentionally excluded
- * so they are always refreshed from the server.
+ * Architecture note:
+ *   - No clientkey concept — all auth is user_id based with custom JWT
+ *   - No selected client / multi-tenant target — each user only accesses their own data
+ *   - Permissions are embedded in the JWT, no separate fetch needed
  */
 
 // ---------------------------------------------------------------------------
@@ -13,29 +14,35 @@
 const SESSION_KEY = "job_mgmt_session"
 
 export interface StoredSession {
-  userId: string
-  email: string
-  accessToken: string
+  userId:       string
+  email:        string
+  role:         string                  // 'admin' | 'developer'
+  permissions:  string[]               // page keys from JWT, or ['*'] for admin
+  accessToken:  string
   refreshToken: string
-  expiresAt: number // unix timestamp (seconds)
+  expiresIn:    number                  // seconds (from login response)
+  expiresAt:    number                  // unix timestamp (seconds) — computed on save
 }
 
-/** Persist auth session tokens to localStorage. */
-export function saveSession(session: StoredSession): void {
+/** Persist auth session to localStorage. Computes expiresAt from expiresIn. */
+export function saveSession(session: Omit<StoredSession, "expiresAt"> & { expiresAt?: number }): void {
   try {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+    const full: StoredSession = {
+      ...session,
+      expiresAt: session.expiresAt ?? Math.floor(Date.now() / 1000) + session.expiresIn,
+    }
+    localStorage.setItem(SESSION_KEY, JSON.stringify(full))
   } catch {
     // Storage quota exceeded or SSR — ignore
   }
 }
 
-/** Load stored auth session. Returns null if not found or expired. */
+/** Load stored auth session. Returns null if not found. */
 export function loadSession(): StoredSession | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY)
     if (!raw) return null
-    const session = JSON.parse(raw) as StoredSession
-    return session
+    return JSON.parse(raw) as StoredSession
   } catch {
     return null
   }
@@ -56,46 +63,37 @@ export function clearSession(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Profile / Auth storage
+// Profile storage (name, avatar etc. — non-sensitive display data)
 // ---------------------------------------------------------------------------
 
 const PROFILE_KEY = "job_mgmt_profile"
 
 export interface StoredProfile {
-  userId: string
-  clientKey: string
-  email?: string
-  firstName?: string
-  lastName?: string
-  role?: string
-  phone?: string | null
-  companyName?: string | null
+  userId:    string
+  email:     string
+  fullName?: string
   avatarUrl?: string | null
-  websiteUrl?: string | null
-  jobAppType?: string | null
+  role:      string
 }
 
-/** Save profile data to localStorage. */
 export function saveProfile(profile: StoredProfile): void {
   try {
     localStorage.setItem(PROFILE_KEY, JSON.stringify(profile))
   } catch {
-    // Storage quota exceeded or SSR — ignore
+    // ignore
   }
 }
 
-/** Load profile data from localStorage. Returns null if not found. */
 export function loadProfile(): StoredProfile | null {
   try {
     const raw = localStorage.getItem(PROFILE_KEY)
     if (raw) return JSON.parse(raw) as StoredProfile
   } catch {
-    // ignore parse errors
+    // ignore
   }
   return null
 }
 
-/** Clear stored profile (e.g. on logout). */
 export function clearProfile(): void {
   try {
     localStorage.removeItem(PROFILE_KEY)
@@ -104,147 +102,70 @@ export function clearProfile(): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Deprecated stubs — removed concepts kept to avoid import errors during migration
+// ---------------------------------------------------------------------------
+
 /**
- * Best-effort browser cleanup on logout.
- * Clears local/session storage, cache storage, service workers and auth cookie.
+ * @deprecated clientkey concept removed. Always returns null.
+ * Callers that guard on `if (!clientkey) return` will gracefully skip API calls.
+ * Gradually remove all usages and delete this stub.
  */
+export function getActiveClientKey(): null {
+  return null;
+}
+
+/** @deprecated Use clearSession() */
+export function clearSelectedClientId(): void {
+  try { localStorage.removeItem("job_mgmt_selected_client_id") } catch { /* ignore */ }
+}
+
+/** @deprecated Use clearSession() */
+export function clearSelectedClientProfile(): void {
+  try { localStorage.removeItem("job_mgmt_selected_client_profile") } catch { /* ignore */ }
+}
+
+/** @deprecated clientkey removed. Always returns null. */
+export function loadSelectedClientId(): null {
+  return null;
+}
+
+/**
+ * Returns the current logged-in user's ID from the stored session, or "" if not found.
+ * In React components, prefer Redux: `useAppSelector(s => s.access.user?.id ?? "")`.
+ * This helper is for non-React contexts (RTK Query, engines, etc.).
+ */
+export function getActiveUserId(): string {
+  try {
+    const raw = localStorage.getItem("job_mgmt_session");
+    if (!raw) return "";
+    const session = JSON.parse(raw) as { userId?: string };
+    return session.userId ?? "";
+  } catch {
+    return "";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Full logout cleanup
+// ---------------------------------------------------------------------------
+
 export async function clearBrowserDataOnLogout(): Promise<void> {
-  try {
-    localStorage.clear()
-  } catch {
-    // ignore
-  }
-  try {
-    sessionStorage.clear()
-  } catch {
-    // ignore
-  }
+  try { localStorage.clear()   } catch { /* ignore */ }
+  try { sessionStorage.clear() } catch { /* ignore */ }
   if (typeof window === "undefined") return
   try {
     if ("caches" in window) {
       const keys = await caches.keys()
       await Promise.all(keys.map((key) => caches.delete(key)))
     }
-  } catch {
-    // ignore
-  }
+  } catch { /* ignore */ }
   try {
     if ("serviceWorker" in navigator) {
       const regs = await navigator.serviceWorker.getRegistrations()
       await Promise.all(regs.map((reg) => reg.unregister()))
     }
-  } catch {
-    // ignore
-  }
-  try {
-    document.cookie =
-      "jm_access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT"
-  } catch {
-    // ignore
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Selected client (multi-tenant target user) storage
-// ---------------------------------------------------------------------------
-// Uses sessionStorage so each browser tab can act as a different client.
-// localStorage is shared across tabs; sessionStorage is per-tab.
-
-const SELECTED_CLIENT_KEY = "job_mgmt_selected_client_id"
-const SELECTED_CLIENT_PROFILE_KEY = "job_mgmt_selected_client_profile"
-
-export interface SelectedClientProfile {
-  id: string
-  email: string
-  name?: string
-  companyName?: string
-  clientKey?: string
-}
-
-/** Persist the active "act-as" client id (per-tab via sessionStorage). Pass null to clear. */
-export function saveSelectedClientId(id: string | null): void {
-  try {
-    if (id) sessionStorage.setItem(SELECTED_CLIENT_KEY, id)
-    else sessionStorage.removeItem(SELECTED_CLIENT_KEY)
-  } catch {
-    // ignore
-  }
-}
-
-/** Read the active "act-as" client id. Returns null on miss / SSR. */
-export function loadSelectedClientId(): string | null {
-  try {
-    if (typeof window === "undefined") return null
-    return sessionStorage.getItem(SELECTED_CLIENT_KEY)
-  } catch {
-    return null
-  }
-}
-
-/** Clear the active "act-as" client id (on logout). */
-export function clearSelectedClientId(): void {
-  try {
-    sessionStorage.removeItem(SELECTED_CLIENT_KEY)
-  } catch {
-    // ignore
-  }
-}
-
-/** Save the selected client's profile info (per-tab). */
-export function saveSelectedClientProfile(profile: SelectedClientProfile | null): void {
-  try {
-    if (profile) sessionStorage.setItem(SELECTED_CLIENT_PROFILE_KEY, JSON.stringify(profile))
-    else sessionStorage.removeItem(SELECTED_CLIENT_PROFILE_KEY)
-  } catch {
-    // ignore
-  }
-}
-
-/** Load the selected client's profile info. */
-export function loadSelectedClientProfile(): SelectedClientProfile | null {
-  try {
-    if (typeof window === "undefined") return null
-    const raw = sessionStorage.getItem(SELECTED_CLIENT_PROFILE_KEY)
-    if (raw) return JSON.parse(raw) as SelectedClientProfile
-  } catch {
-    // ignore
-  }
-  return null
-}
-
-/** Clear the selected client profile (on logout or switch). */
-export function clearSelectedClientProfile(): void {
-  try {
-    sessionStorage.removeItem(SELECTED_CLIENT_PROFILE_KEY)
-  } catch {
-    // ignore
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Active client key resolver
-// ---------------------------------------------------------------------------
-// Returns the clientKey for the currently active context:
-//   - If a client is selected (developer/admin acting as a client) → client's key
-//   - Otherwise → the logged-in user's own key
-// This must be used for ALL API calls that send the `clientkey` header.
-
-export function getActiveClientKey(): string {
-  const selectedProfile = loadSelectedClientProfile()
-  if (selectedProfile?.clientKey) {
-    return selectedProfile.clientKey
-  }
-  // Fallback to the logged-in user's own key (for regular users, or when no client selected)
-  const ownProfile = loadProfile()
-  return ownProfile?.clientKey ?? ""
-}
-
-/** Same as getActiveClientKey but returns the userId of the active context. */
-export function getActiveUserId(): string {
-  const selectedId = loadSelectedClientId()
-  if (selectedId) return selectedId
-  const ownProfile = loadProfile()
-  return ownProfile?.userId ?? ""
+  } catch { /* ignore */ }
 }
 
 // ---------------------------------------------------------------------------

@@ -1,65 +1,45 @@
-import axios from "axios"
-import {
-  loadSession,
-  saveSession,
-  clearSession,
-  isSessionValid,
-  loadSelectedClientId,
-  StoredSession,
-} from "@/src/store/localStorage"
+/**
+ * Axios instance for all backend API calls.
+ *
+ * Features:
+ *  - Auto-attaches Authorization: Bearer <access_token> from localStorage session
+ *  - On 401: attempts one silent token refresh via POST /auth/refresh
+ *  - On refresh failure: clears session (forces re-login)
+ *  - No clientkey header (removed — auth is user_id based)
+ */
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || ''
+import axios from "axios"
+import { loadSession, saveSession, clearSession, isSessionValid } from "@/src/store/localStorage"
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || ""
 
 const axiosInstance = axios.create({
   baseURL: BASE_URL,
-  headers: {
-    "Content-Type": "application/json",
-  },
+  headers: { "Content-Type": "application/json" },
 })
 
-// Auto-attach Authorization + x-target-user-id from localStorage.
-// Read from localStorage (not the Redux store) to avoid a circular import:
-// axiosBaseQuery → store → reducers → axiosBaseQuery. Slice writes mirror to localStorage.
+// ── Request interceptor: attach JWT ──────────────────────────────────────────
+
 axiosInstance.interceptors.request.use((config) => {
-  // axios 1.x exposes AxiosHeaders here; use .set/.get for case-safe access.
-  const headers = config.headers
   const session = loadSession()
   if (session?.accessToken) {
-    const existing =
-      typeof headers?.get === "function"
-        ? headers.get("Authorization")
-        : (headers as Record<string, unknown>)?.["Authorization"]
+    const h = config.headers
+    const existing = typeof h?.get === "function" ? h.get("Authorization") : (h as any)?.["Authorization"]
     if (!existing) {
-      if (typeof headers?.set === "function") {
-        headers.set("Authorization", `Bearer ${session.accessToken}`)
+      if (typeof h?.set === "function") {
+        h.set("Authorization", `Bearer ${session.accessToken}`)
       } else {
-        ;(headers as Record<string, unknown>)["Authorization"] = `Bearer ${session.accessToken}`
-      }
-    }
-  }
-  const targetId = loadSelectedClientId()
-  if (targetId) {
-    const existing =
-      typeof headers?.get === "function"
-        ? headers.get("x-target-user-id")
-        : (headers as Record<string, unknown>)?.["x-target-user-id"]
-    if (!existing) {
-      if (typeof headers?.set === "function") {
-        headers.set("x-target-user-id", targetId)
-      } else {
-        ;(headers as Record<string, unknown>)["x-target-user-id"] = targetId
+        ;(h as any)["Authorization"] = `Bearer ${session.accessToken}`
       }
     }
   }
   return config
 })
 
-// On 401 — attempt token refresh once, then clear session
+// ── Response interceptor: silent token refresh on 401 ────────────────────────
+
 let isRefreshing = false
-type QueueEntry = {
-  resolve: (token: string) => void
-  reject: (err: unknown) => void
-}
+type QueueEntry = { resolve: (token: string) => void; reject: (err: unknown) => void }
 let refreshQueue: QueueEntry[] = []
 
 function setAuthHeader(config: any, token: string): void {
@@ -76,24 +56,24 @@ axiosInstance.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config
-
     if (error.response?.status !== 401 || !originalRequest || originalRequest._retried) {
       return Promise.reject(error)
     }
 
-    // Don't try to refresh on auth endpoints themselves — that would loop.
+    // Skip refresh for auth endpoints to prevent loops
     const url: string = originalRequest.url ?? ""
-    if (url.includes("/auth/login") || url.includes("/auth/refresh") || url.includes("/auth/session/refresh")) {
+    if (url.includes("/auth/login") || url.includes("/auth/refresh")) {
       return Promise.reject(error)
     }
 
     const session = loadSession()
     if (!session?.refreshToken) {
       clearSession()
+      if (typeof window !== "undefined") window.location.href = "/login"
       return Promise.reject(error)
     }
 
-    // If already refreshing, queue this request
+    // Queue requests while refreshing
     if (isRefreshing) {
       return new Promise((resolve, reject) => {
         refreshQueue.push({
@@ -111,35 +91,37 @@ axiosInstance.interceptors.response.use(
     isRefreshing = true
 
     try {
-      const { data } = await axios.post(`${BASE_URL}/auth/session/refresh`, {
+      // POST /auth/refresh — our custom refresh endpoint
+      const { data } = await axios.post(`${BASE_URL}/auth/refresh`, {
         refresh_token: session.refreshToken,
       })
 
       const refreshed = data?.data
-      if (!refreshed?.access_token) throw new Error("No token in refresh response")
+      if (!refreshed?.access_token) throw new Error("No access_token in refresh response")
 
-      const updatedSession: StoredSession = {
+      // Update stored session with new tokens + updated permissions
+      saveSession({
         ...session,
-        accessToken: refreshed.access_token,
+        accessToken:  refreshed.access_token,
         refreshToken: refreshed.refresh_token ?? session.refreshToken,
-        expiresAt: refreshed.expires_at ?? session.expiresAt,
-      }
-      saveSession(updatedSession)
+        expiresIn:    refreshed.expires_in ?? session.expiresIn,
+        // Update permissions if re-fetched during refresh
+        permissions:  refreshed.user?.permissions ?? session.permissions,
+        role:         refreshed.user?.role ?? session.role,
+      })
 
-      // Flush the queue with the new token
       const queue = refreshQueue
       refreshQueue = []
-      queue.forEach((entry) => entry.resolve(updatedSession.accessToken))
+      queue.forEach((entry) => entry.resolve(refreshed.access_token))
 
-      setAuthHeader(originalRequest, updatedSession.accessToken)
+      setAuthHeader(originalRequest, refreshed.access_token)
       return axiosInstance(originalRequest)
     } catch (refreshErr) {
-      // Reject all queued requests so they don't hang forever
       const queue = refreshQueue
       refreshQueue = []
       queue.forEach((entry) => entry.reject(refreshErr))
-
       clearSession()
+      if (typeof window !== "undefined") window.location.href = "/login"
       return Promise.reject(error)
     } finally {
       isRefreshing = false

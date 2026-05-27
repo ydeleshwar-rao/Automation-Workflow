@@ -1,29 +1,9 @@
-import Link from "next/link";
-import { Button } from "../ui/button";
-import { createClient } from "@/src/lib/supabase/server";
-import { LogoutButton } from "@/src/components/auth/logout-button";
+/**
+ * DEPRECATED — Supabase server auth removed.
+ * This component is no longer used; auth state comes from the custom JWT stored in localStorage.
+ * Kept as an empty export to avoid import errors in any legacy callers.
+ */
 
-export async function AuthButton() {
-  const supabase = await createClient();
-
-  // You can also use getUser() which will be slower.
-  const { data } = await supabase.auth.getClaims();
-
-  const user = data?.claims;
-
-  return user ? (
-    <div className="flex items-center gap-4">
-      Hey, {user.email}!
-      <LogoutButton />
-    </div>
-  ) : (
-    <div className="flex gap-2">
-      <Button asChild size="sm" variant={"outline"}>
-        <Link href="/login">Sign in</Link>
-      </Button>
-      <Button asChild size="sm" variant={"default"}>
-        <Link href="/sign-up">Sign up</Link>
-      </Button>
-    </div>
-  );
+export function AuthButton() {
+  return null;
 }

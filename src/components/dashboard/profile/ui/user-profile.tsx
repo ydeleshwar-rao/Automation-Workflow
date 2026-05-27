@@ -3,11 +3,11 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Building2, Mail, Phone, ShieldCheck, UserRound, UserCog } from "lucide-react";
+import { ArrowLeft, Building2, Mail, Phone, ShieldCheck, UserRound } from "lucide-react";
 import { useUser } from "../hooks/useUser";
 
 export function UserProfile() {
-  const { profile, loggedInAs } = useUser();
+  const { profile } = useUser();
   const router = useRouter();
 
   useEffect(() => {
@@ -41,27 +41,11 @@ export function UserProfile() {
           Account Center
         </p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
-          {loggedInAs ? "Client Profile" : "Profile"}
+          Profile
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {loggedInAs
-            ? "Viewing the selected client's details."
-            : "Manage your personal and company details."}
+          Manage your personal and company details.
         </p>
-
-        {/* Developer acting-as banner */}
-        {loggedInAs && (
-          <div className="mt-3 flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
-            <UserCog className="h-4 w-4 shrink-0 text-primary" />
-            <span className="text-xs text-muted-foreground">
-              Logged in as{" "}
-              <span className="font-semibold text-foreground">{loggedInAs.name}</span>
-              <span className="ml-1 text-[10px] capitalize text-muted-foreground">
-                ({loggedInAs.role})
-              </span>
-            </span>
-          </div>
-        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -84,7 +68,7 @@ export function UserProfile() {
                 Full name
               </p>
               <div className="rounded-xl border border-border/60 bg-card/80 px-3 py-2.5 text-sm font-semibold text-foreground">
-                {profile.first_name} {profile.last_name}
+                {profile.full_name || "N/A"}
               </div>
             </div>
 
@@ -131,7 +115,7 @@ export function UserProfile() {
                 Company
               </p>
               <div className="rounded-xl border border-border/60 bg-card/80 px-3 py-2.5 text-sm font-semibold text-foreground">
-                {profile.company_name || "N/A"}
+                N/A
               </div>
             </div>
 
@@ -143,7 +127,7 @@ export function UserProfile() {
                 <span className="mr-1.5 inline-flex text-accent-foreground/80">
                   <Phone className="inline h-3.5 w-3.5" />
                 </span>
-                {profile.phone || "N/A"}
+                N/A
               </div>
             </div>
           </div>

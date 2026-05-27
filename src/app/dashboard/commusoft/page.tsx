@@ -1,11 +1,5 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { CommusoftJobsView } from "@/src/components/app-connections/commusoft/ui/commusoft-jobs-view";
-
-export default function CommusoftDashboardPage() {
-  return (
-    <div className="flex-1 overflow-hidden bg-[hsl(var(--surface))]">
-      <CommusoftJobsView />
-    </div>
-  );
+export default function CommusoftPage() {
+  redirect("/dashboard");
 }

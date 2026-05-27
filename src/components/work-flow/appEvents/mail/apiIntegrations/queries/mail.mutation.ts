@@ -9,10 +9,9 @@ export const useCreateSmtpConnection = () => {
   })
 }
 
-export const useGetSmtpConnections = (locationId: string) => {
+export const useGetSmtpConnections = () => {
   return useQuery({
-    queryKey: ["smtpConnections", locationId],
-    queryFn: () => getSmtpConnections(locationId),
-    enabled: !!locationId,
+    queryKey: ["smtpConnections"],
+    queryFn: () => getSmtpConnections(),
   })
 }

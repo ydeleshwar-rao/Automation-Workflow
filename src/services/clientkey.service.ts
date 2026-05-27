@@ -1,10 +1,13 @@
-import { getActiveClientKey } from "@/src/store/localStorage";
-
 /**
- * Returns the `clientkey` header for API calls.
- * Uses the selected client's key when a developer/admin is acting as a client,
- * otherwise falls back to the logged-in user's own key.
+ * DEPRECATED — clientkey concept removed.
+ *
+ * The `clientkey` header is no longer used.
+ * All API calls are authenticated via custom JWT (Authorization: Bearer <token>).
+ * User identity is extracted from the JWT `sub` (user_id) claim on the backend.
+ *
+ * ❌ Do NOT use this file.
+ * ✅ Auth is handled automatically by axiosInstance interceptors.
  */
-export async function getRequestHeaders(): Promise<{ clientkey: string }> {
-  return { clientkey: getActiveClientKey() };
-}
+
+export {}; // kept to prevent missing module errors
+

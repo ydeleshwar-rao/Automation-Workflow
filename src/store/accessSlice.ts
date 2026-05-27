@@ -2,185 +2,120 @@ import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit"
 import axios from "axios"
 import axiosInstance from "@/src/services/apiClient"
 import { API_ROUTES } from "@/src/constants/api.constants"
-import {
-  loadSelectedClientId,
-  saveSelectedClientId,
-  saveSelectedClientProfile,
-  clearSelectedClientProfile,
-  type SelectedClientProfile,
-} from "./localStorage"
+import { loadSession } from "./localStorage"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type AccessRole = "admin" | "developer" | "user"
+export type AccessRole = "admin" | "developer"
 
 export interface AccessUser {
-  id: string
-  email: string
-  role: AccessRole
-}
-
-export interface AccessClient {
-  id: string
-  email: string
-  name?: string
-  company_name?: string
-  clientkey?: string
+  id:          string
+  email:       string
+  role:        AccessRole
+  permissions: string[]   // page keys or ['*'] for admin
 }
 
 export interface PagePermission {
-  can_read: boolean
-  can_write: boolean
+  can_view:   boolean
+  can_edit:   boolean
+  can_delete: boolean
 }
 
 export interface AccessState {
-  user: AccessUser | null
-  accessibleClients: AccessClient[]
-  selectedClientId: string | null
-  selectedClientProfile: SelectedClientProfile | null
-  permissions: Record<string, PagePermission>
-  status: "idle" | "loading" | "ready" | "error"
-  error: string | null
+  user:        AccessUser | null
+  permissions: Record<string, PagePermission>  // page_key → permission
+  status:      "idle" | "loading" | "ready" | "error"
+  error:       string | null
 }
 
 const initialState: AccessState = {
-  user: null,
-  accessibleClients: [],
-  selectedClientId: null,
-  selectedClientProfile: null,
+  user:        null,
   permissions: {},
-  status: "idle",
-  error: null,
+  status:      "idle",
+  error:       null,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-// All requests below go through axiosInstance, which auto-attaches the Bearer
-// header and refreshes the access token on 401.
 
-function normalizePermissions(
-  raw: unknown,
-): Record<string, PagePermission> {
-  if (!raw) return {}
-  if (Array.isArray(raw)) {
-    return raw.reduce<Record<string, PagePermission>>((acc, item) => {
-      const page = (item as { page?: string }).page
-      if (!page) return acc
-      acc[page] = {
-        can_read: !!(item as { can_read?: boolean }).can_read,
-        can_write: !!(item as { can_write?: boolean }).can_write,
-      }
-      return acc
-    }, {})
-  }
-  if (typeof raw === "object") {
-    return raw as Record<string, PagePermission>
-  }
-  return {}
+/**
+ * Normalize backend page_permissions array → Record<page_key, PagePermission>
+ * Backend returns: [{ page_key, can_view, can_edit, can_delete }]
+ */
+function normalizePermissions(raw: unknown): Record<string, PagePermission> {
+  if (!raw || !Array.isArray(raw)) return {}
+  return raw.reduce<Record<string, PagePermission>>((acc, item) => {
+    const key = (item as { page_key?: string; pageKey?: string }).page_key
+                ?? (item as { pageKey?: string }).pageKey
+    if (!key) return acc
+    acc[key] = {
+      can_view:   !!(item as { can_view?: boolean }).can_view,
+      can_edit:   !!(item as { can_edit?: boolean }).can_edit,
+      can_delete: !!(item as { can_delete?: boolean }).can_delete,
+    }
+    return acc
+  }, {})
 }
 
-function pickInitialClientId(
-  role: AccessRole,
-  userId: string,
-  clients: AccessClient[],
-): string | null {
-  if (role === "user") return userId
-  const stored = loadSelectedClientId()
-  const validStored = stored && clients.some((c) => c.id === stored) ? stored : null
-  // developer & admin — only restore a previously stored choice, never auto-select.
-  // The developer must explicitly pick a client first.
-  return validStored
+/**
+ * Check if a user has access to a page.
+ * Admin: always true (permissions = ['*'])
+ * Developer: only if page_key is in their permissions
+ */
+export function hasPageAccess(permissions: string[], pageKey: string): boolean {
+  return permissions.includes("*") || permissions.includes(pageKey)
 }
 
-// ── Thunk: bootstrap access state from backend ───────────────────────────────
+// ── Thunk: bootstrap from JWT + optional API call ────────────────────────────
 
+/**
+ * Bootstrap access state.
+ * 1. Read user + role + permissions from stored JWT (no API call for admin)
+ * 2. For developer: optionally re-fetch permissions from API to get can_edit/can_delete
+ */
 export const bootstrapAccess = createAsyncThunk<
-  {
-    user: AccessUser
-    clients: AccessClient[]
-    selectedClientId: string | null
-    selectedClientProfile: SelectedClientProfile | null
-    permissions: Record<string, PagePermission>
-  },
+  { user: AccessUser; permissions: Record<string, PagePermission> },
   void,
   { rejectValue: string }
 >("access/bootstrap", async (_, { rejectWithValue }) => {
   try {
-    const [meRes, clientsRes] = await Promise.all([
-      axiosInstance.get(API_ROUTES.ACCESS.ME),
-      axiosInstance.get(API_ROUTES.ACCESS.CLIENTS),
-    ])
+    // Step 1: Get user info from stored session (JWT already decoded on login)
+    const session = loadSession()
+    if (!session?.userId) throw new Error("No session found — please log in")
 
-    // Backend returns { user_id, email, role } — normalize to { id, email, role }
-    const meRaw = meRes.data?.data ?? meRes.data
     const user: AccessUser = {
-      id: meRaw.user_id ?? meRaw.id,
-      email: meRaw.email,
-      role: meRaw.role,
+      id:          session.userId,
+      email:       session.email,
+      role:        session.role as AccessRole,
+      permissions: session.permissions,
     }
 
-    // Normalize backend profile shape (first_name/last_name) → AccessClient.name
-    const rawClients = ((clientsRes.data?.data ?? clientsRes.data) ?? []) as Array<
-      AccessClient & { first_name?: string; last_name?: string }
-    >
-    const clients: AccessClient[] = rawClients.map((c) => ({
-      id: c.id,
-      email: c.email,
-      name:
-        c.name ||
-        [c.first_name, c.last_name].filter(Boolean).join(" ") ||
-        undefined,
-      company_name: c.company_name,
-      clientkey: c.clientkey,
-    }))
-
-    const selectedClientId = pickInitialClientId(user.role, user.id, clients)
-
-    // Fetch permissions based on role
+    // Step 2: Fetch detailed permissions (can_view/can_edit/can_delete) from API
+    // Admin: skip (has ['*'], can do everything)
+    // Developer: fetch their specific page permissions
     let permissions: Record<string, PagePermission> = {}
-    if (user.role === "developer" && selectedClientId) {
-      // Developer: fetch per-client permissions
+
+    if (user.role === "developer") {
       try {
-        const permsRes = await axiosInstance.get(
-          API_ROUTES.ACCESS.DEVELOPER_PERMISSIONS(user.id, selectedClientId),
-        )
-        permissions = normalizePermissions(permsRes.data?.data ?? permsRes.data)
+        const res = await axiosInstance.get(API_ROUTES.ACCESS.PERMISSIONS(user.id))
+        permissions = normalizePermissions(res.data?.data ?? res.data)
       } catch {
-        // No developer permissions configured yet
-      }
-    } else if (user.role !== "developer") {
-      // Admin or user: fetch global permissions
-      try {
-        const permsRes = await axiosInstance.get(API_ROUTES.ACCESS.PERMISSIONS(user.id))
-        permissions = normalizePermissions(permsRes.data?.data ?? permsRes.data)
-      } catch {
-        // Non-admin roles may get 403 — use empty permissions
+        // Gracefully degrade — use JWT permissions array for view access at minimum
+        permissions = user.permissions.reduce<Record<string, PagePermission>>((acc, key) => {
+          if (key !== "*") {
+            acc[key] = { can_view: true, can_edit: false, can_delete: false }
+          }
+          return acc
+        }, {})
       }
     }
 
-    saveSelectedClientId(selectedClientId)
-
-    // Persist selected client profile for display in UI
-    let selectedClientProfile: SelectedClientProfile | null = null
-    if (selectedClientId) {
-      const match = clients.find((c) => c.id === selectedClientId)
-      if (match) {
-        selectedClientProfile = {
-          id: match.id,
-          email: match.email,
-          name: match.name,
-          companyName: match.company_name,
-          clientKey: match.clientkey,
-        }
-        saveSelectedClientProfile(selectedClientProfile)
-      }
-    }
-    return { user, clients, selectedClientId, selectedClientProfile, permissions }
+    return { user, permissions }
   } catch (err: unknown) {
     const message = axios.isAxiosError(err)
       ? err.response?.data?.message ?? err.message
       : err instanceof Error
       ? err.message
-      : "Failed to load access"
+      : "Failed to bootstrap access"
     return rejectWithValue(message)
   }
 })
@@ -191,18 +126,16 @@ const accessSlice = createSlice({
   name: "access",
   initialState,
   reducers: {
-    setSelectedClient(
+    /** Called after login — seed state directly from login response (no extra API call). */
+    setUserFromLogin(
       state,
-      action: PayloadAction<{ id: string | null; profile?: SelectedClientProfile | null }>
+      action: PayloadAction<{ user: AccessUser; permissions?: Record<string, PagePermission> }>
     ) {
-      state.selectedClientId = action.payload.id
-      state.selectedClientProfile = action.payload.profile ?? null
-      saveSelectedClientId(action.payload.id)
-      saveSelectedClientProfile(action.payload.profile ?? null)
+      state.user        = action.payload.user
+      state.permissions = action.payload.permissions ?? {}
+      state.status      = "ready"
     },
     clearAccess() {
-      saveSelectedClientId(null)
-      clearSelectedClientProfile()
       return initialState
     },
   },
@@ -210,22 +143,19 @@ const accessSlice = createSlice({
     builder
       .addCase(bootstrapAccess.pending, (state) => {
         state.status = "loading"
-        state.error = null
+        state.error  = null
       })
       .addCase(bootstrapAccess.fulfilled, (state, action) => {
-        state.status = "ready"
-        state.user = action.payload.user
-        state.accessibleClients = action.payload.clients
-        state.selectedClientId = action.payload.selectedClientId
-        state.selectedClientProfile = action.payload.selectedClientProfile
+        state.status      = "ready"
+        state.user        = action.payload.user
         state.permissions = action.payload.permissions
       })
       .addCase(bootstrapAccess.rejected, (state, action) => {
         state.status = "error"
-        state.error = action.payload ?? "Bootstrap failed"
+        state.error  = action.payload ?? "Bootstrap failed"
       })
   },
 })
 
-export const { setSelectedClient, clearAccess } = accessSlice.actions
+export const { setUserFromLogin, clearAccess } = accessSlice.actions
 export default accessSlice.reducer
