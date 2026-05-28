@@ -381,27 +381,25 @@ export function MailConfigureStep({
                 <WorkflowSection label="HTML Body">
                   <div className="flex flex-row items-center gap-2">
                     <div className="flex shrink-0 flex-row items-center gap-2">
-                        <Button
+                        <button
                           type="button"
-                          variant="default"
-                          className="whitespace-nowrap"
                           onClick={() => setShowBuilder(true)}
+                          className="flex h-9 items-center rounded-xl px-4 bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-all shadow-[3px_3px_8px_rgba(99,102,241,0.35),-2px_-2px_5px_rgba(255,255,255,0.1)] whitespace-nowrap"
                         >
                           Build Template
-                        </Button>
-                        <Button
+                        </button>
+                        <button
                           type="button"
-                          variant="outline"
-                          className="whitespace-nowrap"
                           onClick={() => setShowPreview(true)}
+                          className="nm-btn flex h-9 items-center rounded-xl px-4 text-xs font-semibold text-muted-foreground hover:text-foreground transition-all whitespace-nowrap"
                         >
                           Preview
-                        </Button>
+                        </button>
                       </div>
                     <button
                       type="button"
                       onClick={(e) => handlePlusClick(e, "htmlBody")}
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground shadow-sm transition-all hover:border-primary hover:bg-background hover:text-primary"
+                      className="nm-btn flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground hover:text-primary transition-all"
                       aria-label="Insert variable"
                     >
                       <Plus className="h-4 w-4" />
@@ -468,20 +466,20 @@ export function MailConfigureStep({
             role="dialog"
             aria-modal="true"
             aria-labelledby="email-preview-title"
-            className="z-[1000] flex h-[80vh] w-[800px] max-w-[90vw] flex-col rounded-xl bg-background border border-border shadow-2xl"
+            className="z-[1000] flex h-[80vh] w-[800px] max-w-[90vw] flex-col nm-card rounded-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <header className="flex shrink-0 items-center justify-between border-b p-4">
-              <h2 id="email-preview-title" className="text-lg font-semibold">
+            <header className="flex shrink-0 items-center justify-between border-b border-black/8 dark:border-white/5 px-5 py-3.5">
+              <h2 id="email-preview-title" className="text-sm font-bold text-foreground">
                 Email Preview
               </h2>
               <button
                 type="button"
                 onClick={() => setShowPreview(false)}
-                className="flex h-9 w-9 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="nm-btn flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground hover:text-foreground transition-all"
                 aria-label="Close"
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4" />
               </button>
             </header>
             <div className="min-h-0 flex-1 overflow-hidden">
@@ -491,8 +489,12 @@ export function MailConfigureStep({
                 title="Email Preview"
               />
             </div>
-            <footer className="flex shrink-0 justify-end border-t p-4">
-              <button type="button" onClick={() => setShowPreview(false)}>
+            <footer className="flex shrink-0 justify-end border-t border-black/8 dark:border-white/5 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setShowPreview(false)}
+                className="nm-btn flex h-8 items-center rounded-xl px-4 text-xs font-semibold text-muted-foreground hover:text-foreground transition-all"
+              >
                 Close
               </button>
             </footer>

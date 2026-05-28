@@ -22,43 +22,46 @@ export function SidePopup({
   width = "w-80",
   position = { top: 240, right: 445 },
 }: SidePopupProps) {
-  if (!isOpen || typeof document === 'undefined') return null;
+  if (!isOpen || typeof document === "undefined") return null;
 
   return createPortal(
     <>
-      {/* Invisible Overlay to capture clicks outside */}
+      {/* Click-outside overlay */}
       <div
         className="fixed inset-0 z-[90] cursor-default"
-        onClick={(e) => {
-          e.stopPropagation();
-          onClose();
-        }}
+        onClick={(e) => { e.stopPropagation(); onClose(); }}
       />
 
+      {/* Panel */}
       <div
         className={cn(
-          "fixed bg-popover text-popover-foreground border border-border shadow-2xl rounded-xl z-[100] animate-in fade-in slide-in-from-right-4 duration-200 origin-right pointer-events-auto overflow-hidden flex flex-col",
+          "fixed nm-card rounded-2xl z-[100] animate-in fade-in slide-in-from-right-4 duration-200 origin-right pointer-events-auto overflow-hidden flex flex-col",
           width
         )}
-        style={{ top: `${position.top}px`, right: `${position.right}px`, maxHeight: `calc(100vh - ${position.top + 24}px)` }}
+        style={{
+          top: `${position.top}px`,
+          right: `${position.right}px`,
+          maxHeight: `calc(100vh - ${position.top + 24}px)`,
+        }}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Title header */}
         {title && (
-          <div className="p-3 border-b border-border flex items-center justify-between bg-muted/40">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-black/8 dark:border-white/5 bg-[hsl(var(--surface))] shrink-0">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
               {title}
             </span>
             <button
               onClick={onClose}
               aria-label="Close"
-              className="p-1 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground transition-colors"
+              className="nm-btn flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground transition-all"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-3 h-3" />
             </button>
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto no-scrollbar">
+        <div className="flex-1 overflow-y-auto no-scrollbar bg-[hsl(var(--surface))]">
           {children}
         </div>
       </div>

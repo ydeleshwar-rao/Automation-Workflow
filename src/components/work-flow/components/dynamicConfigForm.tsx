@@ -92,7 +92,7 @@ function ConfigRadioField({
 }) {
   return (
     <ConfigFieldWrapper label={label} required={required} error={error}>
-       <div className="flex gap-4 p-3 bg-card border border-border rounded-lg h-11 items-center shadow-sm hover:border-primary/40 transition-all">
+       <div className="flex gap-4 p-3 nm-inset rounded-xl h-11 items-center transition-all">
           {options.map((opt) => (
             <label key={opt.label} className="flex items-center gap-2 cursor-pointer group">
               <input
@@ -150,8 +150,8 @@ function ConfigSelectField({
         <div
           onClick={handleOpenPopup}
           className={cn(
-            "w-full h-11 px-4 bg-card border border-border rounded-lg flex items-center justify-between cursor-pointer transition-all hover:border-primary group shadow-sm",
-            isPopupOpen && "ring-2 ring-primary/20 border-primary"
+            "w-full h-11 px-4 nm-inset rounded-xl flex items-center justify-between cursor-pointer transition-all",
+            isPopupOpen && "outline outline-1 outline-primary/40"
           )}
         >
           <span className={cn(
@@ -169,7 +169,7 @@ function ConfigSelectField({
                   e.stopPropagation();
                   onPlusClick(e);
                 }}
-                className="w-7 h-7 flex items-center justify-center rounded-md border border-border bg-muted text-muted-foreground hover:text-primary hover:border-primary hover:bg-background transition-all shadow-sm"
+                className="nm-btn w-7 h-7 flex items-center justify-center rounded-xl text-muted-foreground hover:text-primary transition-all"
                 type="button"
               >
                 <Plus className="w-4 h-4" />
@@ -362,8 +362,8 @@ export function DynamicConfigForm({
           );
         })}
         {filteredFields.length === 0 && (
-          <div className="p-10 text-center bg-muted/40 rounded-2xl border-2 border-dashed border-border animate-in zoom-in duration-300">
-            <div className="w-12 h-12 bg-card rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-border">
+          <div className="p-10 text-center nm-inset rounded-2xl border-2 border-dashed border-border/40 animate-in zoom-in duration-300">
+            <div className="w-12 h-12 nm-card rounded-full flex items-center justify-center mx-auto mb-4">
               <Search className="w-6 h-6 text-muted-foreground" />
             </div>
             <p className="text-sm font-bold text-foreground mb-1">No matching fields found</p>

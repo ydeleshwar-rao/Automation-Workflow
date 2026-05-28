@@ -6,6 +6,7 @@ import { webhookApi } from "../components/work-flow/appEvents/webhook/apiIntegra
 import { workflowTemplateApi } from "../components/workflow-templates/apiIntegrations/workflowTemplateApi"
 import { templateFolderApi } from "../components/workflow-templates/apiIntegrations/templateFolderApi"
 import { accessApi } from "../components/admin/access/apiIntegrations/accessApi"
+import { aiWorkflowApi } from "../components/ai-workflow/aiWorkflowApi"
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 export const store = configureStore({
@@ -18,6 +19,7 @@ export const store = configureStore({
       workflowTemplateApi.middleware,
       templateFolderApi.middleware,
       accessApi.middleware,
+      aiWorkflowApi.middleware,
     ),
   devTools: process.env.NODE_ENV !== "production",
 })

@@ -26,31 +26,42 @@ export function Modal({
 
   return createPortal(
     <div
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center animate-in fade-in duration-200"
+      className="fixed inset-0 bg-black/30 backdrop-blur-[3px] z-[200] flex items-center justify-center animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div
         className={cn(
-          "bg-card text-foreground w-full rounded-2xl shadow-2xl border border-border overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col",
+          "nm-card w-full rounded-2xl overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col",
           maxWidth,
           className
         )}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 pt-6 pb-5 relative flex flex-col min-h-0 flex-1">
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 p-1.5 hover:bg-muted rounded-lg transition-colors"
-          >
-            <X className="w-4 h-4 text-muted-foreground" />
-          </button>
-
-          {title && (
-            <h2 className="text-lg font-semibold text-foreground tracking-tight mb-4 pr-8 text-center">
+        {/* ── Header ── */}
+        {title && (
+          <div className="relative flex items-center justify-center px-6 pt-6 pb-4 border-b border-black/8 dark:border-white/5 shrink-0">
+            <h2 className="text-[15px] font-bold text-foreground tracking-tight pr-8 text-center leading-snug">
               {title}
             </h2>
-          )}
+            <button
+              onClick={onClose}
+              className="nm-btn absolute right-4 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground hover:text-foreground transition-all"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
+        {/* ── Content ── */}
+        <div className="px-6 py-5 flex flex-col min-h-0 flex-1 overflow-y-auto no-scrollbar">
+          {!title && (
+            <button
+              onClick={onClose}
+              className="nm-btn absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground hover:text-foreground transition-all"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
           {children}
         </div>
       </div>

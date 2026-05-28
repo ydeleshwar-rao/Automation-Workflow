@@ -177,31 +177,29 @@ export function WebhookTestStep({
   const hasEdits = Object.keys(editedValues).length > 0;
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-background overflow-hidden">
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
 
       {/* Header: Webhook URL */}
-      <div className="flex-shrink-0 p-6 space-y-3 border-b border-border/60">
+      <div className="flex-shrink-0 p-6 space-y-3 border-b border-black/8 dark:border-white/5 bg-[hsl(var(--surface))]">
         <div>
           <h4 className="text-sm font-bold text-foreground">Your webhook URL</h4>
           <p className="text-xs text-muted-foreground mt-0.5">
             Configure your application to POST to this URL.
           </p>
         </div>
-        <div className="flex items-center gap-2 p-1.5 pl-3 bg-muted/50 border border-border rounded-lg">
+        <div className="flex items-center gap-2 p-1.5 pl-3 nm-inset rounded-xl">
           <code className="text-[11px] text-muted-foreground font-medium truncate flex-1 leading-none">
             {webhookUrl}
           </code>
-          <Button
+          <button
             onClick={handleCopy}
-            variant="ghost"
-            size="sm"
             className={cn(
-              "h-8 px-3 font-bold active:scale-95 transition-all",
+              "nm-btn flex h-8 items-center rounded-xl px-3 text-xs font-bold transition-all",
               copied ? "text-emerald-500" : "text-primary"
             )}
           >
             {copied ? "Copied!" : "Copy"}
-          </Button>
+          </button>
         </div>
       </div>
 
@@ -211,19 +209,19 @@ export function WebhookTestStep({
         {/* Idle state */}
         {testStatus === "idle" && (
           <div className="space-y-4">
-            <div className="rounded-xl border border-dashed border-border bg-muted/30 p-5 text-center space-y-2">
+            <div className="nm-inset rounded-2xl p-5 text-center space-y-2 border border-dashed border-border/40">
               <Webhook className="w-8 h-8 text-muted-foreground/40 mx-auto" />
               <p className="text-sm font-semibold text-foreground">No records yet</p>
               <p className="text-xs text-muted-foreground">
                 Send a request to your webhook URL, then click below to load it.
               </p>
             </div>
-            <Button
+            <button
               onClick={onFindNewRecords}
-              className="w-full h-10 font-bold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
+              className="w-full h-10 font-bold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-[3px_3px_8px_rgba(99,102,241,0.4),-2px_-2px_6px_rgba(255,255,255,0.1)]"
             >
               Find new records
-            </Button>
+            </button>
             <button
               onClick={onSkipTest}
               className="w-full text-xs text-muted-foreground hover:text-foreground font-medium transition-colors"
@@ -256,10 +254,10 @@ export function WebhookTestStep({
                 <div
                   key={request.id}
                   className={cn(
-                    "rounded-xl border transition-all duration-200",
+                    "rounded-2xl transition-all duration-200",
                     isExpanded
-                      ? "border-primary/40 ring-1 ring-primary/10 bg-primary/5"
-                      : "border-border bg-background hover:border-border/80"
+                      ? "nm-inset outline outline-1 outline-primary/30"
+                      : "nm-card hover:shadow-[12px_12px_28px_rgba(163,177,198,0.85),-12px_-12px_28px_rgba(255,255,255,1.0)]"
                   )}
                 >
                   {/* Card header */}
@@ -310,22 +308,19 @@ export function WebhookTestStep({
                             <span className="text-[11px] text-primary font-medium mr-auto">
                               {Object.keys(editedValues).length} field{Object.keys(editedValues).length !== 1 ? "s" : ""} edited
                             </span>
-                            <Button
-                              size="sm"
-                              variant="ghost"
+                            <button
                               onClick={() => setEditedValues({})}
-                              className="h-8 px-3 text-xs text-muted-foreground hover:text-foreground"
+                              className="nm-btn flex h-8 items-center rounded-xl px-3 text-xs text-muted-foreground hover:text-foreground transition-all"
                             >
                               Discard
-                            </Button>
-                            <Button
-                              size="sm"
+                            </button>
+                            <button
                               onClick={() => handleSaveEdits(request)}
-                              className="h-8 px-3 bg-primary hover:bg-primary/90 text-primary-foreground text-xs rounded-lg flex items-center gap-1"
+                              className="flex h-8 items-center gap-1.5 rounded-xl px-3 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold transition-all"
                             >
                               <Save className="w-3 h-3" />
                               Save edits
-                            </Button>
+                            </button>
                           </>
                         )}
                       </div>

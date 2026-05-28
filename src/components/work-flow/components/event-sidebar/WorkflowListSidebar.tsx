@@ -212,8 +212,7 @@ export function WorkflowListSidebar({
         onMouseEnter={onExpandHover}
         onMouseLeave={onCollapseHover}
         className={cn(
-          "relative flex h-full shrink-0 flex-col bg-card transition-all duration-300 ease-in-out",
-          "shadow-[2px_0_12px_rgba(155,170,190,0.2)] dark:shadow-[2px_0_14px_rgba(0,0,0,0.4)]",
+          "relative flex h-full shrink-0 flex-col transition-all duration-300 ease-in-out nm-sidebar",
           isOpen ? "w-[240px]" : "w-[56px]"
         )}
       >
@@ -379,8 +378,8 @@ export function WorkflowListSidebar({
                   "group/btn flex w-full items-center gap-2.5 rounded-xl text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
                   isOpen ? "p-2.5" : "p-1.5 justify-center",
                   wf.id === currentWorkflowId
-                    ? "nm-inset bg-primary/10 text-primary"
-                    : "nm-btn bg-card text-foreground hover:text-foreground"
+                    ? "nm-inset text-primary"
+                    : "nm-btn text-muted-foreground hover:text-foreground"
                 )}
               >
                 {/* Icon with status dot */}

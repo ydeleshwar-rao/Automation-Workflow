@@ -21,6 +21,7 @@ export const DASHBOARD_ROUTES = {
   COMMUSOFT: "/dashboard/commusoft",
   SIMPRO: "/dashboard/simpro",
   WORKFLOW: "/dashboard/workflow",
+  AI_WORKFLOW: "/dashboard/ai-workflow",
   ASSETS: "/dashboard/assets",
   ADMIN: "/dashboard/admin",
 } as const;

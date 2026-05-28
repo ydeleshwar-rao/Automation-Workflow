@@ -60,12 +60,14 @@ export function WebhookConfigureStep({
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       <WorkflowSection label="Pick off a Child Key">
-        <Input
-          value={childKey}
-          onChange={(e) => setChildKey(e.target.value)}
-          placeholder="Enter text"
-          className="h-12 bg-background border-border text-foreground placeholder:text-muted-foreground rounded-xl focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary transition-all font-medium"
-        />
+        <div className="nm-inset rounded-xl px-3 h-12 flex items-center">
+          <input
+            value={childKey}
+            onChange={(e) => setChildKey(e.target.value)}
+            placeholder="Enter text"
+            className="flex-1 bg-transparent text-foreground placeholder:text-muted-foreground text-sm font-medium focus:outline-none"
+          />
+        </div>
       </WorkflowSection>
     </div>
   );

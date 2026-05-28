@@ -29,7 +29,7 @@ export function EventSidebarHeader({
     onClose
 }:EventSidebarHeaderProps){
     return(
-        <div className="flex-shrink-0 flex items-center justify-between border-b border-border/30 bg-card px-3 py-2.5">
+        <div className="flex-shrink-0 flex items-center justify-between border-b border-white/40 dark:border-white/5 bg-[hsl(var(--surface))] px-3 py-2.5">
                   <div className="flex items-center gap-2.5">
                     <div
                       className={cn(

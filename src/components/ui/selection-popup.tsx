@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
-import { Search, Plus, ChevronRight, ChevronDown, MoveUp, MoveDown, ArrowLeftRight, RotateCcw, CircleDashed, Sparkles } from "lucide-react";
-import { Input } from "@/src/components/ui/input";
+import {
+  Search, Plus, ChevronRight, ChevronDown,
+  MoveUp, MoveDown, ArrowLeftRight, RotateCcw, CircleDashed,
+} from "lucide-react";
 import { cn } from "@/src/lib/utils";
 import { SidePopup } from "./side-popup";
 
@@ -44,17 +46,17 @@ export interface SelectionPopupProps {
   width?: string;
 }
 
-function CollapsibleSection({ 
-  title, 
-  icon, 
-  children, 
+// ── Collapsible section ────────────────────────────────────────────────────────
+function CollapsibleSection({
+  title,
+  icon,
+  children,
   defaultOpen = false,
-  isHeader = false,
   hasResults = false,
-  searchQuery = ""
-}: { 
-  title: string; 
-  icon?: React.ReactNode; 
+  searchQuery = "",
+}: {
+  title: string;
+  icon?: React.ReactNode;
   children: React.ReactNode;
   defaultOpen?: boolean;
   isHeader?: boolean;
@@ -64,40 +66,31 @@ function CollapsibleSection({
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   React.useEffect(() => {
-    if (searchQuery && hasResults) {
-      setIsOpen(true);
-    }
+    if (searchQuery && hasResults) setIsOpen(true);
   }, [searchQuery, hasResults]);
 
   return (
-    <div className="border-b border-border last:border-0">
+    <div className="border-b border-black/8 dark:border-white/5 last:border-0">
       <button
-        onClick={(e) => {
-          e.stopPropagation();
-          setIsOpen(!isOpen);
-        }}
-        className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-muted/60 transition-colors group"
+        onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
+        className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-primary/5 rounded-xl transition-colors group"
       >
-        {/* Step icon */}
-        <div className="w-6 h-6 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-          {icon || <div className="w-3 h-3 rounded-full bg-primary" />}
+        <div className="nm-inset w-6 h-6 rounded-lg flex items-center justify-center shrink-0">
+          {icon || <div className="w-2 h-2 rounded-full bg-primary" />}
         </div>
-
         <span className="text-[13px] font-semibold text-foreground flex-1 text-left truncate">
           {title}
         </span>
-
         <div className="flex items-center gap-1.5">
           {hasResults && searchQuery && (
             <span className="text-[9px] font-bold bg-success/10 text-success px-1.5 py-0.5 rounded border border-success/20 uppercase">
               Match
             </span>
           )}
-          {isOpen ? (
-            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
-          )}
+          {isOpen
+            ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+            : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+          }
         </div>
       </button>
 
@@ -110,7 +103,7 @@ function CollapsibleSection({
   );
 }
 
-
+// ── Main SelectionPopup ────────────────────────────────────────────────────────
 export function SelectionPopup({
   isOpen,
   onClose,
@@ -131,75 +124,81 @@ export function SelectionPopup({
   const [search, setSearch] = useState("");
 
   const renderList = (data: SelectionItem[]) => {
-    const filtered = data.filter((item) =>
-      item.label.toLowerCase().includes(search.toLowerCase()) ||
-      item.description?.toLowerCase().includes(search.toLowerCase()) ||
-      item.id?.toLowerCase().includes(search.toLowerCase())
+    const filtered = data.filter(
+      (item) =>
+        item.label.toLowerCase().includes(search.toLowerCase()) ||
+        item.description?.toLowerCase().includes(search.toLowerCase()) ||
+        item.id?.toLowerCase().includes(search.toLowerCase())
     );
 
     if (filtered.length === 0 && search) return null;
 
     return (
-      <div className="py-1">
-        {filtered.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => {
-              onSelect(item);
-              onClose();
-            }}
-            className={cn(
-              "w-full text-left px-3 py-2.5 transition-all hover:bg-muted/60 flex items-start gap-2.5 group",
-              selectedId === item.id && "bg-primary/10"
-            )}
-          >
-            {/* Step / webhook icon */}
-            <div className="w-5 h-5 rounded-full bg-primary/15 flex items-center justify-center shrink-0 mt-0.5">
-              <div className="w-2 h-2 rounded-full bg-primary" />
-            </div>
-
-            {type === "value" && (
+      <div className="py-1 px-2 space-y-0.5">
+        {filtered.map((item) => {
+          const isSelected = selectedId === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => { onSelect(item); onClose(); }}
+              className={cn(
+                "w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-start gap-2.5 group",
+                isSelected
+                  ? "nm-inset"
+                  : "nm-btn hover:shadow-[10px_10px_20px_rgba(163,177,198,0.82),-10px_-10px_20px_rgba(255,255,255,1.0)]"
+              )}
+            >
+              {/* Dot indicator */}
               <div className={cn(
-                "w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 mt-1 transition-colors",
-                selectedId === item.id ? "border-primary" : "border-border group-hover:border-primary/60"
+                "nm-card w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5",
               )}>
-                {selectedId === item.id && <div className="w-1.5 h-1.5 rounded-full bg-primary" />}
+                <div className={cn(
+                  "w-2 h-2 rounded-full transition-colors",
+                  isSelected ? "bg-primary" : "bg-muted-foreground/40 group-hover:bg-primary/60"
+                )} />
               </div>
-            )}
 
-            {type === "value" ? (
-              /* Value-picker rows: keep compact single-line layout (label + ID) */
-              <div className="flex items-baseline gap-1.5 flex-1 min-w-0">
-                <span className={cn(
-                  "text-[13px] font-semibold shrink-0",
-                  selectedId === item.id ? "text-primary" : "text-foreground"
+              {type === "value" && (
+                <div className={cn(
+                  "w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 mt-1 transition-colors",
+                  isSelected ? "border-primary" : "border-border group-hover:border-primary/60"
                 )}>
-                  {item.label}
-                </span>
-                {item.description && (
-                  <span className="text-[12px] text-muted-foreground truncate">
-                    {`ID: ${item.id}`}
+                  {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-primary" />}
+                </div>
+              )}
+
+              {type === "value" ? (
+                <div className="flex items-baseline gap-1.5 flex-1 min-w-0">
+                  <span className={cn(
+                    "text-[13px] font-semibold shrink-0",
+                    isSelected ? "text-primary" : "text-foreground"
+                  )}>
+                    {item.label}
                   </span>
-                )}
-              </div>
-            ) : (
-              /* Description rows (triggers / actions): stack label + wrapped description */
-              <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                <span className={cn(
-                  "text-[13px] font-semibold leading-tight",
-                  selectedId === item.id ? "text-primary" : "text-foreground"
-                )}>
-                  {item.label}
-                </span>
-                {item.description && (
-                  <span className="text-[11.5px] text-muted-foreground leading-snug whitespace-normal break-words">
-                    {item.description}
+                  {item.description && (
+                    <span className="text-[12px] text-muted-foreground truncate">
+                      {`ID: ${item.id}`}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                  <span className={cn(
+                    "text-[13px] font-semibold leading-tight",
+                    isSelected ? "text-primary" : "text-foreground"
+                  )}>
+                    {item.label}
                   </span>
-                )}
-              </div>
-            )}
-          </button>
-        ))}
+                  {item.description && (
+                    <span className="text-[11.5px] text-muted-foreground leading-snug whitespace-normal break-words">
+                      {item.description}
+                    </span>
+                  )}
+                </div>
+              )}
+            </button>
+          );
+        })}
       </div>
     );
   };
@@ -212,9 +211,9 @@ export function SelectionPopup({
       position={position}
       width={width}
     >
-      {/* Tabs */}
+      {/* ── Tabs ── */}
       {showTabs && (
-        <div className="flex items-center border-b border-border bg-popover px-3">
+        <div className="flex items-center border-b border-black/8 dark:border-white/5 px-3 shrink-0">
           {[
             { label: "Data", active: true },
             { label: "Dynamic", active: false },
@@ -231,7 +230,7 @@ export function SelectionPopup({
             >
               {label}
               {badge && (
-                <span className="text-[9px] font-bold bg-muted text-muted-foreground px-1 py-0.5 rounded">
+                <span className="text-[9px] font-bold nm-inset px-1 py-0.5 rounded text-muted-foreground">
                   {badge}
                 </span>
               )}
@@ -240,36 +239,35 @@ export function SelectionPopup({
         </div>
       )}
 
-      {/* Search */}
-      <div className="px-3 py-2.5 border-b border-border bg-popover sticky top-0 z-10">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-          <Input
+      {/* ── Search ── */}
+      <div className="px-3 py-2.5 border-b border-black/8 dark:border-white/5 sticky top-0 z-10 bg-[hsl(var(--surface))]">
+        <div className="nm-inset rounded-xl flex items-center gap-2 px-3 h-8">
+          <Search className="shrink-0 w-3.5 h-3.5 text-muted-foreground/60" />
+          <input
             placeholder={placeholder}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 h-8 bg-muted/50 border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:bg-background transition-all text-[13px]"
+            className="flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none font-medium"
             autoFocus
           />
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto no-scrollbar bg-popover">
-        <div className="flex flex-col min-h-0">
+      {/* ── Content ── */}
+      <div className="flex-1 overflow-y-auto no-scrollbar">
+        <div className="flex flex-col min-h-0 py-1">
           <div className="flex-1">
-
             {sections ? (
               sections.map((section) => {
                 const listContent = renderList(section.items);
                 if (search && !listContent) return null;
-
                 return (
                   <CollapsibleSection
                     key={section.id}
                     title={section.title}
                     icon={section.icon}
                     defaultOpen={section.defaultOpen}
-                    isHeader={true}
+                    isHeader
                     hasResults={!!listContent}
                     searchQuery={search}
                   >
@@ -280,9 +278,9 @@ export function SelectionPopup({
             ) : (
               <div>
                 {renderList(items) || (
-                  <div className="p-8 text-center m-2 rounded-xl border border-dashed border-border bg-card shadow-sm">
-                    <div className="w-10 h-10 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
-                       <Plus className="w-5 h-5 text-muted-foreground" />
+                  <div className="m-3 p-8 text-center nm-inset rounded-2xl border border-dashed border-border/40">
+                    <div className="w-10 h-10 nm-card rounded-full flex items-center justify-center mx-auto mb-3">
+                      <Plus className="w-5 h-5 text-muted-foreground" />
                     </div>
                     <p className="text-xs font-bold text-foreground mb-1">No matches found</p>
                     <p className="text-[10px] text-muted-foreground max-w-[150px] mx-auto">
@@ -294,27 +292,25 @@ export function SelectionPopup({
             )}
           </div>
 
+          {/* ── Value footer (Load more / Refresh / Clear) ── */}
           {type === "value" && (
-            <div className="p-3 border-t border-border bg-popover/95 backdrop-blur-sm flex items-center gap-2 sticky bottom-0 shadow-[0_-8px_15px_-5px_hsl(var(--foreground)/0.05)] z-20">
-              <button className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-muted-foreground hover:bg-muted hover:text-primary transition-all flex items-center gap-1.5 border border-border bg-background">
+            <div className="px-3 py-2.5 border-t border-black/8 dark:border-white/5 flex items-center gap-2 sticky bottom-0 bg-[hsl(var(--surface))] z-20">
+              <button className="nm-btn flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold text-muted-foreground hover:text-primary transition-all">
                 <Plus className="w-3 h-3" />
                 Load more
               </button>
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRefresh?.();
-                }}
+                onClick={(e) => { e.stopPropagation(); onRefresh?.(); }}
                 disabled={isLoading}
                 className={cn(
-                  "px-3 py-1.5 rounded-lg text-[11px] font-bold text-muted-foreground hover:bg-muted hover:text-primary transition-all flex items-center gap-1.5 border border-border bg-background",
+                  "nm-btn flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold text-muted-foreground hover:text-primary transition-all",
                   isLoading && "opacity-50 cursor-not-allowed"
                 )}
               >
                 <RotateCcw className={cn("w-3 h-3", isLoading && "animate-spin")} />
                 {isLoading ? "Refreshing..." : "Refresh"}
               </button>
-              <button className="ml-auto px-3 py-1.5 rounded-lg text-[11px] font-bold text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all flex items-center gap-1.5 border border-border bg-background shadow-sm">
+              <button className="nm-btn ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold text-muted-foreground hover:text-destructive transition-all">
                 <CircleDashed className="w-3 h-3" />
                 Clear
               </button>
@@ -323,37 +319,34 @@ export function SelectionPopup({
         </div>
       </div>
 
+      {/* ── Footer action ── */}
       {footerAction && (
-        <div className="p-1.5 border-t border-border bg-popover">
-           <button
-            onClick={() => {
-              footerAction.onClick();
-              onClose();
-            }}
-            className="w-full flex items-center justify-center gap-2 p-2.5 rounded-lg border border-border bg-background hover:bg-muted hover:border-primary/40 transition-all shadow-sm group"
+        <div className="p-2.5 border-t border-black/8 dark:border-white/5">
+          <button
+            onClick={() => { footerAction.onClick(); onClose(); }}
+            className="nm-btn w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold text-primary hover:text-primary/80 transition-all group"
           >
-            {footerAction.icon || <Plus className="w-4 h-4 text-muted-foreground group-hover:text-primary" />}
-            <span className="text-sm font-bold text-foreground group-hover:text-primary">
-              {footerAction.label}
-            </span>
+            {footerAction.icon || <Plus className="w-4 h-4" />}
+            <span>{footerAction.label}</span>
           </button>
         </div>
       )}
 
+      {/* ── Tabs nav footer ── */}
       {showTabs && (
-        <div className="px-3 py-2 border-t border-border bg-popover flex items-center justify-between">
+        <div className="px-3 py-2 border-t border-black/8 dark:border-white/5 flex items-center justify-between">
           <div className="flex items-center gap-1">
-            <button className="p-1 rounded hover:bg-muted transition-colors">
-              <MoveUp className="w-3 h-3 text-muted-foreground" />
+            <button className="nm-btn p-1.5 rounded-lg text-muted-foreground hover:text-foreground transition-all">
+              <MoveUp className="w-3 h-3" />
             </button>
-            <button className="p-1 rounded hover:bg-muted transition-colors">
-              <MoveDown className="w-3 h-3 text-muted-foreground" />
+            <button className="nm-btn p-1.5 rounded-lg text-muted-foreground hover:text-foreground transition-all">
+              <MoveDown className="w-3 h-3" />
             </button>
             <span className="text-[11px] text-muted-foreground ml-1">Navigate</span>
           </div>
           <div className="flex items-center gap-1">
-            <button className="p-1 rounded hover:bg-muted transition-colors">
-              <ArrowLeftRight className="w-3 h-3 text-muted-foreground rotate-90" />
+            <button className="nm-btn p-1.5 rounded-lg text-muted-foreground hover:text-foreground transition-all">
+              <ArrowLeftRight className="w-3 h-3 rotate-90" />
             </button>
             <span className="text-[11px] text-muted-foreground">Expand / Collapse</span>
           </div>

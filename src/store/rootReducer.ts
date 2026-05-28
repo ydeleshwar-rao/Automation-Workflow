@@ -8,6 +8,7 @@ import { webhookApi } from "@/src/components/work-flow/appEvents/webhook/apiInte
 import { workflowTemplateApi } from "@/src/components/workflow-templates/apiIntegrations/workflowTemplateApi"
 import { templateFolderApi } from "@/src/components/workflow-templates/apiIntegrations/templateFolderApi"
 import { accessApi } from "@/src/components/admin/access/apiIntegrations/accessApi"
+import { aiWorkflowApi } from "@/src/components/ai-workflow/aiWorkflowApi"
 
 const rootReducer = combineReducers({
   workflowBuilder: workflowBuilderReducer,
@@ -19,6 +20,7 @@ const rootReducer = combineReducers({
   [workflowTemplateApi.reducerPath]: workflowTemplateApi.reducer,
   [templateFolderApi.reducerPath]: templateFolderApi.reducer,
   [accessApi.reducerPath]: accessApi.reducer,
+  [aiWorkflowApi.reducerPath]: aiWorkflowApi.reducer,
 })
 
 export default rootReducer

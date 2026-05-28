@@ -17,7 +17,6 @@ import {
   Minimize2,
   Copy,
 } from "lucide-react";
-import { Input } from "@/src/components/ui/input";
 
 type Accent = {
   text: string;
@@ -329,11 +328,11 @@ function RecordDrawer({
   };
 
   return (
-    <div className="border border-border rounded-xl overflow-hidden bg-card">
+    <div className="nm-card rounded-2xl overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-3 p-3 hover:bg-muted/60 transition-colors cursor-pointer"
+        className="w-full flex items-center gap-3 p-3 hover:bg-primary/5 rounded-xl transition-colors cursor-pointer"
       >
         <ChevronRight
           className={`w-4 h-4 text-muted-foreground flex-shrink-0 transition-transform ${
@@ -420,8 +419,8 @@ export function ServiceM8TestStep({
   const hasRecords = records.length > 0;
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-background overflow-hidden animate-in fade-in duration-500">
-      <div className="flex-shrink-0 p-6 space-y-4 border-b border-border">
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden animate-in fade-in duration-500">
+      <div className="flex-shrink-0 p-6 space-y-4 border-b border-black/8 dark:border-white/5">
         <div className="flex items-center gap-4">
           <div
             className={`w-10 h-10 rounded-lg ${ACCENT.iconBg} flex items-center justify-center shadow-sm`}
@@ -512,13 +511,13 @@ export function ServiceM8TestStep({
                 </span>
               )}
             </h3>
-            <div className="flex items-center gap-1 p-0.5 bg-muted rounded-lg">
+            <div className="flex items-center gap-1 nm-inset rounded-xl p-1">
               <button
                 type="button"
                 onClick={() => setViewMode("fields")}
                 className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold transition-colors cursor-pointer ${
                   viewMode === "fields"
-                    ? "bg-background text-foreground shadow-sm"
+                    ? "nm-btn rounded-lg"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -530,7 +529,7 @@ export function ServiceM8TestStep({
                 onClick={() => setViewMode("json")}
                 className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold transition-colors cursor-pointer ${
                   viewMode === "json"
-                    ? "bg-background text-foreground shadow-sm"
+                    ? "nm-btn rounded-lg"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -541,13 +540,13 @@ export function ServiceM8TestStep({
           </div>
 
           {hasRecords && viewMode === "fields" && (
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
+            <div className="nm-inset rounded-xl flex items-center gap-2 px-3 h-10">
+              <Search className="shrink-0 w-4 h-4 text-muted-foreground/60" />
+              <input
                 placeholder="Search field names..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className={`pl-10 h-10 bg-card border-border text-foreground placeholder:text-muted-foreground ${ACCENT.ring} transition-all rounded-xl shadow-sm`}
+                className="flex-1 bg-transparent text-foreground text-sm placeholder:text-muted-foreground focus:outline-none font-medium"
               />
             </div>
           )}
@@ -569,7 +568,7 @@ export function ServiceM8TestStep({
             ))
           ) : (
             <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
-              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+              <div className="w-12 h-12 rounded-full nm-inset flex items-center justify-center">
                 <Inbox className="w-6 h-6 text-muted-foreground" />
               </div>
               <p className="text-sm font-bold text-muted-foreground">

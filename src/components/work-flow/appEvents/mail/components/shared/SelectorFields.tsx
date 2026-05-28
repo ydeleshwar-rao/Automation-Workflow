@@ -2,14 +2,12 @@
 
 import React from "react";
 import { ChevronDown, CheckCircle2, LucideIcon } from "lucide-react";
-import { Button } from "@/src/components/ui/button";
 import { cn } from "@/src/lib/utils";
 import { CardSkeleton } from "@/src/components/ui/skeleton-loader";
 import { WorkflowSection } from "../../../../components/SectionWrapper";
 
 // ---------------------------------------------------------------------------
 // AppSection
-// Displays the currently selected app with an optional "Change" button
 // ---------------------------------------------------------------------------
 
 interface AppSectionProps {
@@ -22,8 +20,8 @@ interface AppSectionProps {
 export function AppSection({ appName, appIcon: AppIcon, onOverride, connected }: AppSectionProps) {
   return (
     <WorkflowSection label="App">
-      <div className="flex items-center gap-3 p-1.5 pl-3 bg-card border border-border rounded-lg shadow-sm">
-        <div className="p-1.5 rounded-md bg-muted/40 border border-border/60 shadow-sm">
+      <div className="flex items-center gap-3 p-1.5 pl-3 nm-inset rounded-2xl">
+        <div className="nm-card p-1.5 rounded-xl">
           <AppIcon className="w-5 h-5 text-primary" />
         </div>
         <span className="text-sm font-bold text-foreground flex-1">{appName}</span>
@@ -34,14 +32,12 @@ export function AppSection({ appName, appIcon: AppIcon, onOverride, connected }:
           </div>
         )}
         {onOverride && (
-          <Button
-            variant="ghost"
-            size="sm"
+          <button
             onClick={onOverride}
-            className="bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-xs h-8 px-4 rounded-md"
+            className="nm-btn flex h-8 items-center rounded-xl px-3 text-xs font-semibold text-primary hover:text-primary/80 transition-all"
           >
             Change
-          </Button>
+          </button>
         )}
       </div>
     </WorkflowSection>
@@ -50,7 +46,6 @@ export function AppSection({ appName, appIcon: AppIcon, onOverride, connected }:
 
 // ---------------------------------------------------------------------------
 // SelectSection
-// A styled clickable dropdown row for selecting an event or other single value
 // ---------------------------------------------------------------------------
 
 interface SelectSectionProps {
@@ -67,14 +62,19 @@ export function SelectSection({ label, value, placeholder, onClick, isOpen }: Se
       <div
         onClick={onClick}
         className={cn(
-          "flex items-center justify-between p-3.5 bg-card border border-border rounded-lg shadow-sm cursor-pointer transition-all hover:border-primary/40 active:scale-[0.99]",
-          isOpen && "border-primary ring-1 ring-primary/20"
+          "flex items-center justify-between p-3.5 nm-inset rounded-xl cursor-pointer transition-all active:scale-[0.99]",
+          isOpen && "outline outline-1 outline-primary/40"
         )}
       >
         <span className={cn("text-sm", value ? "text-foreground font-medium" : "text-muted-foreground")}>
           {value || placeholder}
         </span>
-        <ChevronDown className={cn("w-4 h-4 text-muted-foreground transition-transform", isOpen && "rotate-180")} />
+        <ChevronDown
+          className={cn(
+            "w-4 h-4 text-muted-foreground transition-transform",
+            isOpen && "rotate-180 text-primary"
+          )}
+        />
       </div>
     </WorkflowSection>
   );
@@ -82,7 +82,6 @@ export function SelectSection({ label, value, placeholder, onClick, isOpen }: Se
 
 // ---------------------------------------------------------------------------
 // AccountSection
-// Displays the connected account status with a "Change" button
 // ---------------------------------------------------------------------------
 
 interface AccountSectionProps {
@@ -107,15 +106,17 @@ export function AccountSection({
       <div
         onClick={onOpenPopup}
         className={cn(
-          "flex items-center justify-between p-3.5 bg-card border border-border rounded-lg shadow-sm cursor-pointer transition-all hover:border-primary/40 active:scale-[0.99] group min-h-[56px]",
-          isOpen && "border-primary ring-1 ring-primary/20"
+          "flex items-center justify-between p-3.5 nm-inset rounded-xl cursor-pointer transition-all active:scale-[0.99] min-h-[56px]",
+          isOpen && "outline outline-1 outline-primary/40"
         )}
       >
         {selectedAccountName ? (
           <div className="flex flex-col text-left">
             <span className="text-sm font-medium text-foreground">{selectedAccountName}</span>
             {isConnected && (
-              <span className="text-[11px] text-muted-foreground uppercase font-bold tracking-tight">Connected</span>
+              <span className="text-[11px] text-muted-foreground uppercase font-bold tracking-tight">
+                Connected
+              </span>
             )}
           </div>
         ) : isLoadingAccounts ? (
@@ -125,19 +126,17 @@ export function AccountSection({
             <span className="text-sm font-medium text-muted-foreground">Connect your account</span>
           </div>
         )}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           {isConnected && <CheckCircle2 className="w-4 h-4 text-success" />}
-          <Button
-            variant="ghost"
-            size="sm"
+          <button
             onClick={(e) => {
               e.stopPropagation();
               onChange();
             }}
-            className="h-8 px-2 text-foreground border border-border hover:bg-muted font-bold text-[11px] ml-4"
+            className="nm-btn flex h-7 items-center rounded-lg px-2.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-all"
           >
             Change
-          </Button>
+          </button>
         </div>
       </div>
     </WorkflowSection>

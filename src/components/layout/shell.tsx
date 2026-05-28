@@ -13,7 +13,9 @@ interface ShellProps {
 export function Shell({ children, sidebar, topbar }: ShellProps) {
   const pathname       = usePathname();
   const { isOpen }     = useSidebar();
-  const isWorkflowPage = pathname?.startsWith("/dashboard/workflow");
+  const isWorkflowPage =
+    pathname?.startsWith("/dashboard/workflow") ||
+    pathname?.startsWith("/dashboard/ai-workflow/");
 
   return (
     <div className="flex h-screen overflow-hidden bg-[hsl(var(--surface))]">

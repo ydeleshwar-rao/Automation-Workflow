@@ -2,6 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
+/* React Flow — override control/minimap colours to match neumorphic surface */
+.react-flow__controls {
+  background: hsl(var(--surface)) !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+.react-flow__controls-button {
+  background: hsl(var(--surface)) !important;
+  border-bottom: 1px solid hsl(var(--border) / 0.3) !important;
+  color: hsl(var(--muted-foreground)) !important;
+}
+.react-flow__controls-button:hover {
+  background: hsl(var(--primary) / 0.08) !important;
+}
+.react-flow__minimap {
+  background: hsl(var(--surface)) !important;
+}
+/* Animated dash for selected edges */
+@keyframes dash {
+  to { stroke-dashoffset: -24; }
+}
+
 /* ============================================================
    GLOBAL THEME — CSS CUSTOM PROPERTIES
    ============================================================
@@ -63,8 +85,9 @@
     --input:  214 32% 91%;
     --ring:   244 75% 59%;
 
-    /* ── Surface (warm page background) ─────────────────── */
-    --surface: 30 20% 97%;
+    /* ── Surface — neumorphism base (cool soft gray) ────── */
+    /* hsl(220 16% 90%) ≈ rgb(220,225,233) — ideal for nm */
+    --surface: 220 16% 90%;
 
     /* ── Charts ──────────────────────────────────────────── */
     --chart-1: 12 76% 61%;
@@ -212,85 +235,100 @@
     scrollbar-width: none;
   }
 
-  /* ── Neumorphism utilities ─────────────────────────────────── */
-  /*
-   * Light: warm off-white (~hsl 30 20% 97%)
-   *   dark shadow  → rgba(155,170,190, 0.7)  [blue-gray tone]
-   *   light shadow → rgba(255,255,255, 1.0)  [pure white]
-   *
-   * Dark: deep navy (~hsl 222 47% 6%)
-   *   dark shadow  → rgba(0,0,0, 0.55)
-   *   light shadow → rgba(255,255,255, 0.04)
-   */
+  /* ═══════════════════════════════════════════════════════════
+     NEUMORPHISM UTILITIES
+     ═══════════════════════════════════════════════════════════
+     RULE: every nm-* element MUST share the exact same bg as
+     its parent surface. We bake the bg into each class so it
+     is always correct — never override it with bg-card/white.
 
-  /* ── Sidebar panel ── */
+     Light surface: hsl(220 16% 90%) ≈ rgb(220,225,233)
+       dark  shadow → rgba(163,177,198, 0.78)   [cool blue-gray]
+       light shadow → rgba(255,255,255, 1.0)    [pure white]
+
+     Dark surface:  hsl(222 47% 8%)  ≈ rgb(10,14,29)
+       dark  shadow → rgba(0,0,0, 0.72)
+       light shadow → rgba(255,255,255, 0.05)
+  ═══════════════════════════════════════════════════════════ */
+
+  /* ── Sidebar ── */
   .nm-sidebar {
     background: hsl(var(--surface));
-    box-shadow: 4px 0 20px rgba(155,170,190,0.4);
+    box-shadow:
+      6px 0 20px rgba(163,177,198,0.55),
+      1px 0 0   rgba(255,255,255,0.6);
   }
   .dark .nm-sidebar {
     background: hsl(var(--surface));
-    box-shadow: 5px 0 24px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.025);
+    box-shadow:
+      6px 0 24px rgba(0,0,0,0.72),
+      1px 0 0   rgba(255,255,255,0.03);
   }
 
-  /* ── Top bar panel ── */
+  /* ── Top bar ── */
   .nm-topbar {
     background: hsl(var(--surface));
-    box-shadow: 0 3px 14px rgba(155,170,190,0.3);
+    box-shadow:
+      0 6px 20px rgba(163,177,198,0.5),
+      0 1px 0   rgba(255,255,255,0.6);
   }
   .dark .nm-topbar {
     background: hsl(var(--surface));
-    box-shadow: 0 3px 16px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.03);
+    box-shadow:
+      0 6px 22px rgba(0,0,0,0.68),
+      0 1px 0   rgba(255,255,255,0.03);
   }
 
-  /* ── Raised element (resting state) ── */
+  /* ── Raised / floating element ── */
   .nm-btn {
+    background: hsl(var(--surface));
     box-shadow:
-      6px  6px 14px rgba(148,163,184,0.75),
-      -5px -5px 12px rgba(255,255,255,1.0);
-    transition: box-shadow 0.18s ease, color 0.18s ease;
+       8px  8px 16px rgba(163,177,198,0.78),
+      -7px -7px 14px rgba(255,255,255,1.0);
+    transition: box-shadow 0.2s ease, color 0.2s ease;
   }
   .dark .nm-btn {
+    background: hsl(var(--surface));
     box-shadow:
-      6px  6px 14px rgba(0,0,0,0.6),
-      -4px -4px 10px rgba(255,255,255,0.05);
+       7px  7px 14px rgba(0,0,0,0.72),
+      -5px -5px 11px rgba(255,255,255,0.05);
   }
-
-  /* ── Raised element (hover — lifts noticeably) ── */
   .nm-btn:hover {
     box-shadow:
-      8px  8px 18px rgba(148,163,184,0.8),
-      -6px -6px 14px rgba(255,255,255,1.0);
+       10px  10px 20px rgba(163,177,198,0.82),
+      -10px -10px 20px rgba(255,255,255,1.0);
   }
   .dark .nm-btn:hover {
     box-shadow:
-      8px  8px 18px rgba(0,0,0,0.65),
-      -6px -6px 14px rgba(255,255,255,0.06);
+       9px  9px 18px rgba(0,0,0,0.76),
+      -7px -7px 15px rgba(255,255,255,0.06);
   }
 
-  /* ── Pressed / active — deep inset, clearly carved in ── */
+  /* ── Pressed / carved in ── */
   .nm-inset {
+    background: hsl(var(--surface));
     box-shadow:
-      inset 5px  5px 12px rgba(148,163,184,0.7),
-      inset -4px -4px 10px rgba(255,255,255,1.0);
+      inset  7px  7px 14px rgba(163,177,198,0.75),
+      inset -6px -6px 12px rgba(255,255,255,1.0);
   }
   .dark .nm-inset {
+    background: hsl(var(--surface));
     box-shadow:
-      inset 5px  5px 12px rgba(0,0,0,0.6),
-      inset -4px -4px 10px rgba(255,255,255,0.05);
+      inset  7px  7px 14px rgba(0,0,0,0.7),
+      inset -5px -5px 11px rgba(255,255,255,0.05);
   }
 
-  /* ── Panel / card ── */
+  /* ── Flat panel / card — same surface, larger shadow spread ── */
   .nm-card {
-    background: hsl(var(--card));
+    background: hsl(var(--surface));
     box-shadow:
-      7px  7px 18px rgba(155,170,190,0.45),
-      -5px -5px 14px rgba(255,255,255,1.0);
+       10px  10px 24px rgba(163,177,198,0.72),
+      -10px -10px 24px rgba(255,255,255,1.0);
   }
   .dark .nm-card {
-    background: hsl(var(--card));
+    background: hsl(var(--surface));
     box-shadow:
-      7px  7px 18px rgba(0,0,0,0.5),
-      -5px -5px 14px rgba(255,255,255,0.04);
+       9px  9px 22px rgba(0,0,0,0.72),
+      -7px -7px 18px rgba(255,255,255,0.05);
   }
 }

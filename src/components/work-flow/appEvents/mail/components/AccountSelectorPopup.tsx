@@ -30,16 +30,22 @@ export function AccountSelectorPopup({
 
   return (
     <div
-      className="absolute left-0 right-0 z-50 mt-2 bg-background border border-border rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200"
+      className="absolute left-0 right-0 z-50 mt-2 nm-card rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200"
       style={{ top: "100%" }}
     >
-      <div className="p-3">
-        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider px-2 mb-2">
+      {/* ── Header ── */}
+      <div className="px-4 py-2.5 border-b border-black/8 dark:border-white/5">
+        <p className="text-[10.5px] font-bold text-muted-foreground uppercase tracking-widest">
           Connected Accounts
         </p>
+      </div>
 
+      {/* ── Account list ── */}
+      <div className="p-2">
         {accounts.length === 0 ? (
-          <p className="text-sm text-muted-foreground px-2 py-3">No accounts connected yet.</p>
+          <div className="px-3 py-4 text-center">
+            <p className="text-sm text-muted-foreground">No accounts connected yet.</p>
+          </div>
         ) : (
           <ul className="space-y-1">
             {accounts.map((account) => {
@@ -48,8 +54,8 @@ export function AccountSelectorPopup({
                 <li
                   key={account.id}
                   className={cn(
-                    "flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-all hover:bg-muted",
-                    isSelected && "bg-primary/10 hover:bg-primary/10"
+                    "flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl cursor-pointer transition-all",
+                    isSelected ? "nm-inset" : "nm-btn"
                   )}
                 >
                   <div
@@ -61,7 +67,7 @@ export function AccountSelectorPopup({
                     )}
                     <span
                       className={cn(
-                        "text-sm font-medium truncate",
+                        "text-sm font-semibold truncate",
                         isSelected ? "text-primary" : "text-foreground"
                       )}
                     >
@@ -76,7 +82,7 @@ export function AccountSelectorPopup({
                         e.stopPropagation();
                         onRemoveAccount(account.id);
                       }}
-                      className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all shrink-0"
+                      className="nm-btn flex items-center justify-center w-7 h-7 rounded-lg text-muted-foreground hover:text-destructive transition-all shrink-0"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -88,16 +94,16 @@ export function AccountSelectorPopup({
         )}
       </div>
 
-      {/* Only admin and developer can register new SMTP connections */}
+      {/* ── Connect new ── */}
       {canAddAccount && (
-        <div className="border-t border-border p-3">
+        <div className="p-2 border-t border-black/8 dark:border-white/5">
           <button
             type="button"
             onClick={() => {
               onClose();
               onConnectNew();
             }}
-            className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg text-sm font-semibold text-primary hover:bg-primary/10 transition-all"
+            className="nm-btn flex items-center gap-2.5 w-full px-3 py-2.5 rounded-2xl text-sm font-semibold text-primary hover:text-primary/80 transition-all"
           >
             <PlusCircle className="w-4 h-4" />
             Connect a new account

@@ -27,7 +27,7 @@ export function BreadcrumbTabs({
   return (
     <div
       className={cn(
-        "flex-shrink-0 flex items-center gap-0 overflow-x-auto border-b border-border/60 bg-background px-5 py-0 no-scrollbar",
+        "flex-shrink-0 flex items-center gap-0 overflow-x-auto border-b border-black/8 dark:border-white/5 bg-[hsl(var(--surface))] px-5 py-0 no-scrollbar",
         className
       )}
     >
@@ -40,8 +40,8 @@ export function BreadcrumbTabs({
             <button
               onClick={() => onStepClick(step.id)}
               className={cn(
-                "group relative flex items-center gap-1.5 whitespace-nowrap px-0 py-2.5 transition-all",
-                isActive ? "opacity-100" : "opacity-60 hover:opacity-100"
+                "group relative flex items-center gap-1.5 whitespace-nowrap px-1 py-3 transition-all",
+                isActive ? "opacity-100" : "opacity-55 hover:opacity-90"
               )}
             >
               <span
@@ -52,14 +52,14 @@ export function BreadcrumbTabs({
               >
                 {step.label}
               </span>
-              
+
               {status === "completed" && (
                 <Check className="h-3 w-3 text-primary stroke-[3]" />
               )}
 
-              {/* Active Indicator Line */}
+              {/* Active underline — nm-style: thicker, softer glow */}
               {isActive && (
-                <div className="absolute bottom-0 left-0 right-0 h-[3px] rounded-t-full bg-primary" />
+                <div className="absolute bottom-0 left-0 right-0 h-[3px] rounded-t-full bg-primary shadow-[0_0_6px_rgba(99,102,241,0.6)]" />
               )}
             </button>
             

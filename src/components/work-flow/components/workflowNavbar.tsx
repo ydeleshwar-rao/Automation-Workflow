@@ -20,8 +20,7 @@ interface WorkflowNavbarProps {
   isTesting:              boolean;
 }
 
-// ── Shared surface bg token ───────────────────────────────────
-const SURF = "bg-[hsl(var(--surface))]";
+// nm-btn / nm-inset embed surface bg via CSS — no inline SURF needed
 
 export default function WorkflowNavbar({
   workflows,
@@ -59,7 +58,7 @@ export default function WorkflowNavbar({
         {/* Builder / Monitor tab pill (nm-inset container, raised active tab) */}
         <div className={cn(
           "ml-2 hidden items-center gap-0.5 rounded-xl p-1 sm:flex",
-          "nm-inset", SURF,
+          "nm-inset",
         )}>
           {(["builder", "monitor"] as const).map((view) => (
             <button
@@ -68,7 +67,7 @@ export default function WorkflowNavbar({
               className={cn(
                 "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all capitalize",
                 activeView === view
-                  ? "bg-card shadow-sm text-foreground dark:bg-card"
+                  ? "nm-btn text-foreground"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -91,7 +90,7 @@ export default function WorkflowNavbar({
           aria-label="Workflow status"
           className={cn(
             "hidden items-center gap-0.5 rounded-xl p-1 sm:flex",
-            "nm-inset", SURF,
+            "nm-inset",
           )}
         >
           {([
@@ -105,7 +104,7 @@ export default function WorkflowNavbar({
                 className={cn(
                   "flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
                   checked
-                    ? "bg-card shadow-sm text-foreground"
+                    ? "nm-btn text-foreground"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -133,7 +132,7 @@ export default function WorkflowNavbar({
           title="Browse workflow templates"
           className={cn(
             "hidden h-8 items-center gap-1.5 rounded-xl px-3 text-xs font-semibold text-muted-foreground transition-all sm:inline-flex",
-            "nm-btn", SURF, "hover:text-foreground",
+            "nm-btn hover:text-foreground",
           )}
         >
           <Library className="h-3.5 w-3.5" />
@@ -152,7 +151,7 @@ export default function WorkflowNavbar({
           disabled={isTesting}
           className={cn(
             "flex h-8 items-center gap-1.5 rounded-xl px-3 text-xs font-semibold transition-all",
-            "nm-btn", SURF, "text-muted-foreground hover:text-foreground",
+            "nm-btn text-muted-foreground hover:text-foreground",
             "disabled:opacity-50 disabled:cursor-not-allowed",
           )}
         >

@@ -194,32 +194,32 @@ export function LeadConnectorConfigureStep({
       <div className="flex gap-4 items-end px-1 pb-6 shrink-0">
         <div className="flex-1 space-y-2">
           <label className="text-xs font-bold text-foreground">Search fields</label>
-          <div className="relative group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+          <div className="nm-inset rounded-xl flex items-center gap-2 px-3 h-11">
+            <Search className="shrink-0 w-4 h-4 text-muted-foreground/60" />
             <input
               type="text"
               placeholder="Search fields"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-11 pl-10 pr-4 bg-card border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium text-foreground placeholder:text-muted-foreground shadow-sm"
+              className="flex-1 bg-transparent text-sm font-medium text-foreground placeholder:text-muted-foreground focus:outline-none"
             />
           </div>
         </div>
         <div className="w-[180px] space-y-2">
           <label className="text-xs font-bold text-foreground">Filter by</label>
-          <div className="relative group">
+          <div className="relative">
             <button
               type="button"
               onClick={handleFilterSelectOpen}
               className={cn(
-                "w-full h-11 px-4 bg-card border border-border rounded-xl flex items-center justify-between cursor-pointer transition-all hover:border-primary group shadow-sm",
-                filterPopup.isOpen && "ring-2 ring-primary/20 border-primary"
+                "w-full h-11 nm-inset rounded-xl flex items-center justify-between px-4 cursor-pointer transition-all",
+                filterPopup.isOpen && "outline outline-1 outline-primary/40"
               )}
             >
               <span className="text-sm font-medium text-foreground">
                 {filterOptions.find(opt => opt.id === filterType)?.label || "All"}
               </span>
-              <div className="w-11 h-full bg-primary group-hover:bg-primary/90 rounded-r-xl flex items-center justify-center pointer-events-none transition-colors absolute right-0 top-0">
+              <div className="w-9 h-7 bg-primary rounded-lg flex items-center justify-center shrink-0">
                 <ChevronDown className="w-4 h-4 text-primary-foreground" />
               </div>
             </button>

@@ -4,9 +4,8 @@ import React from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { ChevronDown, Check } from "lucide-react";
-import { Input } from "@/src/components/ui/input";
-import { Button } from "@/src/components/ui/button";
+import { Check, ChevronDown, Lock, Mail, Server, Shield, AtSign } from "lucide-react";
+import { cn } from "@/src/lib/utils";
 import { SmtpConfig } from "@/src/components/work-flow/appEvents/mail/apiIntegrations/use-mail";
 import { Modal } from "@/src/components/ui/modal";
 import {
@@ -15,14 +14,15 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/src/components/ui/dropdown-menu";
-import { cn } from "@/src/lib/utils";
+
+// ── Schema ──────────────────────────────────────────────────────────────────
 
 const smtpSchema = z.object({
-  host: z.string().min(1, "Host is required"),
-  user: z.string().min(1, "User is required"),
-  pass: z.string().min(1, "Password is required"),
-  tls: z.boolean(),
-  port: z.number().int().positive(),
+  host:      z.string().min(1, "Host is required"),
+  user:      z.string().min(1, "User is required"),
+  pass:      z.string().min(1, "Password is required"),
+  tls:       z.boolean(),
+  port:      z.number().int().positive(),
   fromEmail: z.string().email("Invalid email").or(z.literal("")),
 });
 
@@ -33,7 +33,9 @@ interface Option<T> {
   value: T;
 }
 
-function ThemeSelect<T extends string | number | boolean>({
+// ── Neumorphic select dropdown ───────────────────────────────────────────────
+
+function NmSelect<T extends string | number | boolean>({
   value,
   onChange,
   options,
@@ -50,28 +52,31 @@ function ThemeSelect<T extends string | number | boolean>({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className={cn(
-            "w-full h-9 px-3 flex items-center justify-between",
-            "bg-card border border-border rounded-lg",
-            "text-sm font-medium text-foreground",
-            "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary",
-            "transition-all hover:border-primary/50",
-            !selected && "text-muted-foreground"
-          )}
+          className="w-full h-11 px-3 nm-inset rounded-xl flex items-center justify-between text-sm font-medium text-foreground focus:outline-none transition-all"
         >
-          <span>{selected ? selected.label : placeholder}</span>
+          <span className={selected ? "text-foreground" : "text-muted-foreground"}>
+            {selected ? selected.label : placeholder}
+          </span>
           <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="z-[300] w-[--radix-dropdown-menu-trigger-width] min-w-[180px]" align="start">
+      <DropdownMenuContent
+        className="z-[300] w-[--radix-dropdown-menu-trigger-width] min-w-[160px] nm-card rounded-2xl border-none p-1"
+        align="start"
+      >
         {options.map((opt) => (
           <DropdownMenuItem
             key={String(opt.value)}
             onSelect={() => onChange(opt.value)}
-            className="flex items-center justify-between cursor-pointer"
+            className={cn(
+              "flex items-center justify-between rounded-xl px-3 py-2 cursor-pointer text-sm font-medium transition-all",
+              opt.value === value
+                ? "nm-inset text-primary"
+                : "hover:bg-primary/5"
+            )}
           >
             <span>{opt.label}</span>
-            {opt.value === value && <Check className="w-4 h-4 text-primary" />}
+            {opt.value === value && <Check className="w-3.5 h-3.5 text-primary" />}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
@@ -79,18 +84,82 @@ function ThemeSelect<T extends string | number | boolean>({
   );
 }
 
+// ── Field component ──────────────────────────────────────────────────────────
+
+function SmtpField({
+  label,
+  required,
+  icon: Icon,
+  error,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  icon?: React.ElementType;
+  error?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
+        {Icon && <Icon className="w-3.5 h-3.5 text-muted-foreground" />}
+        {label}
+        {required
+          ? <span className="text-[11px] font-normal text-orange-500 ml-0.5">(required)</span>
+          : <span className="text-[11px] font-normal text-muted-foreground ml-0.5">(optional)</span>
+        }
+      </label>
+      {children}
+      {error && (
+        <p className="text-xs text-destructive font-medium animate-in fade-in slide-in-from-top-1 duration-200">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── NmInput ──────────────────────────────────────────────────────────────────
+
+function NmInput({
+  type = "text",
+  placeholder,
+  hasError,
+  autoComplete,
+  ...rest
+}: React.InputHTMLAttributes<HTMLInputElement> & { hasError?: boolean }) {
+  return (
+    <div className={cn(
+      "nm-inset rounded-xl h-11 flex items-center px-3 transition-all",
+      hasError && "outline outline-1 outline-destructive"
+    )}>
+      <input
+        type={type}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        className="flex-1 bg-transparent text-sm font-medium text-foreground placeholder:text-muted-foreground focus:outline-none"
+        {...rest}
+      />
+    </div>
+  );
+}
+
+// ── Options ──────────────────────────────────────────────────────────────────
+
 const tlsOptions: Option<boolean>[] = [
-  { label: "Yes", value: true },
-  { label: "No", value: false },
+  { label: "Yes — TLS enabled", value: true  },
+  { label: "No  — plain SMTP",  value: false },
 ];
 
 const portOptions: Option<number>[] = [
-  { label: "587", value: 587 },
-  { label: "465", value: 465 },
-  { label: "80",  value: 80  },
-  { label: "110", value: 110 },
+  { label: "587", value: 587  },
+  { label: "465", value: 465  },
+  { label: "80",  value: 80   },
+  { label: "110", value: 110  },
   { label: "2525", value: 2525 },
 ];
+
+// ── SmtpConnectionPopup ──────────────────────────────────────────────────────
 
 interface SmtpConnectionPopupProps {
   isOpen: boolean;
@@ -112,14 +181,7 @@ export function SmtpConnectionPopup({
   } = useForm<SmtpFormValues>({
     resolver: zodResolver(smtpSchema),
     mode: "onChange",
-    defaultValues: {
-      host: "",
-      user: "",
-      pass: "",
-      tls: true,
-      port: 587,
-      fromEmail: "",
-    },
+    defaultValues: { host: "", user: "", pass: "", tls: true, port: 587, fromEmail: "" },
   });
 
   const onSubmit = (data: SmtpFormValues) => {
@@ -128,112 +190,95 @@ export function SmtpConnectionPopup({
     reset();
   };
 
-  const fieldLabel = (label: string, required?: boolean) => (
-    <label className="text-sm font-semibold text-foreground block">
-      {label}{" "}
-      <span className={cn("font-normal text-xs", required ? "text-orange-500" : "text-muted-foreground")}>
-        {required ? "(required)" : "(optional)"}
-      </span>
-    </label>
-  );
-
-  const inputClass = (hasError?: boolean) =>
-    cn(
-      "h-9 rounded-lg border-border bg-card text-foreground text-sm",
-      "placeholder:text-muted-foreground",
-      "focus-visible:ring-primary/20 focus-visible:border-primary",
-      hasError && "border-red-500 focus-visible:ring-red-500/20"
-    );
-
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Allow Job Management to access your SMTP Account?"
+      title="Connect your SMTP Account"
+      maxWidth="max-w-[480px]"
     >
-      <form
-        onSubmit={handleSubmit(onSubmit)}
-        autoComplete="off"
-        className="space-y-3 text-left"
-      >
+      <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-4">
+
         {/* Host */}
-        <div className="space-y-1">
-          {fieldLabel("Host", true)}
-          <Input {...register("host")} className={inputClass(!!errors.host)} autoComplete="off" />
-          {errors.host && <p className="text-xs text-red-500">{errors.host.message}</p>}
-        </div>
+        <SmtpField label="Host" required icon={Server} error={errors.host?.message}>
+          <NmInput
+            {...register("host")}
+            placeholder="e.g. smtp.gmail.com"
+            hasError={!!errors.host}
+            autoComplete="off"
+          />
+        </SmtpField>
 
         {/* Email / Username */}
-        <div className="space-y-1">
-          {fieldLabel("Email / Username", true)}
-          <Input {...register("user")} className={inputClass(!!errors.user)} autoComplete="off" />
-          {errors.user && <p className="text-xs text-red-500">{errors.user.message}</p>}
-        </div>
+        <SmtpField label="Email / Username" required icon={AtSign} error={errors.user?.message}>
+          <NmInput
+            {...register("user")}
+            placeholder="you@example.com"
+            hasError={!!errors.user}
+            autoComplete="off"
+          />
+        </SmtpField>
 
         {/* Password */}
-        <div className="space-y-1">
-          {fieldLabel("Password", true)}
-          <Input
-            type="password"
+        <SmtpField label="Password" required icon={Lock} error={errors.pass?.message}>
+          <NmInput
             {...register("pass")}
-            className={inputClass(!!errors.pass)}
+            type="password"
+            placeholder="••••••••"
+            hasError={!!errors.pass}
             autoComplete="new-password"
           />
-          {errors.pass && <p className="text-xs text-red-500">{errors.pass.message}</p>}
-        </div>
+        </SmtpField>
 
         {/* TLS + Port — side by side */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            {fieldLabel("Use TLS?")}
+          <SmtpField label="Use TLS?" icon={Shield}>
             <Controller
               control={control}
               name="tls"
               render={({ field }) => (
-                <ThemeSelect value={field.value} onChange={field.onChange} options={tlsOptions} />
+                <NmSelect value={field.value} onChange={field.onChange} options={tlsOptions} />
               )}
             />
-          </div>
-          <div className="space-y-1">
-            {fieldLabel("Port")}
+          </SmtpField>
+          <SmtpField label="Port">
             <Controller
               control={control}
               name="port"
               render={({ field }) => (
-                <ThemeSelect value={field.value} onChange={field.onChange} options={portOptions} />
+                <NmSelect value={field.value} onChange={field.onChange} options={portOptions} />
               )}
             />
-          </div>
+          </SmtpField>
         </div>
 
         {/* From Email */}
-        <div className="space-y-1">
-          {fieldLabel("From Email")}
-          <Input
+        <SmtpField label="From Email" icon={Mail} error={errors.fromEmail?.message}>
+          <NmInput
             {...register("fromEmail")}
-            className={inputClass(!!errors.fromEmail)}
+            placeholder="Optional sender email"
+            hasError={!!errors.fromEmail}
             autoComplete="off"
           />
-          {errors.fromEmail && <p className="text-xs text-red-500">{errors.fromEmail.message}</p>}
-        </div>
+        </SmtpField>
 
-        {/* Actions */}
-        <div className="flex items-center justify-center gap-3 pt-2">
-          <Button
+        {/* ── Actions ── */}
+        <div className="flex items-center gap-3 pt-2">
+          <button
             type="submit"
-            className="bg-primary hover:bg-primary/90 text-primary-foreground px-8 h-9 rounded-lg font-semibold transition-all shadow-sm text-sm"
+            className="flex-1 h-11 rounded-xl bg-primary text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all shadow-[3px_3px_8px_rgba(99,102,241,0.4),-2px_-2px_6px_rgba(255,255,255,0.1)] hover:shadow-[4px_4px_12px_rgba(99,102,241,0.5),-3px_-3px_8px_rgba(255,255,255,0.12)]"
           >
             Yes, Continue
-          </Button>
-          <Button
+          </button>
+          <button
             type="button"
-            variant="ghost"
             onClick={onClose}
-            className="bg-muted hover:bg-muted/80 text-muted-foreground px-6 h-9 rounded-lg font-semibold border border-border transition-all text-sm"
+            className="nm-btn flex h-11 flex-1 items-center justify-center rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground transition-all"
           >
             Cancel
-          </Button>
+          </button>
         </div>
+
       </form>
     </Modal>
   );

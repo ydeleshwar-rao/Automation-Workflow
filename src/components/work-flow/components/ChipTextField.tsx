@@ -157,8 +157,8 @@ export function ConfigField({
       <div className="relative group">
         <div
           className={cn(
-            "min-h-11 w-full flex flex-wrap items-center gap-y-1 pr-[130px] pl-3 py-2 bg-card border border-border rounded-lg focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all",
-            error && "border-destructive focus-within:ring-destructive/20"
+            "min-h-11 w-full flex flex-wrap items-center gap-y-1 pr-[130px] pl-3 py-2 nm-inset rounded-xl focus-within:outline focus-within:outline-1 focus-within:outline-primary/40 transition-all",
+            error && "outline outline-1 outline-destructive"
           )}
         >
           {segments.map((seg, index) =>
@@ -227,7 +227,7 @@ export function ConfigField({
         </div>
         <button
           onClick={onPlusClick}
-          className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-md border border-border bg-muted text-muted-foreground hover:text-primary hover:border-primary hover:bg-background transition-all shadow-sm"
+          className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center nm-btn rounded-xl text-muted-foreground hover:text-primary transition-all"
           type="button"
         >
           <Plus className="w-4 h-4" />
@@ -293,8 +293,8 @@ export function ConfigTextArea({
       <div className="relative group">
         <div
           className={cn(
-            "min-h-[100px] w-full flex flex-wrap items-start content-start gap-y-1 pr-12 pl-3 py-2 bg-card border border-border rounded-lg focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all",
-            error && "border-destructive focus-within:ring-destructive/20"
+            "min-h-[100px] w-full flex flex-wrap items-start content-start gap-y-1 pr-12 pl-3 py-2 nm-inset rounded-xl focus-within:outline focus-within:outline-1 focus-within:outline-primary/40 transition-all",
+            error && "outline outline-1 outline-destructive"
           )}
         >
           {segments.map((seg, index) =>
@@ -356,7 +356,7 @@ export function ConfigTextArea({
         </div>
         <button
           onClick={onPlusClick}
-          className="absolute right-2 top-3 w-7 h-7 flex items-center justify-center rounded-md border border-border bg-muted text-muted-foreground hover:text-primary hover:border-primary hover:bg-background transition-all shadow-sm"
+          className="absolute right-2 top-3 w-7 h-7 flex items-center justify-center nm-btn rounded-xl text-muted-foreground hover:text-primary transition-all"
           type="button"
         >
           <Plus className="w-4 h-4" />

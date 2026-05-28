@@ -17,6 +17,7 @@ import {
   Home,
   LucideIcon,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 import { DASHBOARD_ROUTES } from "@/src/constants/domain.constants";
 
@@ -73,6 +74,16 @@ export function getDashboardNavItems({
       name: "Workflow",
       href: DASHBOARD_ROUTES.WORKFLOW,
       icon: GitBranch,
+    });
+  }
+
+  // ── AI Workflow ───────────────────────────────────────────────────────────
+  if (can("workflow") || can("ai-workflow")) {
+    items.push({
+      id:   "ai-workflow",
+      name: "AI Workflow",
+      href: DASHBOARD_ROUTES.AI_WORKFLOW,
+      icon: Sparkles,
     });
   }
 
