@@ -5,6 +5,7 @@ import { Eye, EyeOff, Loader2, CheckCircle2, User, Mail, Lock } from "lucide-rea
 import Link from "next/link";
 import axios from "axios";
 import { API_ROUTES } from "@/src/constants/api.constants";
+import { GoogleAuthButton } from "../shared/GoogleAuthButton";
 
 // ── Password strength ─────────────────────────────────────────────────────────
 function getStrength(p: string): { score: number; label: string; color: string } {
@@ -267,6 +268,14 @@ export function CreateAccountForm() {
           )}
         </button>
       </form>
+
+      <div className="mt-7 flex items-center gap-3">
+        <div className="flex-1 h-px bg-border/60" />
+        <span className="text-xs text-muted-foreground font-medium">or</span>
+        <div className="flex-1 h-px bg-border/60" />
+      </div>
+
+      <GoogleAuthButton className="mt-5" label="Sign up with Google" />
 
       {/* Sign-in link */}
       <p className="mt-6 text-center text-sm text-muted-foreground">

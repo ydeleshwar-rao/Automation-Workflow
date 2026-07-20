@@ -5,7 +5,8 @@ import { Loader2, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import axios from "axios";
 import { API_ROUTES } from "@/src/constants/api.constants";
-import { saveSession, saveProfile } from "@/src/store/localStorage";
+import { persistLoginResponse } from "@/src/services/auth.service";
+import { GoogleAuthButton } from "../shared/GoogleAuthButton";
 
 export function EmailLoginForm() {
   const [email, setEmail]       = useState("");
@@ -23,50 +24,15 @@ export function EmailLoginForm() {
       const { data: loginRes } = await axios.post(API_ROUTES.AUTH.LOGIN, {
         email,
         password,
+      }, {
+        withCredentials: true,
       });
 
       if (!loginRes?.success) {
         throw new Error(loginRes?.message || "Login failed");
       }
 
-      const {
-        access_token,
-        refresh_token,
-        expires_in,
-        user: u,
-      } = loginRes.data;
-
-      const user_id     = u?.id          ?? u?.user_id;
-      const userEmail   = u?.email;
-      const full_name   = u?.full_name;
-      const role        = u?.role;
-      const avatar_url  = u?.avatar_url  ?? null;
-      const permissions = u?.permissions ?? [];
-
-      if (typeof document !== "undefined") {
-        const maxAge = typeof expires_in === "number" ? expires_in : 86400;
-        document.cookie = `jm_access_token=${encodeURIComponent(
-          access_token
-        )}; Path=/; Max-Age=${maxAge}; SameSite=Lax`;
-      }
-
-      saveSession({
-        userId:       user_id,
-        email:        userEmail,
-        role:         role ?? "developer",
-        permissions:  Array.isArray(permissions) ? permissions : [],
-        accessToken:  access_token,
-        refreshToken: refresh_token,
-        expiresIn:    typeof expires_in === "number" ? expires_in : 86400,
-      });
-
-      saveProfile({
-        userId:    user_id,
-        email:     userEmail,
-        fullName:  full_name ?? "",
-        avatarUrl: avatar_url ?? null,
-        role:      role ?? "developer",
-      });
+      persistLoginResponse(loginRes.data);
 
       window.location.assign("/dashboard");
     } catch (err: unknown) {
@@ -163,6 +129,8 @@ export function EmailLoginForm() {
       </div>
 
       {/* ── First-time setup card — always visible ── */}
+      <GoogleAuthButton className="mt-5" />
+
       <Link
         href="/setup"
         className="mt-5 flex items-center gap-4 rounded-xl border border-border/70 bg-card px-4 py-4 transition-all hover:border-primary/40 hover:bg-primary/5 hover:shadow-sm group"

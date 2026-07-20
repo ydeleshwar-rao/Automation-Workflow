@@ -29,7 +29,7 @@ export function AccessBootstrap() {
 
     if (status === "idle" || status === "error") {
       const session = loadSession()
-      if (session?.accessToken) {
+      if (session?.userId) {
         didRun.current = true
         dispatch(bootstrapAccess())
       }

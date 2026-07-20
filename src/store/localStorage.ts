@@ -17,9 +17,8 @@ export interface StoredSession {
   userId:       string
   email:        string
   role:         string                  // 'admin' | 'developer'
+  organizationId?: string
   permissions:  string[]               // page keys from JWT, or ['*'] for admin
-  accessToken:  string
-  refreshToken: string
   expiresIn:    number                  // seconds (from login response)
   expiresAt:    number                  // unix timestamp (seconds) — computed on save
 }
@@ -74,6 +73,7 @@ export interface StoredProfile {
   fullName?: string
   avatarUrl?: string | null
   role:      string
+  organizationId?: string
 }
 
 export function saveProfile(profile: StoredProfile): void {

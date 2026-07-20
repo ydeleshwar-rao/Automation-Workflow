@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, EyeOff, Loader2, ShieldCheck, User, Mail, Lock } from "lucide-react";
+import { Building2, Eye, EyeOff, Loader2, ShieldCheck, User, Mail, Lock } from "lucide-react";
 import axios from "axios";
 import { API_ROUTES } from "@/src/constants/api.constants";
-import { saveSession, saveProfile } from "@/src/store/localStorage";
+import { persistLoginResponse } from "@/src/services/auth.service";
 
 // ── Password strength ─────────────────────────────────────────────────────────
 function getStrength(p: string): { score: number; label: string; color: string } {
@@ -24,6 +24,7 @@ function getStrength(p: string): { score: number; label: string; color: string }
 
 export function SetupAdminForm() {
   const [fullName, setFullName]         = useState("");
+  const [organizationName, setOrganizationName] = useState("");
   const [email, setEmail]               = useState("");
   const [password, setPassword]         = useState("");
   const [confirmPassword, setConfirm]   = useState("");
@@ -55,42 +56,14 @@ export function SetupAdminForm() {
         email:     email.trim().toLowerCase(),
         password,
         full_name: fullName.trim(),
+        organization_name: organizationName.trim(),
+      }, {
+        withCredentials: true,
       });
 
       if (!data?.success) throw new Error(data?.message || "Setup failed");
 
-      // The endpoint returns a full JWT pair — log the admin in immediately
-      const {
-        access_token,
-        refresh_token,
-        expires_in,
-        user: u,
-      } = data.data;
-
-      // Set cookie
-      if (typeof document !== "undefined") {
-        const maxAge = typeof expires_in === "number" ? expires_in : 86400;
-        document.cookie = `jm_access_token=${encodeURIComponent(access_token)}; Path=/; Max-Age=${maxAge}; SameSite=Lax`;
-      }
-
-      // Persist session + profile
-      saveSession({
-        userId:       u.id,
-        email:        u.email,
-        role:         "admin",
-        permissions:  ["*"],
-        accessToken:  access_token,
-        refreshToken: refresh_token,
-        expiresIn:    typeof expires_in === "number" ? expires_in : 86400,
-      });
-
-      saveProfile({
-        userId:   u.id,
-        email:    u.email,
-        fullName: u.full_name ?? "",
-        avatarUrl: u.avatar_url ?? null,
-        role:     "admin",
-      });
+      persistLoginResponse(data.data);
 
       // Navigate to dashboard — full page load to hydrate everything
       window.location.assign("/dashboard");
@@ -140,6 +113,26 @@ export function SetupAdminForm() {
               autoComplete="name"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
+              className="w-full bg-background border border-border/70 rounded-xl pl-10 pr-4 py-3 text-foreground placeholder:text-muted-foreground text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+            />
+          </div>
+        </div>
+
+        {/* Company */}
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="setup-company" className="text-sm font-medium text-foreground">
+            Company name
+          </label>
+          <div className="relative">
+            <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <input
+              id="setup-company"
+              type="text"
+              placeholder="Your company"
+              required
+              autoComplete="organization"
+              value={organizationName}
+              onChange={(e) => setOrganizationName(e.target.value)}
               className="w-full bg-background border border-border/70 rounded-xl pl-10 pr-4 py-3 text-foreground placeholder:text-muted-foreground text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
             />
           </div>

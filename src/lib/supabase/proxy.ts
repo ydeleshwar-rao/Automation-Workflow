@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
-  const publicRoutes = ["/login", "/register"];
+  const publicRoutes = ["/login", "/register", "/auth/callback"];
   const isPublicRoute =
     publicRoutes.some((route) => pathname.startsWith(route)) ||
     pathname.startsWith("/api") ||

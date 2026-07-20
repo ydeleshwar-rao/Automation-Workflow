@@ -266,7 +266,7 @@ export function SmtpConnectionPopup({
         <div className="flex items-center gap-3 pt-2">
           <button
             type="submit"
-            className="flex-1 h-11 rounded-xl bg-primary text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all shadow-[3px_3px_8px_rgba(99,102,241,0.4),-2px_-2px_6px_rgba(255,255,255,0.1)] hover:shadow-[4px_4px_12px_rgba(99,102,241,0.5),-3px_-3px_8px_rgba(255,255,255,0.12)]"
+            className="flex-1 h-11 rounded-xl bg-primary text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all border-2 border-foreground shadow-[3px_3px_0_hsl(var(--foreground))] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[5px_5px_0_hsl(var(--foreground))] dark:border-border dark:shadow-[3px_3px_0_hsl(var(--border))] dark:hover:shadow-[5px_5px_0_hsl(var(--border))]"
           >
             Yes, Continue
           </button>

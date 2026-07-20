@@ -25,6 +25,7 @@ import { FlowEdge }    from "./edges/FlowEdge";
 import { NodePalette } from "./NodePalette";
 import { CanvasToolbar } from "./CanvasToolbar";
 import { ConfigPanel }   from "./ConfigPanel";
+import { HarnessTestPanel } from "./HarnessTestPanel";
 
 import type { AiNodeData, AiWorkflowListItem } from "@/src/lib/ai-workflow/types";
 import type { NodeDefinition } from "@/src/lib/ai-workflow/node-catalog";
@@ -85,6 +86,7 @@ export function WorkflowCanvas({
   const [edges, setEdges, onEdgesChange]    = useEdgesState(initialEdges);
   const [selectedNode, setSelectedNode]     = useState<Node<AiNodeData> | null>(null);
   const [reactFlowInstance, setInstance]    = useState<any>(null);
+  const [isHarnessOpen, setHarnessOpen]     = useState(false);
 
   // ── Connect nodes ──────────────────────────────────────────
   const onConnect = useCallback(
@@ -191,6 +193,7 @@ export function WorkflowCanvas({
         isRunning={isRunning}
         onSave={handleSave}
         onRun={onRun}
+        onOpenHarnessTest={() => setHarnessOpen(true)}
         onNameChange={onNameChange}
       />
 
@@ -274,6 +277,15 @@ export function WorkflowCanvas({
             onClose={() => setSelectedNode(null)}
             onUpdate={handleNodeUpdate}
             onDelete={handleNodeDelete}
+          />
+        )}
+
+        {isHarnessOpen && (
+          <HarnessTestPanel
+            workflow={workflow}
+            nodes={nodes}
+            edges={edges}
+            onClose={() => setHarnessOpen(false)}
           />
         )}
       </div>

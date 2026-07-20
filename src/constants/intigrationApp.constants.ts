@@ -5,6 +5,21 @@ import { IntegrationAppRaw } from "../components/work-flow/uiOrchestrator/types"
  * The client resolves the string back to a component via ICON_REGISTRY.
  */
 export const WORKFLOW_APPS: IntegrationAppRaw[] = [
+  {
+    id: "whatsapp",
+    label: "WhatsApp",
+    iconName: "MessageCircle",
+    color: "bg-green-50 border-green-200 text-[#25D366]",
+    events: [
+      { title: "New Message Received", description: "Triggers when a new WhatsApp message is received.", type: "Instant" },
+      { title: "Message Status Updated", description: "Triggers when a WhatsApp message status changes.", type: "Instant" },
+      { title: "Send Text Message", description: "Sends a WhatsApp text message through your connected phone.", type: "Action" },
+      { title: "Send Image", description: "Sends an image through your connected phone.", type: "Action" },
+      { title: "Send Document/PDF", description: "Sends a document or PDF through your connected phone.", type: "Action" },
+      { title: "Send Template Message", description: "Sends a template-style WhatsApp message.", type: "Action" },
+      { title: "Send Location", description: "Sends a WhatsApp location message.", type: "Action" }
+    ]
+  },
   { 
     id: "servicem8",
     label: "ServiceM8", 

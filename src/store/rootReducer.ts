@@ -9,6 +9,7 @@ import { workflowTemplateApi } from "@/src/components/workflow-templates/apiInte
 import { templateFolderApi } from "@/src/components/workflow-templates/apiIntegrations/templateFolderApi"
 import { accessApi } from "@/src/components/admin/access/apiIntegrations/accessApi"
 import { aiWorkflowApi } from "@/src/components/ai-workflow/aiWorkflowApi"
+import { aiHarnessApi } from "@/src/components/ai-workflow/aiHarnessApi"
 
 const rootReducer = combineReducers({
   workflowBuilder: workflowBuilderReducer,
@@ -21,6 +22,7 @@ const rootReducer = combineReducers({
   [templateFolderApi.reducerPath]: templateFolderApi.reducer,
   [accessApi.reducerPath]: accessApi.reducer,
   [aiWorkflowApi.reducerPath]: aiWorkflowApi.reducer,
+  [aiHarnessApi.reducerPath]: aiHarnessApi.reducer,
 })
 
 export default rootReducer

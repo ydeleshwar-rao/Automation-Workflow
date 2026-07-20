@@ -19,6 +19,10 @@ const CONFIG_FIELDS: Record<string, Array<{ key: string; label: string; type: "t
   "manual-trigger":  [],
   "schedule-trigger":[{ key: "cron", label: "Cron expression", type: "text" }],
   "webhook-trigger": [{ key: "method", label: "HTTP method", type: "select", options: ["GET","POST","PUT","DELETE"] }, { key: "path", label: "Path suffix", type: "text" }],
+  "harness-prompt":  [{ key: "model", label: "Model", type: "text" }, { key: "systemPrompt", label: "System prompt", type: "textarea" }, { key: "userTemplate", label: "User template", type: "textarea" }, { key: "temperature", label: "Temperature", type: "number" }, { key: "maxTokens", label: "Max tokens", type: "number" }, { key: "complexity", label: "Complexity", type: "number" }, { key: "outputSchema", label: "Output schema JSON", type: "textarea" }],
+  "harness-chain":   [{ key: "model", label: "Model", type: "text" }, { key: "steps", label: "Steps JSON array", type: "textarea" }],
+  "harness-rag":     [{ key: "model", label: "Model", type: "text" }, { key: "systemPrompt", label: "System prompt", type: "textarea" }, { key: "topK", label: "Top K", type: "number" }, { key: "chunkSize", label: "Chunk size", type: "number" }, { key: "chunkOverlap", label: "Chunk overlap", type: "number" }, { key: "temperature", label: "Temperature", type: "number" }, { key: "maxTokens", label: "Max tokens", type: "number" }],
+  "harness-agent":   [{ key: "model", label: "Model", type: "text" }, { key: "instructions", label: "Instructions", type: "textarea" }, { key: "tools", label: "Built-in tools JSON", type: "textarea" }, { key: "customTools", label: "Custom tools JSON", type: "textarea" }, { key: "mcpServers", label: "MCP servers JSON", type: "textarea" }, { key: "maxIterations", label: "Max iterations", type: "number" }, { key: "temperature", label: "Temperature", type: "number" }, { key: "maxTokens", label: "Max tokens", type: "number" }],
   "openai-chat":     [{ key: "model", label: "Model", type: "select", options: ["gpt-4o","gpt-4o-mini","gpt-3.5-turbo"] }, { key: "systemPrompt", label: "System Prompt", type: "textarea" }, { key: "userPrompt", label: "User Prompt", type: "textarea" }, { key: "temperature", label: "Temperature (0–1)", type: "number" }],
   "claude-chat":     [{ key: "model", label: "Model", type: "select", options: ["claude-sonnet-4-6","claude-opus-4-7","claude-haiku-4-5-20251001"] }, { key: "systemPrompt", label: "System Prompt", type: "textarea" }, { key: "userPrompt", label: "User Prompt", type: "textarea" }, { key: "maxTokens", label: "Max tokens", type: "number" }],
   "gemini-chat":     [{ key: "model", label: "Model", type: "select", options: ["gemini-1.5-pro","gemini-1.5-flash"] }, { key: "prompt", label: "Prompt", type: "textarea" }],
@@ -168,8 +172,9 @@ export function ConfigPanel({ node, onClose, onUpdate, onDelete }: ConfigPanelPr
           onClick={apply}
           className={cn(
             "flex-1 h-9 rounded-xl text-[12px] font-bold text-primary-foreground transition-all",
-            "bg-primary shadow-[3px_3px_8px_rgba(99,102,241,0.4),-2px_-2px_6px_rgba(255,255,255,0.1)]",
-            "hover:bg-primary/90"
+            "bg-primary border-2 border-foreground shadow-[3px_3px_0_hsl(var(--foreground))]",
+            "hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-[5px_5px_0_hsl(var(--foreground))]",
+            "dark:border-border dark:shadow-[3px_3px_0_hsl(var(--border))] dark:hover:shadow-[5px_5px_0_hsl(var(--border))]"
           )}
         >
           Apply

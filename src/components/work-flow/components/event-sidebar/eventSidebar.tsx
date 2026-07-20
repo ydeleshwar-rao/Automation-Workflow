@@ -101,7 +101,7 @@ export function EventSidebar({
   };
   return (
     <div className="absolute inset-y-0 right-0 z-40 flex w-[450px] flex-col font-sans pointer-events-none">
-      <div className="h-full w-full pointer-events-auto relative flex flex-col overflow-hidden rounded-l-2xl animate-in slide-in-from-right duration-300 ease-out nm-sidebar" style={{boxShadow:'-10px 0 28px rgba(163,177,198,0.55), -1px 0 0 rgba(255,255,255,0.6)'}}>
+      <div className="h-full w-full pointer-events-auto relative flex flex-col overflow-hidden rounded-l-2xl animate-in slide-in-from-right duration-300 ease-out nm-sidebar">
         {/* Loading Overlay */}
         {isLoading && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-[2px] transition-all">

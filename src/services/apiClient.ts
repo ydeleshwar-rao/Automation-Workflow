@@ -2,7 +2,7 @@
  * Axios instance for all backend API calls.
  *
  * Features:
- *  - Auto-attaches Authorization: Bearer <access_token> from localStorage session
+ *  - Sends HttpOnly auth cookies with each request
  *  - On 401: attempts one silent token refresh via POST /auth/refresh
  *  - On refresh failure: clears session (forces re-login)
  *  - No clientkey header (removed — auth is user_id based)
@@ -11,46 +11,23 @@
 import axios from "axios"
 import { loadSession, saveSession, clearSession, isSessionValid } from "@/src/store/localStorage"
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || ""
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
 
 const axiosInstance = axios.create({
   baseURL: BASE_URL,
   headers: { "Content-Type": "application/json" },
+  withCredentials: true,
 })
 
 // ── Request interceptor: attach JWT ──────────────────────────────────────────
 
-axiosInstance.interceptors.request.use((config) => {
-  const session = loadSession()
-  if (session?.accessToken) {
-    const h = config.headers
-    const existing = typeof h?.get === "function" ? h.get("Authorization") : (h as any)?.["Authorization"]
-    if (!existing) {
-      if (typeof h?.set === "function") {
-        h.set("Authorization", `Bearer ${session.accessToken}`)
-      } else {
-        ;(h as any)["Authorization"] = `Bearer ${session.accessToken}`
-      }
-    }
-  }
-  return config
-})
+// Auth is cookie-only. Do not attach bearer tokens from localStorage.
 
 // ── Response interceptor: silent token refresh on 401 ────────────────────────
 
 let isRefreshing = false
-type QueueEntry = { resolve: (token: string) => void; reject: (err: unknown) => void }
+type QueueEntry = { resolve: () => void; reject: (err: unknown) => void }
 let refreshQueue: QueueEntry[] = []
-
-function setAuthHeader(config: any, token: string): void {
-  if (!config) return
-  if (!config.headers) config.headers = {}
-  if (typeof config.headers.set === "function") {
-    config.headers.set("Authorization", `Bearer ${token}`)
-  } else {
-    config.headers["Authorization"] = `Bearer ${token}`
-  }
-}
 
 axiosInstance.interceptors.response.use(
   (response) => response,
@@ -62,23 +39,17 @@ axiosInstance.interceptors.response.use(
 
     // Skip refresh for auth endpoints to prevent loops
     const url: string = originalRequest.url ?? ""
-    if (url.includes("/auth/login") || url.includes("/auth/refresh")) {
+    if (url.includes("/auth/login") || url.includes("/auth/google") || url.includes("/auth/refresh")) {
       return Promise.reject(error)
     }
 
     const session = loadSession()
-    if (!session?.refreshToken) {
-      clearSession()
-      if (typeof window !== "undefined") window.location.href = "/login"
-      return Promise.reject(error)
-    }
 
     // Queue requests while refreshing
     if (isRefreshing) {
       return new Promise((resolve, reject) => {
         refreshQueue.push({
-          resolve: (newToken: string) => {
-            setAuthHeader(originalRequest, newToken)
+          resolve: () => {
             originalRequest._retried = true
             resolve(axiosInstance(originalRequest))
           },
@@ -91,30 +62,35 @@ axiosInstance.interceptors.response.use(
     isRefreshing = true
 
     try {
-      // POST /auth/refresh — our custom refresh endpoint
-      const { data } = await axios.post(`${BASE_URL}/auth/refresh`, {
-        refresh_token: session.refreshToken,
-      })
+      // POST /auth/refresh. Refresh token is sent only via HttpOnly cookie.
+      const { data } = await axios.post(
+        `${BASE_URL}/auth/refresh`,
+        {},
+        { withCredentials: true }
+      )
 
       const refreshed = data?.data
-      if (!refreshed?.access_token) throw new Error("No access_token in refresh response")
+      if (!refreshed?.user) throw new Error("No user in refresh response")
 
-      // Update stored session with new tokens + updated permissions
+      // Update stored user metadata. Tokens remain cookie-only.
       saveSession({
         ...session,
-        accessToken:  refreshed.access_token,
-        refreshToken: refreshed.refresh_token ?? session.refreshToken,
-        expiresIn:    refreshed.expires_in ?? session.expiresIn,
+        expiresIn:    refreshed.expires_in ?? session?.expiresIn ?? 900,
         // Update permissions if re-fetched during refresh
-        permissions:  refreshed.user?.permissions ?? session.permissions,
-        role:         refreshed.user?.role ?? session.role,
+        permissions:  refreshed.user?.permissions ?? session?.permissions ?? [],
+        role:         refreshed.user?.role ?? session?.role ?? "developer",
+        userId:       refreshed.user?.id ?? session?.userId ?? "",
+        email:        refreshed.user?.email ?? session?.email ?? "",
+        organizationId:
+          refreshed.user?.organization_id ??
+          refreshed.user?.organizationId ??
+          session?.organizationId,
       })
 
       const queue = refreshQueue
       refreshQueue = []
-      queue.forEach((entry) => entry.resolve(refreshed.access_token))
+      queue.forEach((entry) => entry.resolve())
 
-      setAuthHeader(originalRequest, refreshed.access_token)
       return axiosInstance(originalRequest)
     } catch (refreshErr) {
       const queue = refreshQueue

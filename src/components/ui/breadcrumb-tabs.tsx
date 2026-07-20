@@ -57,9 +57,9 @@ export function BreadcrumbTabs({
                 <Check className="h-3 w-3 text-primary stroke-[3]" />
               )}
 
-              {/* Active underline — nm-style: thicker, softer glow */}
+              {/* Active underline */}
               {isActive && (
-                <div className="absolute bottom-0 left-0 right-0 h-[3px] rounded-t-full bg-primary shadow-[0_0_6px_rgba(99,102,241,0.6)]" />
+                <div className="absolute bottom-0 left-0 right-0 h-[3px] rounded-t-full bg-primary" />
               )}
             </button>
             

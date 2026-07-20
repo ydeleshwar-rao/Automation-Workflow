@@ -13,8 +13,9 @@ import {
   clearSession,
   clearProfile,
   clearBrowserDataOnLogout,
-  type StoredSession,
 } from "@/src/store/localStorage";
+import axios from "axios";
+import { API_ROUTES } from "@/src/constants/api.constants";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,7 @@ export interface AuthUser {
   email:       string;
   role:        UserRole;
   permissions: string[];   // page keys or ['*'] for admin
+  organizationId?: string;
   fullName?:   string;
   avatarUrl?:  string | null;
 }
@@ -62,6 +64,7 @@ export function getCurrentUser(): AuthUser | null {
     email:       session.email,
     role:        session.role as UserRole,
     permissions: session.permissions,
+    organizationId: session.organizationId,
   };
 }
 
@@ -70,7 +73,7 @@ export function getCurrentUser(): AuthUser | null {
  * Returns null if not logged in.
  */
 export function getAccessToken(): string | null {
-  return loadSession()?.accessToken ?? null;
+  return null;
 }
 
 /**
@@ -78,7 +81,7 @@ export function getAccessToken(): string | null {
  */
 export function isLoggedIn(): boolean {
   const session = loadSession();
-  return !!session?.accessToken;
+  return !!session?.userId;
 }
 
 // ─── Login / Logout ───────────────────────────────────────────────────────────
@@ -88,34 +91,37 @@ export function isLoggedIn(): boolean {
  * Called after POST /auth/login succeeds.
  */
 export function persistLoginResponse(data: {
-  access_token:  string;
-  refresh_token: string;
+  access_token?:  string;
+  refresh_token?: string;
   expires_in:    number;
   user: {
     id:          string;
     email:       string;
     role:        string;
     permissions: string[];
+    organization_id?: string;
+    organizationId?:  string;
     full_name?:  string;
     avatar_url?: string | null;
   };
 }): void {
-  const { user, access_token, refresh_token, expires_in } = data;
+  const { user, expires_in } = data;
+  const maxAge = typeof expires_in === "number" ? expires_in : 86400;
 
   saveSession({
     userId:       user.id,
     email:        user.email,
     role:         user.role,
+    organizationId: user.organization_id ?? user.organizationId,
     permissions:  user.permissions,
-    accessToken:  access_token,
-    refreshToken: refresh_token,
-    expiresIn:    expires_in,
+    expiresIn:    maxAge,
   });
 
   saveProfile({
     userId:    user.id,
     email:     user.email,
     role:      user.role,
+    organizationId: user.organization_id ?? user.organizationId,
     fullName:  user.full_name,
     avatarUrl: user.avatar_url,
   });
@@ -125,6 +131,11 @@ export function persistLoginResponse(data: {
  * Clear all auth data and browser state on logout.
  */
 export async function logout(): Promise<void> {
+  try {
+    await axios.post(API_ROUTES.AUTH.LOGOUT, {}, { withCredentials: true });
+  } catch {
+    // Local cleanup should still happen if the network request fails.
+  }
   clearSession();
   clearProfile();
   await clearBrowserDataOnLogout();

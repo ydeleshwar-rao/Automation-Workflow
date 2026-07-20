@@ -168,8 +168,9 @@ export default function WorkflowNavbar({
           className={cn(
             "flex h-8 items-center gap-1.5 rounded-xl px-4 text-xs font-semibold transition-all",
             "bg-primary text-primary-foreground",
-            "shadow-[3px_3px_8px_rgba(99,102,241,0.4),-2px_-2px_6px_rgba(255,255,255,0.1)]",
-            "hover:bg-primary/90 hover:shadow-[4px_4px_10px_rgba(99,102,241,0.5),-3px_-3px_8px_rgba(255,255,255,0.12)]",
+            "border-2 border-foreground shadow-[3px_3px_0_hsl(var(--foreground))]",
+            "hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-[5px_5px_0_hsl(var(--foreground))]",
+            "dark:border-border dark:shadow-[3px_3px_0_hsl(var(--border))] dark:hover:shadow-[5px_5px_0_hsl(var(--border))]",
           )}
         >
           <Send className="h-3.5 w-3.5" />

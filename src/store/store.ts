@@ -7,6 +7,7 @@ import { workflowTemplateApi } from "../components/workflow-templates/apiIntegra
 import { templateFolderApi } from "../components/workflow-templates/apiIntegrations/templateFolderApi"
 import { accessApi } from "../components/admin/access/apiIntegrations/accessApi"
 import { aiWorkflowApi } from "../components/ai-workflow/aiWorkflowApi"
+import { aiHarnessApi } from "../components/ai-workflow/aiHarnessApi"
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 export const store = configureStore({
@@ -20,6 +21,7 @@ export const store = configureStore({
       templateFolderApi.middleware,
       accessApi.middleware,
       aiWorkflowApi.middleware,
+      aiHarnessApi.middleware,
     ),
   devTools: process.env.NODE_ENV !== "production",
 })

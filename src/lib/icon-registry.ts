@@ -4,6 +4,7 @@ import {
   Webhook,
   Mail,
   Calendar,
+  MessageCircle,
   Wallet,
   Banknote,
   LucideIcon,
@@ -19,6 +20,7 @@ export const ICON_REGISTRY: Record<string, LucideIcon> = {
   Webhook,
   Mail,
   Calendar,
+  MessageCircle,
   Wallet,
   Banknote,
 };

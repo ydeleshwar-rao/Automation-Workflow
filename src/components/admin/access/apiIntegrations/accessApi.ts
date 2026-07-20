@@ -51,7 +51,7 @@ export interface CreateDeveloperDto {
   email:        string;
   full_name?:   string;
   password?:    string;          // optional; backend generates temp password if omitted
-  permissions?: string[];        // initial page keys to grant
+  permissions?: UpdatePermissionsDto["permissions"];
 }
 
 export interface UpdatePermissionsDto {

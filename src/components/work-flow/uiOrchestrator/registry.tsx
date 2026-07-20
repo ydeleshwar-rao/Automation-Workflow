@@ -7,6 +7,7 @@ import { mailIntegration } from "../appEvents/mail";
 import { leadConnectorIntegration } from "../appEvents/leadconnector";
 import { serviceM8Integration } from "../appEvents/serviceM8";
 import { commusoftIntegration } from "../appEvents/commusoft";
+import { whatsappIntegration } from "../appEvents/whatsapp";
 
 /**
  * Integration Registry
@@ -61,6 +62,7 @@ export const integrationRegistry: Record<string, IntegrationDescriptor> = {
   // Official integrations
   ServiceM8: serviceM8Integration,
   Commusoft: commusoftIntegration,
+  WhatsApp: whatsappIntegration,
   // LeadsHub:  createPlaceholder("LeadsHub"),
   // GoHighLevel: createPlaceholder("GoHighLevel"),
   LeadsHub:  leadConnectorIntegration,  

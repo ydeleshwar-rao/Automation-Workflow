@@ -42,114 +42,133 @@
     /* ── Shape ───────────────────────────────────────────── */
     --radius: 0.5rem;
 
+    /* Central palette from the supplied reference */
+    --cream-light: 42 100% 94%;
+    --cream:       42 100% 86%;
+    --cream-dark:  37 87% 78%;
+    --sand-light:  34 71% 82%;
+    --sand:        34 74% 75%;
+    --sand-dark:   31 60% 62%;
+    --gold-light:  43 89% 78%;
+    --gold:        43 86% 67%;
+    --gold-dark:   39 70% 50%;
+    --coral-light: 6 86% 79%;
+    --coral:       6 86% 71%;
+    --coral-dark:  5 66% 56%;
+    --sage-light:  182 19% 62%;
+    --sage:        183 18% 51%;
+    --sage-dark:   184 22% 38%;
+    --teal-light:  191 56% 28%;
+    --teal:        192 76% 18%;
+    --teal-dark:   194 80% 11%;
+
     /* ── Base ────────────────────────────────────────────── */
-    --background:         0 0% 100%;
-    --foreground:         222 47% 11%;
+    --background:         var(--cream-light);
+    --foreground:         var(--teal-dark);
 
     /* ── Card & Popover ──────────────────────────────────── */
-    --card:               0 0% 100%;
-    --card-foreground:    222 47% 11%;
-    --popover:            0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --card:               42 100% 96%;
+    --card-foreground:    var(--teal-dark);
+    --popover:            42 100% 96%;
+    --popover-foreground: var(--teal-dark);
 
-    /* ── Brand — Purple Primary ──────────────────────────── */
-    --primary:            244 75% 59%;
+    /* ── Brand ───────────────────────────────────────────── */
+    --primary:            var(--teal);
     --primary-foreground: 0 0% 100%;
 
     /* ── Secondary ───────────────────────────────────────── */
-    --secondary:            210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary:            var(--sand);
+    --secondary-foreground: var(--teal-dark);
 
     /* ── Muted ───────────────────────────────────────────── */
-    --muted:            210 40% 96%;
-    --muted-foreground: 215 16% 47%;
+    --muted:            40 82% 88%;
+    --muted-foreground: var(--sage-dark);
 
-    /* ── Accent (light purple tint) ──────────────────────── */
-    --accent:            244 100% 96%;
-    --accent-foreground: 244 50% 38%;
+    /* ── Accent ──────────────────────────────────────────── */
+    --accent:            var(--gold);
+    --accent-foreground: var(--teal-dark);
 
     /* ── Destructive ─────────────────────────────────────── */
-    --destructive:            0 84% 60%;
+    --destructive:            var(--coral);
     --destructive-foreground: 0 0% 98%;
 
     /* ── Status ──────────────────────────────────────────── */
-    --success:            142 71% 45%;
+    --success:            var(--sage);
     --success-foreground: 0 0% 100%;
-    --warning:            38 92% 50%;
-    --warning-foreground: 0 0% 100%;
-    --info:               199 89% 48%;
+    --warning:            var(--gold-dark);
+    --warning-foreground: var(--teal-dark);
+    --info:               var(--teal-light);
     --info-foreground:    0 0% 100%;
 
     /* ── Borders & Inputs ────────────────────────────────── */
-    --border: 214 32% 91%;
-    --input:  214 32% 91%;
-    --ring:   244 75% 59%;
+    --border: var(--teal);
+    --input:  var(--teal);
+    --ring:   var(--coral);
 
-    /* ── Surface — neumorphism base (cool soft gray) ────── */
-    /* hsl(220 16% 90%) ≈ rgb(220,225,233) — ideal for nm */
-    --surface: 220 16% 90%;
+    /* Surface */
+    --surface: 42 100% 86%;
 
     /* ── Charts ──────────────────────────────────────────── */
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    --chart-1: var(--gold);
+    --chart-2: var(--coral);
+    --chart-3: var(--sage);
+    --chart-4: var(--teal);
+    --chart-5: var(--sand);
   }
 
   .dark {
     /* ── Base ────────────────────────────────────────────── */
-    --background: 222 47% 8%;
-    --foreground: 210 40% 98%;
+    --background: var(--teal-dark);
+    --foreground: var(--cream-light);
 
     /* ── Card & Popover ──────────────────────────────────── */
-    --card:               222 47% 11%;
-    --card-foreground:    210 40% 98%;
-    --popover:            222 47% 11%;
-    --popover-foreground: 210 40% 98%;
+    --card:               var(--teal);
+    --card-foreground:    var(--cream-light);
+    --popover:            var(--teal);
+    --popover-foreground: var(--cream-light);
 
-    /* ── Brand — Purple (stays vivid in dark) ────────────── */
-    --primary:            244 75% 59%;
-    --primary-foreground: 0 0% 100%;
+    /* ── Brand ───────────────────────────────────────────── */
+    --primary:            var(--gold);
+    --primary-foreground: var(--teal-dark);
 
     /* ── Secondary ───────────────────────────────────────── */
-    --secondary:            217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary:            var(--teal-light);
+    --secondary-foreground: var(--cream-light);
 
     /* ── Muted ───────────────────────────────────────────── */
-    --muted:            217 33% 17%;
-    --muted-foreground: 215 20% 65%;
+    --muted:            192 56% 20%;
+    --muted-foreground: var(--sage-light);
 
-    /* ── Accent (dark purple tint) ───────────────────────── */
-    --accent:            244 30% 22%;
-    --accent-foreground: 244 100% 90%;
+    /* ── Accent ──────────────────────────────────────────── */
+    --accent:            var(--coral);
+    --accent-foreground: 0 0% 100%;
 
     /* ── Destructive ─────────────────────────────────────── */
-    --destructive:            0 63% 31%;
+    --destructive:            var(--coral-dark);
     --destructive-foreground: 210 40% 98%;
 
     /* ── Status ──────────────────────────────────────────── */
-    --success:            142 71% 45%;
+    --success:            var(--sage-light);
     --success-foreground: 0 0% 100%;
-    --warning:            38 92% 50%;
-    --warning-foreground: 0 0% 100%;
-    --info:               199 89% 48%;
+    --warning:            var(--gold);
+    --warning-foreground: var(--teal-dark);
+    --info:               var(--sand);
     --info-foreground:    0 0% 100%;
 
     /* ── Borders & Inputs ────────────────────────────────── */
-    --border: 217 33% 20%;
-    --input:  217 33% 20%;
-    --ring:   244 75% 59%;
+    --border: var(--cream);
+    --input:  var(--cream);
+    --ring:   var(--gold);
 
     /* ── Surface ─────────────────────────────────────────── */
-    --surface: 222 47% 6%;
+    --surface: var(--teal-dark);
 
     /* ── Charts ──────────────────────────────────────────── */
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --chart-1: var(--gold);
+    --chart-2: var(--coral);
+    --chart-3: var(--sage-light);
+    --chart-4: var(--sand);
+    --chart-5: var(--cream-dark);
   }
 }
 
@@ -235,100 +254,75 @@
     scrollbar-width: none;
   }
 
-  /* ═══════════════════════════════════════════════════════════
-     NEUMORPHISM UTILITIES
-     ═══════════════════════════════════════════════════════════
-     RULE: every nm-* element MUST share the exact same bg as
-     its parent surface. We bake the bg into each class so it
-     is always correct — never override it with bg-card/white.
+  /* Brutal utilities. Legacy nm-* names are kept as aliases to avoid a large JSX churn. */
 
-     Light surface: hsl(220 16% 90%) ≈ rgb(220,225,233)
-       dark  shadow → rgba(163,177,198, 0.78)   [cool blue-gray]
-       light shadow → rgba(255,255,255, 1.0)    [pure white]
-
-     Dark surface:  hsl(222 47% 8%)  ≈ rgb(10,14,29)
-       dark  shadow → rgba(0,0,0, 0.72)
-       light shadow → rgba(255,255,255, 0.05)
-  ═══════════════════════════════════════════════════════════ */
-
-  /* ── Sidebar ── */
   .nm-sidebar {
     background: hsl(var(--surface));
-    box-shadow:
-      6px 0 20px rgba(163,177,198,0.55),
-      1px 0 0   rgba(255,255,255,0.6);
+    border-right: 2px solid hsl(var(--foreground));
+    box-shadow: 6px 0 0 hsl(var(--foreground));
   }
   .dark .nm-sidebar {
     background: hsl(var(--surface));
-    box-shadow:
-      6px 0 24px rgba(0,0,0,0.72),
-      1px 0 0   rgba(255,255,255,0.03);
+    border-right-color: hsl(var(--border));
+    box-shadow: 6px 0 0 hsl(var(--border));
   }
 
-  /* ── Top bar ── */
   .nm-topbar {
     background: hsl(var(--surface));
-    box-shadow:
-      0 6px 20px rgba(163,177,198,0.5),
-      0 1px 0   rgba(255,255,255,0.6);
+    border-bottom: 2px solid hsl(var(--foreground));
+    box-shadow: 0 5px 0 hsl(var(--foreground));
   }
   .dark .nm-topbar {
     background: hsl(var(--surface));
-    box-shadow:
-      0 6px 22px rgba(0,0,0,0.68),
-      0 1px 0   rgba(255,255,255,0.03);
+    border-bottom-color: hsl(var(--border));
+    box-shadow: 0 5px 0 hsl(var(--border));
   }
 
-  /* ── Raised / floating element ── */
   .nm-btn {
     background: hsl(var(--surface));
-    box-shadow:
-       8px  8px 16px rgba(163,177,198,0.78),
-      -7px -7px 14px rgba(255,255,255,1.0);
-    transition: box-shadow 0.2s ease, color 0.2s ease;
+    border: 2px solid hsl(var(--foreground));
+    box-shadow: 3px 3px 0 hsl(var(--foreground));
+    transition: transform 0.16s ease, box-shadow 0.16s ease, color 0.16s ease, background-color 0.16s ease;
   }
   .dark .nm-btn {
     background: hsl(var(--surface));
-    box-shadow:
-       7px  7px 14px rgba(0,0,0,0.72),
-      -5px -5px 11px rgba(255,255,255,0.05);
+    border-color: hsl(var(--border));
+    box-shadow: 3px 3px 0 hsl(var(--border));
   }
   .nm-btn:hover {
-    box-shadow:
-       10px  10px 20px rgba(163,177,198,0.82),
-      -10px -10px 20px rgba(255,255,255,1.0);
+    transform: translate(-1px, -1px);
+    box-shadow: 5px 5px 0 hsl(var(--foreground));
   }
   .dark .nm-btn:hover {
-    box-shadow:
-       9px  9px 18px rgba(0,0,0,0.76),
-      -7px -7px 15px rgba(255,255,255,0.06);
+    box-shadow: 5px 5px 0 hsl(var(--border));
+  }
+  .nm-btn:active {
+    transform: translate(2px, 2px);
+    box-shadow: 1px 1px 0 hsl(var(--foreground));
+  }
+  .dark .nm-btn:active {
+    box-shadow: 1px 1px 0 hsl(var(--border));
   }
 
-  /* ── Pressed / carved in ── */
   .nm-inset {
-    background: hsl(var(--surface));
-    box-shadow:
-      inset  7px  7px 14px rgba(163,177,198,0.75),
-      inset -6px -6px 12px rgba(255,255,255,1.0);
+    background: hsl(var(--card));
+    border: 2px solid hsl(var(--foreground));
+    box-shadow: inset 3px 3px 0 hsl(var(--muted));
   }
   .dark .nm-inset {
-    background: hsl(var(--surface));
-    box-shadow:
-      inset  7px  7px 14px rgba(0,0,0,0.7),
-      inset -5px -5px 11px rgba(255,255,255,0.05);
+    background: hsl(var(--card));
+    border-color: hsl(var(--border));
+    box-shadow: inset 3px 3px 0 hsl(var(--background));
   }
 
-  /* ── Flat panel / card — same surface, larger shadow spread ── */
   .nm-card {
-    background: hsl(var(--surface));
-    box-shadow:
-       10px  10px 24px rgba(163,177,198,0.72),
-      -10px -10px 24px rgba(255,255,255,1.0);
+    background: hsl(var(--card));
+    border: 2px solid hsl(var(--foreground));
+    box-shadow: 6px 6px 0 hsl(var(--foreground));
   }
   .dark .nm-card {
-    background: hsl(var(--surface));
-    box-shadow:
-       9px  9px 22px rgba(0,0,0,0.72),
-      -7px -7px 18px rgba(255,255,255,0.05);
+    background: hsl(var(--card));
+    border-color: hsl(var(--border));
+    box-shadow: 6px 6px 0 hsl(var(--border));
   }
 }

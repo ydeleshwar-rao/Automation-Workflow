@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { ArrowLeft, Play, Save, CheckCircle2, Circle, PauseCircle, History, Loader2 } from "lucide-react";
+import { ArrowLeft, Play, Save, CheckCircle2, Circle, PauseCircle, History, Loader2, FlaskConical } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/src/lib/utils";
 import type { AiWorkflowListItem } from "@/src/lib/ai-workflow/types";
@@ -12,13 +12,14 @@ interface CanvasToolbarProps {
   isRunning: boolean;
   onSave: () => void;
   onRun: () => void;
+  onOpenHarnessTest: () => void;
   onNameChange: (name: string) => void;
 }
 
 const STATUS_CONFIG = {
   draft:  { label: "Draft",  Icon: Circle,       color: "text-muted-foreground" },
-  active: { label: "Active", Icon: CheckCircle2, color: "text-green-500" },
-  paused: { label: "Paused", Icon: PauseCircle,  color: "text-yellow-500" },
+  active: { label: "Active", Icon: CheckCircle2, color: "text-success" },
+  paused: { label: "Paused", Icon: PauseCircle,  color: "text-warning" },
 } as const;
 
 export function CanvasToolbar({
@@ -27,6 +28,7 @@ export function CanvasToolbar({
   isRunning,
   onSave,
   onRun,
+  onOpenHarnessTest,
   onNameChange,
 }: CanvasToolbarProps) {
   const router  = useRouter();
@@ -91,6 +93,14 @@ export function CanvasToolbar({
         <History className="w-4 h-4" />
       </button>
 
+      <button
+        onClick={onOpenHarnessTest}
+        className="nm-btn h-8 px-3 rounded-xl text-[12px] font-bold flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-all"
+      >
+        <FlaskConical className="w-3.5 h-3.5" />
+        Harness
+      </button>
+
       {/* Save */}
       <button
         onClick={onSave}
@@ -112,8 +122,9 @@ export function CanvasToolbar({
         disabled={isRunning}
         className={cn(
           "flex items-center gap-1.5 h-8 px-4 rounded-xl text-[12px] font-bold text-primary-foreground transition-all",
-          "bg-primary shadow-[3px_3px_8px_rgba(99,102,241,0.4),-2px_-2px_6px_rgba(255,255,255,0.1)]",
-          "hover:bg-primary/90 hover:shadow-[4px_4px_12px_rgba(99,102,241,0.5),-3px_-3px_8px_rgba(255,255,255,0.12)]",
+          "bg-primary border-2 border-foreground shadow-[3px_3px_0_hsl(var(--foreground))]",
+          "hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-[5px_5px_0_hsl(var(--foreground))]",
+          "dark:border-border dark:shadow-[3px_3px_0_hsl(var(--border))] dark:hover:shadow-[5px_5px_0_hsl(var(--border))]",
           isRunning && "opacity-70 cursor-not-allowed"
         )}
       >

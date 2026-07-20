@@ -145,7 +145,7 @@ export function SelectionPopup({
                 "w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-start gap-2.5 group",
                 isSelected
                   ? "nm-inset"
-                  : "nm-btn hover:shadow-[10px_10px_20px_rgba(163,177,198,0.82),-10px_-10px_20px_rgba(255,255,255,1.0)]"
+                  : "nm-btn"
               )}
             >
               {/* Dot indicator */}

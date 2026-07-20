@@ -11,25 +11,20 @@ import {
   useDeleteAiWorkflowMutation,
 } from "./aiWorkflowApi";
 import type { AiWorkflowListItem } from "@/src/lib/ai-workflow/types";
+import { getActiveUserId } from "@/src/store/localStorage";
 
 // ── useCurrentUser ─────────────────────────────────────────────────────────
-// Reads user_id from localStorage (same pattern as the existing Workflow list)
+// Reads user_id from the current auth session.
 function useUserId(): string | null {
   if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem("user");
-    const u = raw ? JSON.parse(raw) : null;
-    return u?.id ?? null;
-  } catch {
-    return null;
-  }
+  return getActiveUserId() || null;
 }
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 const STATUS = {
   draft:  { label: "Draft",  Icon: Circle,        className: "text-muted-foreground bg-muted/40" },
-  active: { label: "Active", Icon: CheckCircle2,  className: "text-green-600 bg-green-500/10" },
-  paused: { label: "Paused", Icon: PauseCircle,   className: "text-yellow-600 bg-yellow-500/10" },
+  active: { label: "Active", Icon: CheckCircle2,  className: "text-success bg-success/15" },
+  paused: { label: "Paused", Icon: PauseCircle,   className: "text-warning bg-warning/20" },
 } as const;
 
 function StatusChip({ status }: { status: AiWorkflowListItem["status"] }) {
@@ -159,9 +154,9 @@ export function AiWorkflowList() {
             disabled={isCreating}
             className={cn(
               "flex items-center gap-2 h-10 px-5 rounded-xl text-[13px] font-bold text-primary-foreground shrink-0",
-              "bg-primary shadow-[3px_3px_8px_rgba(99,102,241,0.4),-2px_-2px_6px_rgba(255,255,255,0.1)]",
-              "hover:bg-primary/90 hover:shadow-[4px_4px_12px_rgba(99,102,241,0.5)]",
-              "transition-all",
+              "bg-primary border-2 border-foreground shadow-[4px_4px_0_hsl(var(--foreground))]",
+              "hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[6px_6px_0_hsl(var(--foreground))]",
+              "transition-all dark:border-border dark:shadow-[4px_4px_0_hsl(var(--border))] dark:hover:shadow-[6px_6px_0_hsl(var(--border))]",
               isCreating && "opacity-70 cursor-not-allowed"
             )}
           >
@@ -216,7 +211,7 @@ export function AiWorkflowList() {
               <button
                 onClick={handleCreate}
                 disabled={isCreating}
-                className="flex items-center gap-2 h-10 px-5 rounded-xl text-[13px] font-bold text-primary-foreground bg-primary shadow-[3px_3px_8px_rgba(99,102,241,0.4)] hover:bg-primary/90 transition-all"
+                className="flex items-center gap-2 h-10 px-5 rounded-xl text-[13px] font-bold text-primary-foreground bg-primary border-2 border-foreground shadow-[4px_4px_0_hsl(var(--foreground))] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[6px_6px_0_hsl(var(--foreground))] transition-all dark:border-border dark:shadow-[4px_4px_0_hsl(var(--border))] dark:hover:shadow-[6px_6px_0_hsl(var(--border))]"
               >
                 <Plus className="w-4 h-4" />
                 Create First Workflow

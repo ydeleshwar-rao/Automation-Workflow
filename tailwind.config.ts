@@ -33,6 +33,36 @@ export default {
 
       // ── Colors — all reference CSS variables ──────────────
       colors: {
+        cream: {
+          light: cssVar("--cream-light"),
+          DEFAULT: cssVar("--cream"),
+          dark: cssVar("--cream-dark"),
+        },
+        sand: {
+          light: cssVar("--sand-light"),
+          DEFAULT: cssVar("--sand"),
+          dark: cssVar("--sand-dark"),
+        },
+        gold: {
+          light: cssVar("--gold-light"),
+          DEFAULT: cssVar("--gold"),
+          dark: cssVar("--gold-dark"),
+        },
+        coral: {
+          light: cssVar("--coral-light"),
+          DEFAULT: cssVar("--coral"),
+          dark: cssVar("--coral-dark"),
+        },
+        sage: {
+          light: cssVar("--sage-light"),
+          DEFAULT: cssVar("--sage"),
+          dark: cssVar("--sage-dark"),
+        },
+        teal: {
+          light: cssVar("--teal-light"),
+          DEFAULT: cssVar("--teal"),
+          dark: cssVar("--teal-dark"),
+        },
         background: cssVar("--background"),
         foreground: cssVar("--foreground"),
         surface:    cssVar("--surface"),

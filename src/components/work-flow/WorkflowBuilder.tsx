@@ -365,7 +365,7 @@ export function WorkflowBuilder() {
           {activeView === "monitor" && (
             <div className="flex flex-1 overflow-hidden bg-[hsl(var(--surface))]">
               {/* Executions list */}
-              <div className="w-[400px] shrink-0 overflow-hidden flex flex-col nm-sidebar" style={{boxShadow:'6px 0 20px rgba(163,177,198,0.4)'}}>
+              <div className="w-[400px] shrink-0 overflow-hidden flex flex-col nm-sidebar">
                 {currentWorkflowId ? (
                   <ExecutionList
                     workflowId={currentWorkflowId}

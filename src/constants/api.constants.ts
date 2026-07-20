@@ -3,14 +3,16 @@
  * No direct Supabase calls from frontend.
  */
 
-const B = process.env.NEXT_PUBLIC_API_URL || "";
+const B = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export const API_ROUTES = {
   // ── Auth ───────────────────────────────────────────────────────────────────
   AUTH: {
     LOGIN:         `${B}/auth/login`,
+    GOOGLE:        `${B}/auth/google`,
     REGISTER:      `${B}/auth/register`,
     REFRESH:       `${B}/auth/refresh`,
+    LOGOUT:        `${B}/auth/logout`,
     PROFILE:       `${B}/auth/profile`,
     SETUP:         `${B}/auth/setup`,
     SETUP_STATUS:  `${B}/auth/setup/status`,

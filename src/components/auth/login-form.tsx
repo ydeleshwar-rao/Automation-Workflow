@@ -40,8 +40,6 @@ export function LoginForm({
       }
 
       const loginData = res.data as {
-        access_token:  string;
-        refresh_token: string;
         expires_in:    number;
         user: {
           id:          string;
@@ -53,7 +51,7 @@ export function LoginForm({
         };
       };
 
-      // 1. Persist to localStorage (for apiClient interceptor + page reloads)
+      // 1. Persist non-token user metadata for page reloads
       persistLoginResponse(loginData);
 
       // 2. Seed Redux access state immediately (no extra API call)
@@ -66,13 +64,7 @@ export function LoginForm({
         },
       }));
 
-      // 3. Set access token cookie for middleware/server-side route guards
-      if (typeof document !== "undefined") {
-        const maxAge = loginData.expires_in;
-        document.cookie = `jm_access_token=${encodeURIComponent(loginData.access_token)}; Path=/; Max-Age=${maxAge}; SameSite=Lax`;
-      }
-
-      // 4. Redirect based on role
+      // 3. Redirect based on role
       router.refresh();
       if (loginData.user.role === "admin") {
         router.push("/admin");
