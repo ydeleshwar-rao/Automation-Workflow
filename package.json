@@ -2,22 +2,22 @@
   "name": "automation-workflow",
   "private": true,
   "workspaces": [
-    "Automation-Workflow",
-    "Automation-Workflow-BK"
+    "frontend",
+    "backend"
   ],
   "scripts": {
-    "dev": "bun run --parallel dev:frontend dev:backend",
-    "dev:frontend": "bun run --cwd Automation-Workflow dev",
-    "dev:backend": "bun run --cwd Automation-Workflow-BK dev",
-    "build": "bun run --sequential build:backend build:frontend",
-    "build:frontend": "bun run --cwd Automation-Workflow build",
-    "build:backend": "bun run --cwd Automation-Workflow-BK build",
-    "start": "bun run --parallel start:frontend start:backend",
-    "start:frontend": "bun run --cwd Automation-Workflow start",
-    "start:backend": "bun run --cwd Automation-Workflow-BK start",
-    "lint": "bun run --cwd Automation-Workflow lint",
-    "test": "bun run --cwd Automation-Workflow-BK test",
-    "prisma:generate": "bun run --cwd Automation-Workflow-BK prisma generate"
+    "dev": "bun run --filter '*' dev",
+    "dev:frontend": "bun run --filter frontend dev",
+    "dev:backend": "bun run --filter backend dev",
+    "build": "bun run prisma:generate && bun run --filter '*' build",
+    "build:frontend": "bun run --filter frontend build",
+    "build:backend": "bun run prisma:generate && bun run --filter backend build",
+    "start": "bun run --filter '*' start",
+    "start:frontend": "bun run --filter frontend start",
+    "start:backend": "bun run --filter backend start",
+    "lint": "bun run --filter frontend lint",
+    "test": "bun run --filter backend test",
+    "prisma:generate": "prisma generate --schema backend/prisma/schema.prisma"
   },
   "trustedDependencies": [
     "@prisma/client",

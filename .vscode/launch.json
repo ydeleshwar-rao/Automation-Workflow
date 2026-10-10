@@ -6,8 +6,8 @@
             "type": "bun",
             "request": "launch",
             "name": "Debug backend (bun --watch)",
-            "program": "src/server.ts",
-            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/backend/src/server.ts",
+            "cwd": "${workspaceFolder}/backend",
             "env": { "NODE_ENV": "development" },
             "watchMode": true
         }
