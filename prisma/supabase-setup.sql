@@ -219,6 +219,38 @@ CREATE TABLE IF NOT EXISTS "workflow_executions" (
   "finished_at"     TIMESTAMPTZ
 );
 
+-- ── ai_workflows ───────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS "ai_workflows" (
+  "id"          UUID        NOT NULL PRIMARY KEY DEFAULT gen_random_uuid(),
+  "user_id"     UUID        NOT NULL REFERENCES "profiles"("id") ON DELETE CASCADE,
+  "name"        TEXT        NOT NULL,
+  "description" TEXT,
+  "status"      TEXT        NOT NULL DEFAULT 'draft' CHECK ("status" IN ('draft', 'active', 'paused')),
+  "nodes"       JSONB       NOT NULL DEFAULT '[]',
+  "edges"       JSONB       NOT NULL DEFAULT '[]',
+  "viewport"    JSONB,
+  "created_at"  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at"  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS "idx_ai_workflows_user_updated"
+  ON "ai_workflows" ("user_id", "updated_at" DESC);
+
+-- ── ai_workflow_executions ────────────────────────────────────
+CREATE TABLE IF NOT EXISTS "ai_workflow_executions" (
+  "id"           UUID        NOT NULL PRIMARY KEY DEFAULT gen_random_uuid(),
+  "workflow_id"  UUID        REFERENCES "ai_workflows"("id") ON DELETE CASCADE,
+  "status"       TEXT        NOT NULL DEFAULT 'pending' CHECK ("status" IN ('pending', 'running', 'success', 'failed')),
+  "trigger"      TEXT        NOT NULL DEFAULT 'manual' CHECK ("trigger" IN ('manual', 'schedule', 'webhook')),
+  "node_results" JSONB,
+  "error"        TEXT,
+  "started_at"   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "finished_at"  TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS "idx_ai_workflow_executions_workflow_started"
+  ON "ai_workflow_executions" ("workflow_id", "started_at" DESC);
+
 -- ── workflow_execution_logs ────────────────────────────────────
 CREATE TABLE IF NOT EXISTS "workflow_execution_logs" (
   "id"              UUID        NOT NULL PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -354,6 +386,7 @@ DO $$ DECLARE t TEXT; BEGIN
     'profiles','page_permissions','servicem8_integrations','commusoft_integrations',
     'simpro_integrations','leadshub_integrations','smtp_connections','webhooks',
     'workflow_folders','workflows','workflow_nodes','workflow_tags',
+    'ai_workflows',
     'integration_webhook_subscriptions','template_folders',
     'workflow_templates','workflow_template_nodes','workflow_template_mappings'
   ] LOOP

@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "test": "tsx --test src/modules/initgrations/serviceM8/utils/serviceM8DiaryEvent.util.test.ts",
-    "test:sm8-diary-smoke": "tsx scripts/smoke-servicem8-diary-event.ts",
-    "dev": "cross-env NODE_ENV=development tsx watch src/server.ts",
+    "test": "bun test ./src/modules/initgrations/serviceM8/utils/serviceM8DiaryEvent.util.test.ts",
+    "test:sm8-diary-smoke": "bun scripts/smoke-servicem8-diary-event.ts",
+    "dev": "NODE_ENV=development bun --watch src/server.ts",
     "build": "tsc",
-    "start": "cross-env NODE_ENV=production node dist/server.js",
-    "migrate:polling-to-webhook": "tsx scripts/migrate-polling-to-webhook.ts"
+    "start": "NODE_ENV=production bun dist/server.js",
+    "migrate:polling-to-webhook": "bun scripts/migrate-polling-to-webhook.ts"
   },
   "keywords": [],
   "author": "",
@@ -53,12 +53,8 @@
     "@types/pg": "^8.20.0",
     "@types/qrcode": "^1.5.6",
     "@types/winston": "^2.4.4",
-    "cross-env": "^10.1.0",
     "pg": "^8.21.0",
     "prisma": "^6.19.3",
-    "ts-node": "^10.9.2",
-    "ts-node-dev": "^2.0.0",
-    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
 }

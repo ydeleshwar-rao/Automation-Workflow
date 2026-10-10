@@ -54,6 +54,8 @@ export class WhatsAppService {
 
   static async connect(userId: string, options: { reset?: boolean } = {}) {
     const sess = getSession(userId);
+    const row = await getSessionRow(userId);
+
     if (sess?.status === "connected") {
       return {
         message: "WhatsApp is already connected.",
@@ -78,10 +80,19 @@ export class WhatsAppService {
       };
     }
 
-    await resetSessionForNewQr(userId);
+    if (row?.status && row.status !== "disconnected") {
+      await createSession(userId);
+      return {
+        message: "WhatsApp session restored. Poll GET /whatsapp/status for connection status.",
+        status: "connecting",
+        phone_number: row.phone_number ?? null,
+      };
+    }
+
     await createSession(userId);
     return {
       message: "WhatsApp session initiated. Poll GET /whatsapp/qr for the QR code.",
+      status: "connecting",
     };
   }
 
@@ -91,11 +102,12 @@ export class WhatsAppService {
 
     if (!sess) {
       if (row?.status === "connected") {
+        await createSession(userId);
         return {
-          status: "connected",
+          status: "connecting",
           qr: null,
           phone_number: row.phone_number ?? null,
-          message: "Already connected",
+          message: "Restoring WhatsApp session - retry in a few seconds.",
         };
       }
 
@@ -117,7 +129,11 @@ export class WhatsAppService {
   static async getConnectionStatus(userId: string) {
     const sess = getSession(userId);
     const row = await getSessionRow(userId);
-    const status = sess?.status ?? row?.status ?? "disconnected";
+    if (!sess && row?.status === "connected") {
+      await createSession(userId);
+    }
+
+    const status = sess?.status ?? (row?.status === "connected" ? "connecting" : row?.status) ?? "disconnected";
     return {
       connected: status === "connected",
       status,
