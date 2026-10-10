@@ -1,0 +1,23 @@
+# dependencies (single hoisted install at the root)
+node_modules/
+
+# builds
+.next/
+dist/
+out/
+*.tsbuildinfo
+
+# env files
+.env
+.env.local
+.env.development
+.env.production
+.env*.local
+
+# misc
+*.log
+.DS_Store
+
+# old pre-monorepo folders (safe to delete)
+/Automation-Workflow/
+/Automation-Workflow-BK/

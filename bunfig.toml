@@ -1,0 +1,4 @@
+[install]
+# Flat node_modules like npm — the backend relies on transitive deps (e.g. winston-transport)
+# and tsc declaration emit breaks with Bun's isolated layout.
+linker = "hoisted"

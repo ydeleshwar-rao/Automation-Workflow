@@ -1,0 +1,30 @@
+{
+  "name": "automation-workflow",
+  "private": true,
+  "workspaces": [
+    "Automation-Workflow",
+    "Automation-Workflow-BK"
+  ],
+  "scripts": {
+    "dev": "bun run --parallel dev:frontend dev:backend",
+    "dev:frontend": "bun run --cwd Automation-Workflow dev",
+    "dev:backend": "bun run --cwd Automation-Workflow-BK dev",
+    "build": "bun run --sequential build:backend build:frontend",
+    "build:frontend": "bun run --cwd Automation-Workflow build",
+    "build:backend": "bun run --cwd Automation-Workflow-BK build",
+    "start": "bun run --parallel start:frontend start:backend",
+    "start:frontend": "bun run --cwd Automation-Workflow start",
+    "start:backend": "bun run --cwd Automation-Workflow-BK start",
+    "lint": "bun run --cwd Automation-Workflow lint",
+    "test": "bun run --cwd Automation-Workflow-BK test",
+    "prisma:generate": "bun run --cwd Automation-Workflow-BK prisma generate"
+  },
+  "trustedDependencies": [
+    "@prisma/client",
+    "@prisma/engines",
+    "prisma",
+    "protobufjs",
+    "sharp",
+    "unrs-resolver"
+  ]
+}
