@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
-import { createClient } from "@/src/lib/supabase/client";
+import { startGoogleSignIn } from "@/src/lib/auth/provider";
 
 type GoogleAuthButtonProps = {
   className?: string;
@@ -21,21 +21,10 @@ export function GoogleAuthButton({
     setIsLoading(true);
     setError(null);
 
-    const redirectTo = `${window.location.origin}/auth/callback`;
-    const supabase = createClient();
-    const { error: authError } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo,
-        queryParams: {
-          access_type: "offline",
-          prompt: "select_account",
-        },
-      },
-    });
-
-    if (authError) {
-      setError(authError.message);
+    try {
+      await startGoogleSignIn();
+    } catch (authError: unknown) {
+      setError(authError instanceof Error ? authError.message : "Google sign-in failed");
       setIsLoading(false);
     }
   };

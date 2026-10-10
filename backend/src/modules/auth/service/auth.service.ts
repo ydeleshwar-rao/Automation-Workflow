@@ -1,7 +1,11 @@
-import { supabase }                              from "../../../config/db.config.js";
+import { supabase, DB_PROVIDER }                 from "../../../config/db.config.js";
 import { issueTokenPair, verifyRefreshToken }   from "../jwt.js";
 import type { UserRole }                        from "../jwt.js";
 import { ApiError }                             from "../../../utils/ApiError.js";
+import { createResetToken, hashResetToken }     from "../../../lib/db/password.js";
+import { sendSystemMail }                       from "../../../utils/system-mail.js";
+
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 
 type ProfileRow = {
   id: string;
@@ -261,6 +265,75 @@ export class AuthService {
       full_name: fullName,
       organization_id: organizationId,
     };
+  }
+
+  /**
+   * Postgres provider only — with Supabase the frontend uses Supabase's own
+   * reset-password emails. Always succeeds so emails can't be enumerated.
+   */
+  static async requestPasswordReset(email: string) {
+    if (DB_PROVIDER !== "postgres") {
+      throw new ApiError(400, "Password reset is handled by Supabase for this deployment");
+    }
+
+    const { data: user, error } = await supabase
+      .from("auth_users")
+      .select("id,email")
+      .eq("email", email.toLowerCase())
+      .maybeSingle();
+
+    if (error) throw new ApiError(500, error.message);
+    if (!user) return;
+
+    const { token, tokenHash } = createResetToken();
+    const { error: updateError } = await supabase
+      .from("auth_users")
+      .update({
+        reset_token_hash: tokenHash,
+        reset_token_expires_at: new Date(Date.now() + RESET_TOKEN_TTL_MS).toISOString(),
+      })
+      .eq("id", user.id);
+
+    if (updateError) throw new ApiError(500, updateError.message);
+
+    const frontendUrl = (process.env.FRONTEND_URL ?? "http://localhost:3000").replace(/\/$/, "");
+    const link = `${frontendUrl}/update-password?token=${token}`;
+    const sent = await sendSystemMail(
+      user.email,
+      "Reset your password",
+      `<p>We received a request to reset your password.</p>
+       <p><a href="${link}">Choose a new password</a> (link valid for 1 hour).</p>
+       <p>If you didn't ask for this, you can ignore this email.</p>`,
+    );
+
+    if (!sent) {
+      console.warn(`[Auth] SMTP_HOST not set — password reset link for ${user.email}: ${link}`);
+    }
+  }
+
+  static async resetPassword(token: string, password: string) {
+    if (DB_PROVIDER !== "postgres") {
+      throw new ApiError(400, "Password reset is handled by Supabase for this deployment");
+    }
+
+    const { data: user, error } = await supabase
+      .from("auth_users")
+      .select("id,reset_token_expires_at")
+      .eq("reset_token_hash", hashResetToken(token))
+      .maybeSingle();
+
+    if (error) throw new ApiError(500, error.message);
+    if (!user || !user.reset_token_expires_at || new Date(user.reset_token_expires_at).getTime() < Date.now()) {
+      throw new ApiError(400, "Invalid or expired reset link. Please request a new one.");
+    }
+
+    const { error: updateError } = await supabase.auth.admin.updateUserById(user.id, { password });
+    if (updateError) throw new ApiError(500, updateError.message);
+
+    await supabase
+      .from("auth_users")
+      .update({ reset_token_hash: null, reset_token_expires_at: null })
+      .eq("id", user.id);
   }
 
   static async refreshTokens(refreshToken: string) {

@@ -11,6 +11,8 @@ router.post("/google",       authRateLimiter, AuthController.google);
 router.post("/register",     authRateLimiter, AuthController.register);
 router.post("/refresh",      authRateLimiter, AuthController.refresh);
 router.post("/logout",       AuthController.logout);
+router.post("/forgot-password", authRateLimiter, AuthController.forgotPassword);
+router.post("/reset-password",  authRateLimiter, AuthController.resetPassword);
 
 // Admin signup/setup. setup/status only tells whether zero admins exist.
 router.get( "/setup/status", AuthController.setupStatus);

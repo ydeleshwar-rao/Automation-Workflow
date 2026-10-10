@@ -5,7 +5,7 @@ import Link from "next/link";
 import axios from "axios";
 import { Loader2 } from "lucide-react";
 import { API_ROUTES } from "@/src/constants/api.constants";
-import { createClient } from "@/src/lib/supabase/client";
+import { getGoogleCallbackToken, finishGoogleSignIn } from "@/src/lib/auth/provider";
 import { persistLoginResponse } from "@/src/services/auth.service";
 
 export default function AuthCallbackPage() {
@@ -16,15 +16,10 @@ export default function AuthCallbackPage() {
 
     async function finishGoogleSignIn() {
       try {
-        const supabase = createClient();
-        const { data, error: sessionError } = await supabase.auth.getSession();
-
-        if (sessionError || !data.session?.access_token) {
-          throw new Error(sessionError?.message ?? "Google sign-in session was not found");
-        }
+        const token = await getGoogleCallbackToken();
 
         const { data: apiRes } = await axios.post(API_ROUTES.AUTH.GOOGLE, {
-          access_token: data.session.access_token,
+          access_token: token,
         }, {
           withCredentials: true,
         });
@@ -34,7 +29,7 @@ export default function AuthCallbackPage() {
         }
 
         persistLoginResponse(apiRes.data);
-        await supabase.auth.signOut();
+        await finishGoogleSignIn();
 
         if (!cancelled) {
           window.location.assign("/dashboard");

@@ -163,6 +163,33 @@ export class AuthController {
     return ApiResponse(res, 200, "Token refreshed", publicAuthPayload(result));
   });
 
+  /**
+   * POST /auth/forgot-password  (DB_PROVIDER=postgres)
+   * Body: { email } — emails a reset link; always 200 so emails can't be probed.
+   */
+  static forgotPassword = catchAsync(async (req: Request, res: Response) => {
+    const { email } = req.body as { email?: string };
+    if (!email?.trim()) throw new ApiError(400, "email is required");
+
+    await AuthService.requestPasswordReset(email.trim().toLowerCase());
+    return ApiResponse(res, 200, "If an account exists for this email, a reset link has been sent", { sent: true });
+  });
+
+  /**
+   * POST /auth/reset-password  (DB_PROVIDER=postgres)
+   * Body: { token, password }
+   */
+  static resetPassword = catchAsync(async (req: Request, res: Response) => {
+    const { token, password } = req.body as { token?: string; password?: string };
+    if (!token?.trim()) throw new ApiError(400, "token is required");
+    if (!password || password.length < 8) {
+      throw new ApiError(400, "password must be at least 8 characters");
+    }
+
+    await AuthService.resetPassword(token.trim(), password);
+    return ApiResponse(res, 200, "Password updated successfully", { updated: true });
+  });
+
   static logout = catchAsync(async (_req: Request, res: Response) => {
     clearAuthCookies(res);
     return ApiResponse(res, 200, "Logout successful", { loggedOut: true });

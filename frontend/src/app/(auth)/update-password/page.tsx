@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/src/lib/supabase/client";
+import {
+  AFTER_PASSWORD_RESET_PATH,
+  checkPasswordResetLink,
+  updatePasswordFromResetLink,
+} from "@/src/lib/auth/provider";
 import Link from "next/link";
 import { Button } from "@/src/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/src/components/ui/card";
@@ -12,7 +16,6 @@ import { Eye, EyeOff } from "lucide-react";
 
 export default function UpdatePasswordPage() {
   const router = useRouter();
-  const supabaseClient = createClient();
   const [ready, setReady] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -22,18 +25,8 @@ export default function UpdatePasswordPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    supabaseClient.auth
-      .getSession()
-      .then(({ data, error: sessionError }) => {
-        if (data.session) {
-          setReady(true);
-        } else {
-          setError(
-            sessionError?.message ??
-              "Invalid or expired reset link. Please request a new one.",
-          );
-        }
-      })
+    checkPasswordResetLink()
+      .then(() => setReady(true))
       .catch((e) => {
         setError(e instanceof Error ? e.message : String(e));
       });
@@ -44,8 +37,8 @@ export default function UpdatePasswordPage() {
     setError(null);
     setSuccess(null);
 
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters");
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters");
       return;
     }
 
@@ -54,14 +47,15 @@ export default function UpdatePasswordPage() {
       return;
     }
 
-    const { error: updateError } = await supabaseClient.auth.updateUser({ password });
-    if (updateError) {
-      setError(updateError.message);
+    try {
+      await updatePasswordFromResetLink(password);
+    } catch (updateError: unknown) {
+      setError(updateError instanceof Error ? updateError.message : "Could not update the password");
       return;
     }
 
     setSuccess("Password updated successfully");
-    setTimeout(() => router.push("/dashboard"), 2000);
+    setTimeout(() => router.push(AFTER_PASSWORD_RESET_PATH), 2000);
   };
 
   if (!ready) {

@@ -16,6 +16,8 @@ export const API_ROUTES = {
     PROFILE:       `${B}/auth/profile`,
     SETUP:         `${B}/auth/setup`,
     SETUP_STATUS:  `${B}/auth/setup/status`,
+    FORGOT_PASSWORD: `${B}/auth/forgot-password`,
+    RESET_PASSWORD:  `${B}/auth/reset-password`,
   },
 
   // ── Access / Developer Management ─────────────────────────────────────────

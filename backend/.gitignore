@@ -9,6 +9,7 @@ dist/
 commusoft_doc.html
 docs/
 migrations/
+!prisma/migrations/
 
 # Local monitoring (not for production)
 docker-compose.monitoring.yml
