@@ -26,7 +26,7 @@ if (!sourceUrl) {
   process.exit(1);
 }
 
-const migrationsDir = join(import.meta.dir, "../prisma/migrations");
+const migrationsDir = process.env.MIGRATIONS_DIR ?? join(import.meta.dir, "../prisma/migrations");
 const q = (name: string) => `"${name.replace(/"/g, '""')}"`;
 
 // ── What do existing migrations already create? ────────────────────────────
@@ -97,7 +97,7 @@ const indexes = (await client.query(`
   ORDER BY t.relname`)).rows;
 
 const enums = (await client.query(`
-  SELECT t.typname AS name, array_agg(e.enumlabel ORDER BY e.enumsortorder) AS labels
+  SELECT t.typname AS name, array_agg(e.enumlabel::text ORDER BY e.enumsortorder) AS labels
   FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid
   WHERE t.typnamespace = 'public'::regnamespace
   GROUP BY t.typname`)).rows as { name: string; labels: string[] }[];
