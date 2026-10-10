@@ -1,0 +1,15 @@
+{
+    // Requires the "Bun for Visual Studio Code" extension (oven.bun-vscode)
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "bun",
+            "request": "launch",
+            "name": "Debug backend (bun --watch)",
+            "program": "src/server.ts",
+            "cwd": "${workspaceFolder}",
+            "env": { "NODE_ENV": "development" },
+            "watchMode": true
+        }
+    ]
+}

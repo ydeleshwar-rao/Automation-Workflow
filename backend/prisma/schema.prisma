@@ -1,0 +1,521 @@
+// =============================================================================
+// Prisma Schema — Clean Architecture v2
+//
+// Philosophy:
+//   - Integration tables: store CREDENTIALS ONLY (no service data)
+//   - No commusoft/servicem8/simpro/leadshub data tables
+//   - Custom JWT auth (Supabase used only for credential validation)
+//   - Every table tied to a profiles.id (user_id)
+//   - Role-based: admin | developer
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Note on enums ───────────────────────────────────────────────────────────
+// Prisma v7 + PrismaPg (pgBouncer adapter) does not support custom PostgreSQL
+// enum types — the driver sends text literals and PostgreSQL rejects implicit
+// text→enum casts.  All enum columns are mapped as String in Prisma; the
+// database enforces valid values via CHECK constraints.
+
+// ─── Profiles ────────────────────────────────────────────────────────────────
+// Maps to public.profiles in Supabase
+// id = auth.users.id (Supabase manages the auth side)
+
+model Profile {
+  id         String   @id @db.Uuid
+  email      String   @unique
+  fullName   String   @default("") @map("full_name")
+  avatarUrl  String?  @map("avatar_url")
+  role       String   @default("developer")     // 'admin' | 'developer'  (enforced by DB CHECK)
+  organizationId String @map("organization_id") @db.Uuid
+  isActive   Boolean  @default(true) @map("is_active")
+  createdBy  String?  @map("created_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // Self-referential: which admin created this developer
+  creator    Profile?  @relation("ProfileCreatedBy", fields: [createdBy], references: [id])
+  created    Profile[] @relation("ProfileCreatedBy")
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Permissions
+  pagePermissions PagePermission[] @relation("UserPermissions")
+  grantedPerms    PagePermission[] @relation("GrantedByAdmin")
+
+  // Integrations (credentials only)
+  servicem8Integration  Servicem8Integration?
+  commussoftIntegration CommussoftIntegration?
+  simproIntegration     SimproIntegration?
+  leadshubIntegrations  LeadshubIntegration[]
+
+  // SMTP
+  smtpConnections SmtpConnection[]
+
+  // Webhooks
+  webhooks Webhook[]
+
+  // Workflows
+  workflows          Workflow[]
+  workflowFolders    WorkflowFolder[]
+  workflowTags       WorkflowTag[]
+  lastEditedWorkflow Workflow[] @relation("WorkflowLastEditedBy")
+
+  // Templates
+  templateFolders   TemplateFolder[]
+  workflowTemplates WorkflowTemplate[]
+
+  // Webhook subscriptions
+  integrationWebhookSubs IntegrationWebhookSubscription[]
+
+  @@map("profiles")
+}
+
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  ownerId   String?  @map("owner_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  profiles Profile[]
+
+  @@map("organizations")
+}
+
+// ─── Page Permissions ─────────────────────────────────────────────────────────
+// Page keys: 'dashboard' | 'workflow' | 'assets' | 'integrations' | 'analytics'
+// 'admin' page is role-based (admin role only), not stored here
+
+model PagePermission {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  pageKey    String   @map("page_key")
+  canView    Boolean  @default(false) @map("can_view")
+  canEdit    Boolean  @default(false) @map("can_edit")
+  canDelete  Boolean  @default(false) @map("can_delete")
+  grantedBy  String?  @map("granted_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user    Profile  @relation("UserPermissions", fields: [userId], references: [id], onDelete: Cascade)
+  granter Profile? @relation("GrantedByAdmin", fields: [grantedBy], references: [id], onDelete: SetNull)
+
+  @@unique([userId, pageKey])
+  @@map("page_permissions")
+}
+
+// ─── Integration Credentials (NO data tables) ────────────────────────────────
+// These tables store ONLY OAuth tokens / API keys.
+// Workflow engine uses these credentials to make live API calls.
+// No contacts, jobs, materials, opportunities data stored.
+
+model Servicem8Integration {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @unique @map("user_id") @db.Uuid
+  accessToken     String    @map("access_token")
+  refreshToken    String?   @map("refresh_token")
+  expiresAt       DateTime? @map("expires_at")
+  scopes          String?
+  sm8AccountUuid  String?   @map("sm8_account_uuid")
+  needsReauth     Boolean   @default(false) @map("needs_reauth")
+  lastSyncedAt    DateTime? @map("last_synced_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("servicem8_integrations")
+}
+
+model CommussoftIntegration {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @unique @map("user_id") @db.Uuid
+  clientId      String?  @map("client_id")
+  username      String?
+  password      String?  // encrypted
+  applicationId String?  @map("application_id")
+  accessToken   String?  @map("access_token")
+  needsReauth   Boolean  @default(false) @map("needs_reauth")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("commusoft_integrations")
+}
+
+model SimproIntegration {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @unique @map("user_id") @db.Uuid
+  buildName    String    @map("build_name")
+  baseUrl      String    @map("base_url")
+  companyId    Int       @default(0) @map("company_id")
+  accessToken  String    @map("access_token")
+  refreshToken String?   @map("refresh_token")
+  expiresAt    DateTime? @map("expires_at")
+  scopes       String?
+  needsReauth  Boolean   @default(false) @map("needs_reauth")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("simpro_integrations")
+}
+
+model LeadshubIntegration {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  companyId    String?   @map("company_id")
+  locationId   String?   @map("location_id")
+  accessToken  String?   @map("access_token")
+  refreshToken String?   @map("refresh_token")
+  expiresIn    BigInt?   @map("expires_in")
+  expiresAt    DateTime? @map("expires_at")
+  userType     String?   @map("user_type")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("leadshub_integrations")
+}
+
+// ─── SMTP Connections ─────────────────────────────────────────────────────────
+
+model SmtpConnection {
+  id                String     @id @default(uuid()) @db.Uuid
+  userId            String     @map("user_id") @db.Uuid
+  name              String
+  host              String
+  port              Int
+  username          String
+  encryptedPassword String     @map("encrypted_password")
+  useTls            Boolean    @default(true) @map("use_tls")
+  status            String     @default("active")   // 'active' | 'inactive'
+  totalSent         Int        @default(0) @map("total_sent")
+  totalFailed       Int        @default(0) @map("total_failed")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("smtp_connections")
+}
+
+// ─── Webhooks ─────────────────────────────────────────────────────────────────
+
+model Webhook {
+  id              String        @id @default(uuid()) @db.Uuid
+  userId          String        @map("user_id") @db.Uuid
+  name            String
+  uniquePath      String        @unique @map("unique_path")
+  method          String        @default("POST")
+  secretToken     String?       @map("secret_token")
+  isActive        Boolean       @default(true) @map("is_active")
+  actionType      String?       @map("action_type")
+  actionConfig    Json          @default("{}") @map("action_config")
+  mode            String        @default("test")    // 'test' | 'live'
+  status          String        @default("active")  // 'active' | 'inactive' | 'archived'
+  fullUrl         String?       @map("full_url")
+  workflowId      String?       @map("workflow_id") @db.Uuid
+  lastTriggeredAt DateTime?     @map("last_triggered_at")
+  expiresAt       DateTime?     @map("expires_at")
+  deletedAt       DateTime?     @map("deleted_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  user     Profile        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workflow Workflow?      @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+  events   WebhookEvent[]
+
+  @@map("webhooks")
+}
+
+model WebhookEvent {
+  id             String             @id @default(uuid()) @db.Uuid
+  webhookId      String?            @map("webhook_id") @db.Uuid
+  requestHeaders Json?              @map("request_headers")
+  requestBody    Json?              @map("request_body")
+  status         String             @default("pending") // 'pending' | 'processing' | 'done' | 'failed'
+  errorMessage   String?            @map("error_message")
+  receivedAt     DateTime           @default(now()) @map("received_at")
+  processedAt    DateTime?          @map("processed_at")
+
+  webhook Webhook? @relation(fields: [webhookId], references: [id], onDelete: SetNull)
+
+  @@map("webhook_events")
+}
+
+// ─── Workflow Engine ───────────────────────────────────────────────────────────
+
+model WorkflowFolder {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  name      String
+  parentId  String?  @map("parent_id") @db.Uuid
+  position  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user      Profile          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent    WorkflowFolder?  @relation("FolderChildren", fields: [parentId], references: [id])
+  children  WorkflowFolder[] @relation("FolderChildren")
+  workflows Workflow[]
+
+  @@map("workflow_folders")
+}
+
+model Workflow {
+  id                   String         @id @default(uuid()) @db.Uuid
+  userId               String         @map("user_id") @db.Uuid
+  folderId             String?        @map("folder_id") @db.Uuid
+  name                 String
+  status               String         @default("draft")  // 'draft' | 'active' | 'inactive'
+  version              Int            @default(1)
+  tag                  String?
+  position             Int            @default(0)
+  lastEditedByUserId   String?        @map("last_edited_by_user_id") @db.Uuid
+  lastEditedByName     String?        @map("last_edited_by_name")
+  lastEditedAt         DateTime?      @map("last_edited_at")
+  createdAt            DateTime       @default(now()) @map("created_at")
+  updatedAt            DateTime       @updatedAt @map("updated_at")
+
+  user           Profile          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder         WorkflowFolder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  lastEditedBy   Profile?         @relation("WorkflowLastEditedBy", fields: [lastEditedByUserId], references: [id], onDelete: SetNull)
+
+  nodes          WorkflowNode[]
+  executions     WorkflowExecution[]
+  tagLinks       WorkflowTagLink[]
+  webhooks       Webhook[]
+  webhookSubs    IntegrationWebhookSubscription[]
+  templates      WorkflowTemplate[] @relation("WorkflowTemplates")
+
+  @@map("workflows")
+}
+
+model WorkflowNode {
+  id             String   @id @default(uuid()) @db.Uuid
+  workflowId     String   @map("workflow_id") @db.Uuid
+  type           String                          // 'trigger' | 'action'
+  integrationKey String   @map("integration_key") // 'servicem8' | 'webhook' | 'mail' | etc.
+  actionKey      String   @map("action_key")      // 'job_created' | 'send_email' | etc.
+  config         Json     @default("{}")
+  position       Int
+  nodeCategory   String   @default("action") @map("node_category")
+  samplePayload  Json     @default("{}") @map("sample_payload")
+  outputSchema   Json     @default("{}") @map("output_schema")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  workflow            Workflow                        @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  fieldMapping        WorkflowFieldMapping?
+  executionLogs       WorkflowExecutionLog[]
+  webhookSubscription IntegrationWebhookSubscription?
+
+  @@map("workflow_nodes")
+}
+
+model WorkflowFieldMapping {
+  id             String   @id @default(uuid()) @db.Uuid
+  workflowNodeId String   @unique @map("workflow_node_id") @db.Uuid
+  mappings       Json     @default("[]")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  node WorkflowNode @relation(fields: [workflowNodeId], references: [id], onDelete: Cascade)
+
+  @@map("workflow_field_mappings")
+}
+
+model WorkflowExecution {
+  id             String    @id @default(uuid()) @db.Uuid
+  workflowId     String?   @map("workflow_id") @db.Uuid
+  status         String    @default("running")
+  triggerPayload Json?     @map("trigger_payload")
+  startedAt      DateTime  @default(now()) @map("started_at")
+  finishedAt     DateTime? @map("finished_at")
+
+  workflow Workflow?              @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+  logs     WorkflowExecutionLog[]
+
+  @@map("workflow_executions")
+}
+
+model WorkflowExecutionLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  executionId    String   @map("execution_id") @db.Uuid
+  workflowId     String?  @map("workflow_id") @db.Uuid
+  nodeId         String   @map("node_id") @db.Uuid
+  nodePosition   Int?     @map("node_position")
+  integrationKey String?  @map("integration_key")
+  actionKey      String?  @map("action_key")
+  logLevel       String   @default("info") @map("log_level")
+  resolvedValue  String?  @map("resolved_value")
+  status         String
+  errorMessage   String?  @map("error_message")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  execution WorkflowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  node      WorkflowNode      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@map("workflow_execution_logs")
+}
+
+model WorkflowTag {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  name      String
+  color     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user     Profile           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tagLinks WorkflowTagLink[]
+
+  @@map("workflow_tags")
+}
+
+model WorkflowTagLink {
+  id         String   @id @default(uuid()) @db.Uuid
+  workflowId String   @map("workflow_id") @db.Uuid
+  tagId      String   @map("tag_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  workflow Workflow    @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  tag      WorkflowTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, tagId])
+  @@map("workflow_tag_links")
+}
+
+// ─── Webhook Subscriptions (workflow triggers via external webhooks) ───────────
+
+model IntegrationWebhookSubscription {
+  id                     String    @id @default(uuid()) @db.Uuid
+  workflowId             String    @map("workflow_id") @db.Uuid
+  nodeId                 String    @unique @map("node_id") @db.Uuid
+  userId                 String    @map("user_id") @db.Uuid
+  integrationKey         String    @map("integration_key")
+  eventKey               String    @map("event_key")
+  config                 Json      @default("{}")
+  externalSubscriptionId String?   @map("external_subscription_id")
+  targetPath             String    @map("target_path")
+  signingSecret          String?   @map("signing_secret")
+  isActive               Boolean   @default(true) @map("is_active")
+  lastReceivedAt         DateTime? @map("last_received_at")
+  totalReceived          Int       @default(0) @map("total_received")
+  errorCount             Int       @default(0) @map("error_count")
+  lastError              String?   @map("last_error")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  workflow  Workflow          @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  node      WorkflowNode      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  user      Profile           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventLogs WebhookEventLog[]
+
+  @@map("integration_webhook_subscriptions")
+}
+
+model WebhookEventLog {
+  id              String    @id @default(uuid()) @db.Uuid
+  subscriptionId  String    @map("subscription_id") @db.Uuid
+  externalEventId String?   @map("external_event_id")
+  eventType       String?   @map("event_type")
+  payload         Json?
+  status          String    @default("received")
+  processedAt     DateTime? @map("processed_at")
+  error           String?
+  receivedAt      DateTime  @default(now()) @map("received_at")
+
+  subscription IntegrationWebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@map("webhook_event_log")
+}
+
+// ─── Workflow Templates ────────────────────────────────────────────────────────
+
+model TemplateFolder {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String
+  description String?
+  parentId    String?   @map("parent_id") @db.Uuid
+  createdBy   String?   @map("created_by") @db.Uuid
+  isPublic    Boolean   @default(false) @map("is_public")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  parent    TemplateFolder?    @relation("TemplateFolderChildren", fields: [parentId], references: [id])
+  children  TemplateFolder[]   @relation("TemplateFolderChildren")
+  creator   Profile?           @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  templates WorkflowTemplate[]
+
+  @@map("template_folders")
+}
+
+model WorkflowTemplate {
+  id               String                 @id @default(uuid()) @db.Uuid
+  name             String
+  description      String?
+  category         String?
+  tag              String?
+  sourceWorkflowId String?                @map("source_workflow_id") @db.Uuid
+  createdBy        String?                @map("created_by") @db.Uuid
+  isPublic         Boolean                @default(false) @map("is_public")
+  usageCount       Int                    @default(0) @map("usage_count")
+  status           String                 @default("active") // 'active' | 'inactive' | 'draft'
+  templateFolderId String?                @map("template_folder_id") @db.Uuid
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
+
+  sourceWorkflow Workflow?              @relation("WorkflowTemplates", fields: [sourceWorkflowId], references: [id], onDelete: SetNull)
+  creator        Profile?              @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  folder         TemplateFolder?       @relation(fields: [templateFolderId], references: [id], onDelete: SetNull)
+  nodes          WorkflowTemplateNode[]
+  mappings       WorkflowTemplateMapping[]
+
+  @@map("workflow_templates")
+}
+
+model WorkflowTemplateNode {
+  id                   String    @id @default(uuid()) @db.Uuid
+  templateId           String    @map("template_id") @db.Uuid
+  type                 String
+  nodeCategory         String?   @map("node_category")
+  integrationKey       String    @map("integration_key")
+  actionKey            String?   @map("action_key")
+  configSchema         Json?     @map("config_schema")
+  requiredCredentials  Json?     @map("required_credentials")
+  outputSchema         Json?     @map("output_schema")
+  position             Int
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  template WorkflowTemplate           @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  mappings WorkflowTemplateMapping[]
+
+  @@map("workflow_template_nodes")
+}
+
+model WorkflowTemplateMapping {
+  id             String   @id @default(uuid()) @db.Uuid
+  templateId     String   @map("template_id") @db.Uuid
+  templateNodeId String   @map("template_node_id") @db.Uuid
+  mappings       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  template     WorkflowTemplate     @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  templateNode WorkflowTemplateNode @relation(fields: [templateNodeId], references: [id], onDelete: Cascade)
+
+  @@map("workflow_template_mappings")
+}
