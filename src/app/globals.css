@@ -43,8 +43,8 @@
     --radius: 0.5rem;
 
     /* Central palette from the supplied reference */
-    --cream-light: 42 100% 94%;
-    --cream:       42 100% 86%;
+    --cream-light: 42 100% 97%;
+    --cream:       42 100% 92%;
     --cream-dark:  37 87% 78%;
     --sand-light:  34 71% 82%;
     --sand:        34 74% 75%;
@@ -67,7 +67,7 @@
     --foreground:         var(--teal-dark);
 
     /* ── Card & Popover ──────────────────────────────────── */
-    --card:               42 100% 96%;
+    --card:               42 100% 98%;
     --card-foreground:    var(--teal-dark);
     --popover:            42 100% 96%;
     --popover-foreground: var(--teal-dark);
@@ -81,7 +81,7 @@
     --secondary-foreground: var(--teal-dark);
 
     /* ── Muted ───────────────────────────────────────────── */
-    --muted:            40 82% 88%;
+    --muted:            40 78% 93%;
     --muted-foreground: var(--sage-dark);
 
     /* ── Accent ──────────────────────────────────────────── */
@@ -106,7 +106,7 @@
     --ring:   var(--coral);
 
     /* Surface */
-    --surface: 42 100% 86%;
+    --surface: 42 100% 95%;
 
     /* ── Charts ──────────────────────────────────────────── */
     --chart-1: var(--gold);
@@ -118,57 +118,57 @@
 
   .dark {
     /* ── Base ────────────────────────────────────────────── */
-    --background: var(--teal-dark);
-    --foreground: var(--cream-light);
+    --background: 202 44% 8%;
+    --foreground: 213 35% 88%;
 
     /* ── Card & Popover ──────────────────────────────────── */
-    --card:               var(--teal);
-    --card-foreground:    var(--cream-light);
-    --popover:            var(--teal);
-    --popover-foreground: var(--cream-light);
+    --card:               203 38% 12%;
+    --card-foreground:    213 35% 88%;
+    --popover:            203 38% 12%;
+    --popover-foreground: 213 35% 88%;
 
     /* ── Brand ───────────────────────────────────────────── */
-    --primary:            var(--gold);
-    --primary-foreground: var(--teal-dark);
+    --primary:            43 92% 66%;
+    --primary-foreground: 202 44% 8%;
 
     /* ── Secondary ───────────────────────────────────────── */
-    --secondary:            var(--teal-light);
-    --secondary-foreground: var(--cream-light);
+    --secondary:            202 30% 18%;
+    --secondary-foreground: 213 35% 88%;
 
     /* ── Muted ───────────────────────────────────────────── */
-    --muted:            192 56% 20%;
-    --muted-foreground: var(--sage-light);
+    --muted:            203 30% 17%;
+    --muted-foreground: 207 18% 68%;
 
     /* ── Accent ──────────────────────────────────────────── */
-    --accent:            var(--coral);
-    --accent-foreground: 0 0% 100%;
+    --accent:            189 50% 54%;
+    --accent-foreground: 202 44% 8%;
 
     /* ── Destructive ─────────────────────────────────────── */
     --destructive:            var(--coral-dark);
     --destructive-foreground: 210 40% 98%;
 
     /* ── Status ──────────────────────────────────────────── */
-    --success:            var(--sage-light);
-    --success-foreground: 0 0% 100%;
-    --warning:            var(--gold);
-    --warning-foreground: var(--teal-dark);
-    --info:               var(--sand);
-    --info-foreground:    0 0% 100%;
+    --success:            158 45% 56%;
+    --success-foreground: 202 44% 8%;
+    --warning:            43 92% 66%;
+    --warning-foreground: 202 44% 8%;
+    --info:               199 72% 62%;
+    --info-foreground:    202 44% 8%;
 
     /* ── Borders & Inputs ────────────────────────────────── */
-    --border: var(--cream);
-    --input:  var(--cream);
-    --ring:   var(--gold);
+    --border: 204 23% 34%;
+    --input:  204 23% 34%;
+    --ring:   43 92% 66%;
 
     /* ── Surface ─────────────────────────────────────────── */
-    --surface: var(--teal-dark);
+    --surface: 202 42% 10%;
 
     /* ── Charts ──────────────────────────────────────────── */
-    --chart-1: var(--gold);
-    --chart-2: var(--coral);
-    --chart-3: var(--sage-light);
-    --chart-4: var(--sand);
-    --chart-5: var(--cream-dark);
+    --chart-1: 43 92% 66%;
+    --chart-2: 189 50% 54%;
+    --chart-3: 158 45% 56%;
+    --chart-4: 260 75% 72%;
+    --chart-5: 14 88% 68%;
   }
 }
 
@@ -258,71 +258,72 @@
 
   .nm-sidebar {
     background: hsl(var(--surface));
-    border-right: 2px solid hsl(var(--foreground));
-    box-shadow: 6px 0 0 hsl(var(--foreground));
+    border-right: 1px solid hsl(var(--foreground) / 0.18);
+    box-shadow: 3px 0 0 hsl(var(--foreground) / 0.10);
   }
   .dark .nm-sidebar {
     background: hsl(var(--surface));
-    border-right-color: hsl(var(--border));
-    box-shadow: 6px 0 0 hsl(var(--border));
+    border-right-color: hsl(var(--border) / 0.45);
+    box-shadow: 3px 0 0 hsl(202 44% 4% / 0.35);
   }
 
   .nm-topbar {
     background: hsl(var(--surface));
-    border-bottom: 2px solid hsl(var(--foreground));
-    box-shadow: 0 5px 0 hsl(var(--foreground));
+    border-bottom: 1px solid hsl(var(--foreground) / 0.18);
+    box-shadow: 0 3px 0 hsl(var(--foreground) / 0.10);
   }
   .dark .nm-topbar {
     background: hsl(var(--surface));
-    border-bottom-color: hsl(var(--border));
-    box-shadow: 0 5px 0 hsl(var(--border));
+    border-bottom-color: hsl(var(--border) / 0.45);
+    box-shadow: 0 3px 0 hsl(202 44% 4% / 0.35);
   }
 
   .nm-btn {
     background: hsl(var(--surface));
-    border: 2px solid hsl(var(--foreground));
-    box-shadow: 3px 3px 0 hsl(var(--foreground));
+    border: 1px solid hsl(var(--foreground) / 0.72);
+    box-shadow: 2px 2px 0 hsl(var(--foreground) / 0.78);
     transition: transform 0.16s ease, box-shadow 0.16s ease, color 0.16s ease, background-color 0.16s ease;
   }
   .dark .nm-btn {
     background: hsl(var(--surface));
-    border-color: hsl(var(--border));
-    box-shadow: 3px 3px 0 hsl(var(--border));
+    border-color: hsl(var(--border) / 0.58);
+    box-shadow: 2px 2px 0 hsl(202 44% 4% / 0.45);
   }
   .nm-btn:hover {
     transform: translate(-1px, -1px);
-    box-shadow: 5px 5px 0 hsl(var(--foreground));
+    box-shadow: 3px 3px 0 hsl(var(--foreground) / 0.78);
   }
   .dark .nm-btn:hover {
-    box-shadow: 5px 5px 0 hsl(var(--border));
+    background: hsl(202 34% 14%);
+    box-shadow: 3px 3px 0 hsl(202 44% 4% / 0.50);
   }
   .nm-btn:active {
     transform: translate(2px, 2px);
-    box-shadow: 1px 1px 0 hsl(var(--foreground));
+    box-shadow: 1px 1px 0 hsl(var(--foreground) / 0.75);
   }
   .dark .nm-btn:active {
-    box-shadow: 1px 1px 0 hsl(var(--border));
+    box-shadow: 1px 1px 0 hsl(202 44% 4% / 0.55);
   }
 
   .nm-inset {
     background: hsl(var(--card));
-    border: 2px solid hsl(var(--foreground));
-    box-shadow: inset 3px 3px 0 hsl(var(--muted));
+    border: 1px solid hsl(var(--foreground) / 0.70);
+    box-shadow: inset 1px 1px 0 hsl(var(--muted));
   }
   .dark .nm-inset {
     background: hsl(var(--card));
-    border-color: hsl(var(--border));
-    box-shadow: inset 3px 3px 0 hsl(var(--background));
+    border-color: hsl(var(--border) / 0.55);
+    box-shadow: inset 1px 1px 0 hsl(202 44% 5% / 0.7);
   }
 
   .nm-card {
     background: hsl(var(--card));
-    border: 2px solid hsl(var(--foreground));
-    box-shadow: 6px 6px 0 hsl(var(--foreground));
+    border: 1px solid hsl(var(--foreground) / 0.72);
+    box-shadow: 4px 4px 0 hsl(var(--foreground) / 0.72);
   }
   .dark .nm-card {
     background: hsl(var(--card));
-    border-color: hsl(var(--border));
-    box-shadow: 6px 6px 0 hsl(var(--border));
+    border-color: hsl(var(--border) / 0.62);
+    box-shadow: 4px 4px 0 hsl(202 44% 4% / 0.50);
   }
 }

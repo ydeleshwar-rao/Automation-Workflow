@@ -20,6 +20,16 @@ function useUserId(): string | null {
   return getActiveUserId() || null;
 }
 
+function getApiErrorMessage(error: unknown, fallback: string) {
+  if (!error || typeof error !== "object") return fallback;
+  const data = (error as { data?: unknown }).data;
+  if (data && typeof data === "object") {
+    const message = (data as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  return fallback;
+}
+
 // ── Status badge ──────────────────────────────────────────────────────────────
 const STATUS = {
   draft:  { label: "Draft",  Icon: Circle,        className: "text-muted-foreground bg-muted/40" },
@@ -48,10 +58,10 @@ function WorkflowCard({
   onDelete: (id: string) => void;
 }) {
   return (
-    <div className="nm-card rounded-2xl p-5 flex flex-col gap-3 group transition-all hover:scale-[1.01]">
+    <div className="nm-card rounded-lg p-5 flex flex-col gap-3 group transition-all hover:-translate-y-0.5">
       {/* Icon + status */}
       <div className="flex items-start justify-between">
-        <div className="nm-inset w-10 h-10 rounded-xl flex items-center justify-center">
+        <div className="rounded-lg border border-foreground/15 bg-background w-10 h-10 flex items-center justify-center">
           <Zap className="w-5 h-5 text-primary" />
         </div>
         <StatusChip status={wf.status} />
@@ -59,7 +69,7 @@ function WorkflowCard({
 
       {/* Name */}
       <div>
-        <h3 className="text-[14px] font-bold text-foreground leading-tight">{wf.name}</h3>
+        <h3 className="text-[14px] font-semibold text-foreground leading-tight">{wf.name}</h3>
         {wf.description && (
           <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">{wf.description}</p>
         )}
@@ -77,13 +87,13 @@ function WorkflowCard({
       <div className="flex items-center gap-2 mt-auto pt-1">
         <button
           onClick={() => onOpen(wf.id)}
-          className="flex-1 h-9 nm-btn rounded-xl text-[12px] font-bold text-foreground hover:text-primary transition-all"
+          className="flex-1 h-9 nm-btn rounded-lg text-[12px] font-medium text-foreground hover:text-primary transition-all"
         >
           Open Editor
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(wf.id); }}
-          className="nm-btn h-9 w-9 flex items-center justify-center rounded-xl text-muted-foreground hover:text-destructive transition-all"
+          className="nm-btn h-9 w-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive transition-all"
         >
           <Trash2 className="w-3.5 h-3.5" />
         </button>
@@ -117,8 +127,8 @@ export function AiWorkflowList() {
       const res = await createWf({ user_id: userId, name: "Untitled AI Workflow" }).unwrap();
       const newId = (res as any)?.data?.id ?? (res as any)?.id;
       if (newId) router.push(`/dashboard/ai-workflow/${newId}`);
-    } catch {
-      toast.error("Failed to create workflow");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Failed to create workflow"));
     }
   };
 
@@ -138,10 +148,10 @@ export function AiWorkflowList() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5 mb-1">
-              <div className="nm-inset w-8 h-8 rounded-xl flex items-center justify-center">
+              <div className="rounded-lg border border-foreground/15 bg-card w-8 h-8 flex items-center justify-center">
                 <GitBranch className="w-4 h-4 text-primary" />
               </div>
-              <h1 className="text-2xl font-black text-foreground tracking-tight">AI Workflows</h1>
+              <h1 className="text-2xl font-semibold text-foreground tracking-tight">AI Workflows</h1>
             </div>
             <p className="text-[13px] text-muted-foreground max-w-lg">
               Build visual AI automations — drag &amp; drop nodes, connect them, and deploy in seconds.
@@ -153,10 +163,10 @@ export function AiWorkflowList() {
             onClick={handleCreate}
             disabled={isCreating}
             className={cn(
-              "flex items-center gap-2 h-10 px-5 rounded-xl text-[13px] font-bold text-primary-foreground shrink-0",
-              "bg-primary border-2 border-foreground shadow-[4px_4px_0_hsl(var(--foreground))]",
-              "hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[6px_6px_0_hsl(var(--foreground))]",
-              "transition-all dark:border-border dark:shadow-[4px_4px_0_hsl(var(--border))] dark:hover:shadow-[6px_6px_0_hsl(var(--border))]",
+              "flex items-center gap-2 h-10 px-5 rounded-lg text-[13px] font-medium text-primary-foreground shrink-0",
+              "bg-primary border border-foreground/70 shadow-[2px_2px_0_rgba(5,47,57,0.72)]",
+              "hover:-translate-x-px hover:-translate-y-px hover:shadow-[3px_3px_0_rgba(5,47,57,0.72)]",
+              "transition-all dark:border-border/60 dark:shadow-[2px_2px_0_rgba(4,14,20,0.55)] dark:hover:shadow-[3px_3px_0_rgba(4,14,20,0.6)]",
               isCreating && "opacity-70 cursor-not-allowed"
             )}
           >
@@ -169,7 +179,7 @@ export function AiWorkflowList() {
         </div>
 
         {/* Search */}
-        <div className="mt-4 nm-inset rounded-xl flex items-center gap-2 px-3 h-9 max-w-sm">
+        <div className="mt-4 rounded-lg border border-foreground/25 bg-card flex items-center gap-2 px-3 h-9 max-w-sm shadow-sm">
           <Search className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0" />
           <input
             placeholder="Search workflows…"
@@ -199,7 +209,7 @@ export function AiWorkflowList() {
             <div className="nm-inset w-16 h-16 rounded-2xl flex items-center justify-center mb-4">
               <Zap className="w-8 h-8 text-primary/60" />
             </div>
-            <h2 className="text-[15px] font-bold text-foreground mb-1">
+            <h2 className="text-[15px] font-semibold text-foreground mb-1">
               {search ? "No workflows match your search" : "No AI Workflows yet"}
             </h2>
             <p className="text-[12px] text-muted-foreground mb-6 max-w-xs">
@@ -211,7 +221,7 @@ export function AiWorkflowList() {
               <button
                 onClick={handleCreate}
                 disabled={isCreating}
-                className="flex items-center gap-2 h-10 px-5 rounded-xl text-[13px] font-bold text-primary-foreground bg-primary border-2 border-foreground shadow-[4px_4px_0_hsl(var(--foreground))] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[6px_6px_0_hsl(var(--foreground))] transition-all dark:border-border dark:shadow-[4px_4px_0_hsl(var(--border))] dark:hover:shadow-[6px_6px_0_hsl(var(--border))]"
+                className="flex items-center gap-2 h-10 px-5 rounded-lg text-[13px] font-medium text-primary-foreground bg-primary border border-foreground/70 shadow-[2px_2px_0_rgba(5,47,57,0.72)] hover:-translate-x-px hover:-translate-y-px hover:shadow-[3px_3px_0_rgba(5,47,57,0.72)] transition-all dark:border-border/60 dark:shadow-[2px_2px_0_rgba(4,14,20,0.55)] dark:hover:shadow-[3px_3px_0_rgba(4,14,20,0.6)]"
               >
                 <Plus className="w-4 h-4" />
                 Create First Workflow

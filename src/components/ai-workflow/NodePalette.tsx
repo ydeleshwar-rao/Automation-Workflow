@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Search, ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Info, Search } from "lucide-react";
 import { cn } from "@/src/lib/utils";
 import {
   CATALOG_BY_CATEGORY,
@@ -32,22 +32,28 @@ function DraggableNodeCard({ def }: { def: NodeDefinition }) {
     <div
       draggable
       onDragStart={onDragStart}
-      className="nm-btn flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-grab active:cursor-grabbing transition-all hover:bg-primary/5 group"
+      className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg cursor-grab active:cursor-grabbing transition-all border border-transparent hover:border-foreground/15 hover:bg-card group"
     >
       {/* Icon badge */}
       <div
-        className="nm-inset w-7 h-7 rounded-lg flex items-center justify-center text-xs shrink-0 font-bold"
+        className="w-7 h-7 rounded-md border border-foreground/15 bg-background flex items-center justify-center text-xs shrink-0 font-semibold"
         style={{ borderLeft: `2px solid ${color}50`, color }}
       >
         {def.icon}
       </div>
       <div className="flex flex-col gap-0 flex-1 min-w-0">
-        <span className="text-[12.5px] font-semibold text-foreground leading-tight truncate">
+        <span className="text-[12.5px] font-medium text-foreground leading-tight truncate">
           {def.label}
         </span>
         <span className="text-[10.5px] text-muted-foreground leading-snug truncate">
           {def.description}
         </span>
+        {def.hint && (
+          <span className="mt-1 flex items-start gap-1 text-[10px] text-muted-foreground/80 leading-snug line-clamp-2">
+            <Info className="w-3 h-3 shrink-0 mt-0.5" />
+            <span>{def.hint}</span>
+          </span>
+        )}
       </div>
     </div>
   );
@@ -65,18 +71,18 @@ function CategorySection({
   const color = CATEGORY_COLOR[category];
 
   return (
-    <div className="border-b border-black/8 dark:border-white/5 last:border-0">
+    <div className="border-b border-foreground/10 last:border-0">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-primary/5 transition-colors"
+        className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-card/70 transition-colors"
       >
         <div
-          className="nm-inset w-6 h-6 rounded-lg flex items-center justify-center text-sm shrink-0"
+          className="w-6 h-6 rounded-md border border-foreground/15 bg-background flex items-center justify-center text-sm shrink-0"
           style={{ borderLeft: `2px solid ${color}` }}
         >
           <span>{CATEGORY_EMOJIS[category]}</span>
         </div>
-        <span className="text-[12px] font-bold text-foreground flex-1 text-left">
+        <span className="text-[12px] font-semibold text-foreground flex-1 text-left">
           {CATEGORY_LABELS[category]}
         </span>
         <span className="text-[10px] text-muted-foreground mr-1">{nodes.length}</span>
@@ -113,14 +119,14 @@ export function NodePalette() {
     : [];
 
   return (
-    <aside className="w-[240px] flex flex-col h-full bg-[hsl(var(--surface))] border-r border-black/8 dark:border-white/5 shrink-0">
+    <aside className="w-[240px] flex flex-col h-full bg-[hsl(var(--surface))] border-r border-foreground/15 shrink-0">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-black/8 dark:border-white/5 shrink-0">
-        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2.5">
+      <div className="px-4 py-3 border-b border-foreground/10 shrink-0">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2.5">
           Node Palette
         </p>
         {/* Search */}
-        <div className="nm-inset rounded-xl flex items-center gap-2 px-2.5 h-8">
+        <div className="rounded-lg border border-foreground/25 bg-card flex items-center gap-2 px-2.5 h-8 shadow-sm">
           <Search className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0" />
           <input
             placeholder="Search nodes…"

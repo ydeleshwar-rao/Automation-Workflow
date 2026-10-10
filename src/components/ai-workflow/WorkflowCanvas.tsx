@@ -134,6 +134,7 @@ export function WorkflowCanvas({
         data: {
           label:       def.label,
           description: def.description,
+          hint:        def.hint,
           category:    def.category,
           nodeType:    def.nodeType,
           icon:        def.icon,
@@ -231,25 +232,25 @@ export function WorkflowCanvas({
             minZoom={0.2}
             maxZoom={2}
             defaultEdgeOptions={{ type: "default", animated: true }}
-            style={{ background: "hsl(var(--surface))" }}
+            style={{ background: "hsl(var(--background))" }}
           >
             {/* Dot-grid background */}
             <Background
               variant={BackgroundVariant.Dots}
               gap={24}
-              size={1.5}
-              color="hsl(var(--muted-foreground) / 20%)"
+              size={1.2}
+              color="hsl(var(--muted-foreground) / 14%)"
             />
 
             {/* Zoom controls */}
             <Controls
-              className="!nm-card !rounded-xl !border-0 !shadow-none overflow-hidden"
+              className="!rounded-lg !border !border-foreground/15 !bg-card !shadow-sm overflow-hidden"
               showInteractive={false}
             />
 
             {/* Minimap */}
             <MiniMap
-              className="!nm-card !rounded-xl !border-0 !shadow-none"
+              className="!rounded-lg !border !border-foreground/15 !bg-card !shadow-sm"
               nodeColor={(n) => {
                 const nd = n as Node<AiNodeData>;
                 return nd.data?.category
@@ -261,7 +262,7 @@ export function WorkflowCanvas({
             {/* Empty state hint */}
             {nodes.length <= 1 && (
               <Panel position="top-center">
-                <div className="nm-inset rounded-2xl px-5 py-3 flex items-center gap-2 mt-4 text-[12px] text-muted-foreground font-medium">
+                <div className="rounded-lg border border-foreground/20 bg-card/90 px-5 py-3 flex items-center gap-2 mt-4 text-[12px] text-muted-foreground font-medium shadow-sm">
                   <Plus className="w-4 h-4" />
                   Drag nodes from the left panel — connect them to build your AI flow
                 </div>
@@ -295,10 +296,10 @@ export function WorkflowCanvas({
 
 // colour lookup used by minimap (duplicate from types to avoid import in style attr)
 const CATEGORY_COLOR_MAP: Record<string, string> = {
-  trigger:   "#f97316",
-  ai:        "#8b5cf6",
-  action:    "#22c55e",
-  logic:     "#eab308",
-  transform: "#3b82f6",
-  code:      "#6b7280",
+  trigger:   "#fb923c",
+  ai:        "#a78bfa",
+  action:    "#34d399",
+  logic:     "#fbbf24",
+  transform: "#60a5fa",
+  code:      "#94a3b8",
 };

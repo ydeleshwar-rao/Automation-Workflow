@@ -44,11 +44,11 @@ export function CanvasToolbar({
   };
 
   return (
-    <header className="h-14 flex items-center gap-3 px-4 bg-[hsl(var(--surface))] border-b border-black/8 dark:border-white/5 shrink-0 z-20">
+    <header className="h-14 flex items-center gap-3 px-4 bg-[hsl(var(--surface))] border-b border-foreground/15 shrink-0 z-20">
       {/* Back */}
       <button
         onClick={() => router.push("/dashboard/ai-workflow")}
-        className="nm-btn flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] font-semibold text-muted-foreground hover:text-foreground transition-all"
+        className="nm-btn flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-medium text-muted-foreground hover:text-foreground transition-all"
       >
         <ArrowLeft className="w-3.5 h-3.5" />
         Back
@@ -65,12 +65,12 @@ export function CanvasToolbar({
           onChange={(e) => setNameVal(e.target.value)}
           onBlur={commitName}
           onKeyDown={(e) => e.key === "Enter" && commitName()}
-          className="nm-inset rounded-lg px-2 h-8 text-[14px] font-bold text-foreground focus:outline-none w-[220px]"
+          className="nm-inset rounded-lg px-2 h-8 text-[14px] font-semibold text-foreground focus:outline-none w-[220px]"
         />
       ) : (
         <button
           onClick={() => setEditing(true)}
-          className="text-[14px] font-bold text-foreground hover:text-primary transition-colors max-w-[220px] truncate"
+          className="text-[14px] font-semibold text-foreground hover:text-primary transition-colors max-w-[220px] truncate"
         >
           {nameVal}
         </button>
@@ -78,7 +78,7 @@ export function CanvasToolbar({
 
       {/* Status badge */}
       <div className={cn(
-        "flex items-center gap-1 px-2 py-1 nm-inset rounded-lg text-[11px] font-bold",
+        "flex items-center gap-1 px-2 py-1 nm-inset rounded-lg text-[11px] font-medium",
         color
       )}>
         <Icon className="w-3 h-3" />
@@ -89,13 +89,13 @@ export function CanvasToolbar({
       <div className="flex-1" />
 
       {/* History */}
-      <button className="nm-btn h-8 w-8 flex items-center justify-center rounded-xl text-muted-foreground hover:text-foreground transition-all">
+      <button className="nm-btn h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground transition-all">
         <History className="w-4 h-4" />
       </button>
 
       <button
         onClick={onOpenHarnessTest}
-        className="nm-btn h-8 px-3 rounded-xl text-[12px] font-bold flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-all"
+        className="nm-btn h-8 px-3 rounded-lg text-[12px] font-medium flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-all"
       >
         <FlaskConical className="w-3.5 h-3.5" />
         Harness
@@ -106,7 +106,7 @@ export function CanvasToolbar({
         onClick={onSave}
         disabled={isSaving}
         className={cn(
-          "nm-btn h-8 px-4 rounded-xl text-[12px] font-bold flex items-center gap-1.5 transition-all",
+          "nm-btn h-8 px-4 rounded-lg text-[12px] font-medium flex items-center gap-1.5 transition-all",
           isSaving ? "opacity-60 cursor-not-allowed text-muted-foreground" : "text-foreground hover:text-primary"
         )}
       >
@@ -121,10 +121,10 @@ export function CanvasToolbar({
         onClick={onRun}
         disabled={isRunning}
         className={cn(
-          "flex items-center gap-1.5 h-8 px-4 rounded-xl text-[12px] font-bold text-primary-foreground transition-all",
-          "bg-primary border-2 border-foreground shadow-[3px_3px_0_hsl(var(--foreground))]",
-          "hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-[5px_5px_0_hsl(var(--foreground))]",
-          "dark:border-border dark:shadow-[3px_3px_0_hsl(var(--border))] dark:hover:shadow-[5px_5px_0_hsl(var(--border))]",
+          "flex items-center gap-1.5 h-8 px-4 rounded-lg text-[12px] font-medium text-primary-foreground transition-all",
+          "bg-primary border border-foreground/70 shadow-[2px_2px_0_rgba(5,47,57,0.72)]",
+          "hover:-translate-x-px hover:-translate-y-px hover:bg-primary/90 hover:shadow-[3px_3px_0_rgba(5,47,57,0.72)]",
+          "dark:border-border/60 dark:shadow-[2px_2px_0_rgba(4,14,20,0.55)] dark:hover:shadow-[3px_3px_0_rgba(4,14,20,0.6)]",
           isRunning && "opacity-70 cursor-not-allowed"
         )}
       >

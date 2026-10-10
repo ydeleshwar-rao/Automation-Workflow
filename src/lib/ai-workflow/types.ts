@@ -12,27 +12,28 @@ export type NodeCategory =
   | "code";
 
 export const CATEGORY_COLOR: Record<NodeCategory, string> = {
-  trigger:   "#f97316", // orange
-  ai:        "#8b5cf6", // violet
-  action:    "#22c55e", // green
-  logic:     "#eab308", // yellow
-  transform: "#3b82f6", // blue
-  code:      "#6b7280", // gray
+  trigger:   "#fb923c",
+  ai:        "#a78bfa",
+  action:    "#34d399",
+  logic:     "#fbbf24",
+  transform: "#60a5fa",
+  code:      "#94a3b8",
 };
 
 export const CATEGORY_BG: Record<NodeCategory, string> = {
-  trigger:   "rgba(249,115,22,0.12)",
-  ai:        "rgba(139,92,246,0.12)",
-  action:    "rgba(34,197,94,0.12)",
-  logic:     "rgba(234,179,8,0.12)",
-  transform: "rgba(59,130,246,0.12)",
-  code:      "rgba(107,114,128,0.12)",
+  trigger:   "rgba(251,146,60,0.12)",
+  ai:        "rgba(167,139,250,0.12)",
+  action:    "rgba(52,211,153,0.12)",
+  logic:     "rgba(251,191,36,0.12)",
+  transform: "rgba(96,165,250,0.12)",
+  code:      "rgba(148,163,184,0.12)",
 };
 
 // ── Node data (stored inside React Flow node.data) ───────────────────────────
 export interface AiNodeData extends Record<string, unknown> {
   label:       string;
   description?: string;
+  hint?:        string;
   category:    NodeCategory;
   nodeType:    string;   // e.g. "openai-chat", "if-else", "send-email"
   icon:        string;   // emoji or lucide icon name

@@ -40,21 +40,22 @@ export function WhatsAppConfigureStep({
   triggerTestPayload,
   triggerTestSamples,
 }: WhatsAppConfigureStepProps) {
+  const initial = data as WhatsAppConfig;
   const { watch, setValue, getValues } = useForm<WhatsAppConfig>({
     mode: "onChange",
     defaultValues: {
-      to: data.to ?? "",
-      message: data.message ?? "",
-      url: data.url ?? "",
-      caption: data.caption ?? "",
-      filename: data.filename ?? "",
-      mimetype: data.mimetype ?? "",
-      templateName: data.templateName ?? "",
-      language: data.language ?? "en",
-      lat: data.lat ?? "",
-      lng: data.lng ?? "",
-      name: data.name ?? "",
-      address: data.address ?? "",
+      to: initial.to ?? "",
+      message: initial.message ?? "",
+      url: initial.url ?? "",
+      caption: initial.caption ?? "",
+      filename: initial.filename ?? "",
+      mimetype: initial.mimetype ?? "",
+      templateName: initial.templateName ?? "",
+      language: initial.language ?? "en",
+      lat: initial.lat ?? "",
+      lng: initial.lng ?? "",
+      name: initial.name ?? "",
+      address: initial.address ?? "",
     },
   });
   const values = watch();

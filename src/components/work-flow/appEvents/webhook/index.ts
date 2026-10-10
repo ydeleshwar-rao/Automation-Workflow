@@ -23,30 +23,19 @@ function resolveWebhookUrl(rawUrl: string): string {
   const trimmed = rawUrl.trim();
   if (!trimmed) return "";
 
+  const fallbackApiOrigin = "http://localhost:5000";
+  const apiOrigin = process.env.NEXT_PUBLIC_API_URL || fallbackApiOrigin;
+
   try {
     const parsed = new URL(trimmed);
-    const isLocal5000 =
-      (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") &&
-      parsed.port === "5000";
+    const isLocalWebhook =
+      parsed.pathname.startsWith("/api/webhooks/") &&
+      (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1");
 
-    if (!isLocal5000) return trimmed;
+    if (!isLocalWebhook) return trimmed;
 
-    const candidateOrigins = [
-      process.env.NEXT_PUBLIC_API_URL,
-      process.env.NEXT_PUBLIC_APP_URL,
-      typeof window !== "undefined" ? window.location.origin : undefined,
-    ].filter((value): value is string => Boolean(value && value.trim()));
-
-    for (const origin of candidateOrigins) {
-      try {
-        const base = new URL(origin);
-        return new URL(parsed.pathname + parsed.search + parsed.hash, base.origin).toString();
-      } catch {
-        // Ignore invalid origin and try next candidate.
-      }
-    }
-
-    return trimmed;
+    const base = new URL(apiOrigin);
+    return new URL(parsed.pathname + parsed.search + parsed.hash, base.origin).toString();
   } catch {
     return trimmed;
   }

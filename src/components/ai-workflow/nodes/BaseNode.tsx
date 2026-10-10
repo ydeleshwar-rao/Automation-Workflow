@@ -3,7 +3,7 @@
 import React from "react";
 import { Handle, Position, NodeProps } from "@xyflow/react";
 import { cn } from "@/src/lib/utils";
-import { CheckCircle2, XCircle, Loader2, AlertCircle } from "lucide-react";
+import { CheckCircle2, Info, Loader2, XCircle } from "lucide-react";
 import type { AiNodeData } from "@/src/lib/ai-workflow/types";
 import { CATEGORY_COLOR, CATEGORY_BG } from "@/src/lib/ai-workflow/types";
 
@@ -49,7 +49,7 @@ export function BaseNode({
   return (
     <div
       className={cn(
-        "relative nm-card rounded-2xl min-w-[180px] max-w-[220px] transition-all duration-150",
+        "relative nm-card rounded-lg min-w-[180px] max-w-[220px] transition-all duration-150",
         selected && "outline outline-2 outline-offset-2",
       )}
       style={{
@@ -60,28 +60,28 @@ export function BaseNode({
 
       {/* Coloured left accent bar */}
       <div
-        className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl"
+        className="absolute left-0 top-0 bottom-0 w-1 rounded-l-lg"
         style={{ background: color }}
       />
 
       {/* Header */}
       <div
         className="flex items-center gap-2.5 px-3 pt-3 pb-2.5 pl-4"
-        style={{ background: bgTint, borderRadius: "1rem 1rem 0 0" }}
+        style={{ background: bgTint, borderRadius: "0.5rem 0.5rem 0 0" }}
       >
         {/* Icon badge */}
         <div
-          className="nm-inset w-8 h-8 rounded-xl flex items-center justify-center text-sm shrink-0"
+          className="w-8 h-8 rounded-md border border-foreground/15 bg-card flex items-center justify-center text-sm shrink-0"
           style={{ border: `1px solid ${color}30` }}
         >
           <span style={{ filter: "none" }}>{data.icon}</span>
         </div>
         <div className="flex flex-col gap-0 flex-1 min-w-0">
-          <span className="text-[11px] font-bold uppercase tracking-wider"
+          <span className="text-[11px] font-semibold uppercase tracking-wider"
             style={{ color }}>
             {data.category}
           </span>
-          <span className="text-[13px] font-bold text-foreground leading-tight truncate">
+          <span className="text-[13px] font-semibold text-foreground leading-tight truncate">
             {data.label}
           </span>
         </div>
@@ -93,6 +93,12 @@ export function BaseNode({
           <p className="text-[11.5px] text-muted-foreground leading-snug">
             {data.description}
           </p>
+          {data.hint && (
+            <div className="mt-2 flex gap-1.5 text-[10.5px] text-muted-foreground/80 leading-snug">
+              <Info className="w-3 h-3 shrink-0 mt-0.5" />
+              <span className="line-clamp-3">{data.hint}</span>
+            </div>
+          )}
         </div>
       )}
 

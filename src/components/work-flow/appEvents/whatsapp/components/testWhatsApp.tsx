@@ -61,9 +61,9 @@ export function WhatsAppTestStep({
             Message Preview
           </div>
           <p className="text-xs text-muted-foreground">To</p>
-          <p className="text-sm font-semibold text-foreground break-words">{data?.to || "Not set"}</p>
+          <p className="text-sm font-semibold text-foreground break-words">{String(data?.to || "Not set")}</p>
           <p className="text-xs text-muted-foreground pt-2">Message</p>
-          <p className="text-sm text-foreground whitespace-pre-wrap break-words">{data?.message || "No message configured"}</p>
+          <p className="text-sm text-foreground whitespace-pre-wrap break-words">{String(data?.message || "No message configured")}</p>
         </div>
       </div>
     </div>

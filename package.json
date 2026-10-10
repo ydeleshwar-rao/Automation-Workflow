@@ -1,9 +1,10 @@
 {
+  "name": "automation-workflow-frontend",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3000",
-    "build": "next build --no-lint",
-    "start": "next start",
+    "dev": "bun --bun next dev --port 3000",
+    "build": "bun --bun next build --no-lint",
+    "start": "bun --bun next start",
     "lint": "eslint ."
   },
   "dependencies": {

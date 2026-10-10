@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { WebhookRequest, WebhookTestStatus } from '@/src/components/work-flow/uiOrchestrator/types';
 
-const WEBHOOK_BASE_PATH = '/api/hooks/catch/26465781';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const WEBHOOK_BASE_PATH = '/api/webhooks';
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 30_000;
 const MAX_HISTORY = 10;
@@ -57,10 +58,7 @@ export function useWebhook() {
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    const baseUrl = typeof window !== 'undefined'
-      ? window.location.origin
-      : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
-    setWebhookUrl(`${baseUrl}${WEBHOOK_BASE_PATH}/${hookId}`);
+    setWebhookUrl(`${API_BASE_URL}${WEBHOOK_BASE_PATH}/${hookId}`);
   }, [hookId]);
 
   const stopPolling = useCallback(() => {
@@ -72,7 +70,7 @@ export function useWebhook() {
 
   const pollForData = useCallback(async () => {
     try {
-      const response = await fetch(`${WEBHOOK_BASE_PATH}/${hookId}`);
+      const response = await fetch(`${API_BASE_URL}${WEBHOOK_BASE_PATH}/${hookId}`);
       if (!response.ok) return;
 
       let result;
@@ -106,7 +104,7 @@ export function useWebhook() {
       setRequests([]);
       setSelectedRequestId(null);
       // Clear old records from DB so we only see fresh requests
-      fetch(`${WEBHOOK_BASE_PATH}/${hookId}`, { method: 'DELETE' }).catch(() => {});
+      fetch(`${API_BASE_URL}${WEBHOOK_BASE_PATH}/${hookId}`, { method: 'DELETE' }).catch(() => {});
     }
 
     stopPolling();
