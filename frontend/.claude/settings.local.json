@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs -I {} find {} -type f -name \"*.tsx\")",
+      "Bash(grep -r \"from.*shadcn\\\\|from.*@radix-ui\" /d/Projects-NJ/Temp/job-management/src/components/work-flow/components/*.tsx)",
+      "Bash(grep -r \"useAppDispatch\\\\|useAppSelector\" /d/Projects-NJ/Temp/job-management/src/components/work-flow/components/*.tsx)",
+      "Bash(echo \"EXIT=$?\")"
+    ]
+  }
+}
