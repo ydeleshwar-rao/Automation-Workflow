@@ -275,7 +275,7 @@ export function CreateAccountForm() {
         <div className="flex-1 h-px bg-border/60" />
       </div>
 
-      <SsoButtons className="mt-5" labels={{ google: "Sign up with Google", microsoft: "Sign up with Microsoft" }} />
+      <SsoButtons className="mt-5" />
 
       {/* Sign-in link */}
       <p className="mt-6 text-center text-sm text-muted-foreground">

@@ -79,15 +79,18 @@ export function SsoProviderButton({
       type="button"
       onClick={handleClick}
       disabled={isLoading}
-      className="w-full rounded-xl border border-border/70 bg-background px-5 py-3 text-sm font-semibold text-foreground transition-all hover:border-primary/40 hover:bg-primary/5 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 flex items-center justify-center gap-3"
+      className="w-full min-w-0 rounded-xl border border-border/70 bg-background px-3 py-3 text-sm font-semibold text-foreground transition-all hover:border-primary/40 hover:bg-primary/5 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 flex items-center justify-center gap-2.5"
     >
-      {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Logo />}
-      {isLoading ? `Opening ${PROVIDER_LABEL[provider].personal}...` : text}
+      {isLoading ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <Logo className="h-4 w-4 shrink-0" />}
+      <span className="truncate">{isLoading ? `Opening ${PROVIDER_LABEL[provider].personal}…` : text}</span>
     </button>
   );
 }
 
-/** Google + Microsoft buttons (only the configured ones) with a shared error line. */
+/**
+ * Google + Microsoft buttons side by side (stacked when only one is available),
+ * labelled with the provider name, with a shared error line underneath.
+ */
 export function SsoButtons({
   intent = "signin",
   organizationName,
@@ -105,20 +108,24 @@ export function SsoButtons({
   const providers = (["google", "microsoft"] as const).filter((p) => SSO_ENABLED[p]);
   if (providers.length === 0) return null;
 
+  const kind = intent === "signin" ? "personal" : "company";
+
   return (
-    <div className={`flex flex-col gap-3 ${className}`}>
-      {providers.map((provider) => (
-        <SsoProviderButton
-          key={provider}
-          provider={provider}
-          intent={intent}
-          label={labels?.[provider]}
-          organizationName={organizationName}
-          validate={validate}
-          onError={setError}
-        />
-      ))}
-      {error && <p className="text-xs font-medium text-destructive">{error}</p>}
+    <div className={className}>
+      <div className={providers.length > 1 ? "grid grid-cols-2 gap-3" : "flex flex-col"}>
+        {providers.map((provider) => (
+          <SsoProviderButton
+            key={provider}
+            provider={provider}
+            intent={intent}
+            label={labels?.[provider] ?? (providers.length > 1 ? PROVIDER_LABEL[provider][kind] : undefined)}
+            organizationName={organizationName}
+            validate={validate}
+            onError={setError}
+          />
+        ))}
+      </div>
+      {error && <p className="mt-2 text-xs font-medium text-destructive">{error}</p>}
     </div>
   );
 }
