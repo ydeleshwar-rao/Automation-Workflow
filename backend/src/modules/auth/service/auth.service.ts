@@ -4,6 +4,7 @@ import type { UserRole }                        from "../jwt.js";
 import { ApiError }                             from "../../../utils/ApiError.js";
 import { createResetToken, hashResetToken }     from "../../../lib/db/password.js";
 import { sendSystemMail }                       from "../../../utils/system-mail.js";
+import { SsoService }                           from "../../sso/sso.service.js";
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 
@@ -27,10 +28,15 @@ type PagePermissionRow = {
 };
 
 export class AuthService {
-  private static async createOrganization(name: string, ownerId?: string): Promise<string> {
+  private static async createOrganization(
+    name: string,
+    ownerId?: string,
+    type: "individual" | "company" = "individual",
+  ): Promise<string> {
     const { data, error } = await supabase
       .from("organizations")
-      .insert({ name, owner_id: ownerId ?? null })
+      // Workspace type exists from migration 0030 (DB_PROVIDER=postgres)
+      .insert({ name, owner_id: ownerId ?? null, ...(DB_PROVIDER === "postgres" ? { type } : {}) })
       .select("id")
       .single();
 
@@ -69,7 +75,8 @@ export class AuthService {
     return ((data ?? []) as PagePermissionRow[]).map((permission) => permission.page_key);
   }
 
-  private static async issueAppSession(userId: string) {
+  /** Issues our JWT pair for a user (also used by company SSO sign-in). */
+  static async issueAppSession(userId: string) {
     const profile = await this.getProfileRow(userId);
     const permissions = profile.role === "developer"
       ? await this.getViewPermissions(userId)
@@ -105,6 +112,7 @@ export class AuthService {
       throw new ApiError(401, authError?.message ?? "Invalid email or password");
     }
 
+    await SsoService.assertPasswordLoginAllowed(authData.user.id);
     return this.issueAppSession(authData.user.id);
   }
 
@@ -173,8 +181,11 @@ export class AuthService {
   }
 
   static async setupAdmin(email: string, password: string, fullName: string, organizationName?: string) {
+    await SsoService.assertEmailSignupAllowed(email);
     const organizationId = await this.createOrganization(
       organizationName?.trim() || `${fullName}'s Organization`,
+      undefined,
+      "company",
     );
 
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
@@ -225,13 +236,14 @@ export class AuthService {
   }
 
   static async register(email: string, password: string, fullName: string) {
-    const organizationId = await this.createOrganization(`${fullName}'s Organization`);
+    await SsoService.assertEmailSignupAllowed(email);
+    const organizationId = await this.createOrganization(`${fullName}'s Workspace`);
 
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
-      user_metadata: { full_name: fullName, role: "developer", organization_id: organizationId },
+      user_metadata: { full_name: fullName, role: "admin", organization_id: organizationId },
     });
 
     if (authError) {
@@ -252,7 +264,7 @@ export class AuthService {
         id: userId,
         email,
         full_name: fullName,
-        role: "developer",
+        role: "admin",
         organization_id: organizationId,
         is_active: true,
       }, { onConflict: "id" });

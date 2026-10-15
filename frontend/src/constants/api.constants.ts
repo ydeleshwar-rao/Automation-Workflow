@@ -20,6 +20,15 @@ export const API_ROUTES = {
     RESET_PASSWORD:  `${B}/auth/reset-password`,
   },
 
+  // ── Google / Microsoft sign-in + company SSO ──────────────────────────────
+  SSO: {
+    CALLBACK:   `${B}/sso/callback`,
+    DISCOVER:   `${B}/sso/discover`,
+    CONNECT:    `${B}/sso/connect`,
+    SETTINGS:   `${B}/sso/settings`,
+    CONNECTION: (id: string) => `${B}/sso/connections/${id}`,
+  },
+
   // ── Access / Developer Management ─────────────────────────────────────────
   ACCESS: {
     ME:               `${B}/access/me`,

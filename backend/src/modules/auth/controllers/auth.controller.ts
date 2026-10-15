@@ -4,7 +4,7 @@ import { ApiResponse }   from "../../../utils/ApiResponse.js";
 import { ApiError }      from "../../../utils/ApiError.js";
 import { AuthService }   from "../service/auth.service.js";
 
-type AuthResult = {
+export type AuthResult = {
   access_token: string;
   refresh_token: string;
   expires_in: number;
@@ -24,7 +24,7 @@ function cookieOptions(maxAgeSeconds: number) {
   };
 }
 
-function setAuthCookies(res: Response, result: AuthResult) {
+export function setAuthCookies(res: Response, result: AuthResult) {
   res.cookie("jm_access_token", result.access_token, cookieOptions(result.expires_in));
   res.cookie("jm_refresh_token", result.refresh_token, cookieOptions(refreshMaxAgeSeconds));
 }
@@ -34,7 +34,7 @@ function clearAuthCookies(res: Response) {
   res.clearCookie("jm_refresh_token", { path: "/" });
 }
 
-function publicAuthPayload(result: AuthResult) {
+export function publicAuthPayload(result: AuthResult) {
   return {
     expires_in: result.expires_in,
     user: result.user,

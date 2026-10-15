@@ -9,6 +9,7 @@ import { errorHandler } from "./middlewares/errorHandler.js";
 import servicem8Routes from "./modules/initgrations/serviceM8/route/serviceM8.routes.js"
 import authRoutes from "./modules/auth/routes/auth.routes.js"
 import accessRoutes from "./modules/access/access.routes.js"
+import ssoRoutes from "./modules/sso/sso.routes.js"
 
 import commusoftRoutes from "./modules/initgrations/commusoft/route/commusoft.routes.js"
 import simproRoutes from "./modules/initgrations/simpro/route/simpro.routes.js"
@@ -41,6 +42,7 @@ app.use(globalRateLimiter);
 
 app.use("/auth", authRoutes);           // login / signup / refresh token
 app.use("/access", accessRoutes);       // role-based access (clients, assignments, permissions)
+app.use("/sso", ssoRoutes);            // company SSO + Google/Microsoft sign-in
 app.use("/leadshub", leadsHubRouter);
 app.use("/api", webhooksRoutes)
 app.use("/mail", emailRoutes)

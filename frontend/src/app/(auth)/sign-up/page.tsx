@@ -3,7 +3,8 @@
 import { LoginHeader } from "@/src/components/onboarding/login/LoginHeader";
 import { LoginFooter } from "@/src/components/onboarding/login/LoginFooter";
 import { LivePreview } from "@/src/components/onboarding/features/LivePreview";
-import { CreateAccountForm } from "@/src/components/onboarding/signup/CreateAccountForm";
+import { Suspense } from "react";
+import { SignUpFlow } from "@/src/components/onboarding/signup/SignUpFlow";
 
 export default function SignUpPage() {
   return (
@@ -16,7 +17,9 @@ export default function SignUpPage() {
 
           <div className="flex flex-1 flex-col items-start justify-center px-10 sm:px-16 py-24">
             <div className="w-full max-w-[340px]">
-              <CreateAccountForm />
+              <Suspense fallback={null}>
+                <SignUpFlow />
+              </Suspense>
               <LoginFooter />
             </div>
           </div>

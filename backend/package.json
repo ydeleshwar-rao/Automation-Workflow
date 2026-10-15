@@ -5,6 +5,7 @@
   "scripts": {
     "test": "bun test ./src/modules/initgrations/serviceM8/utils/serviceM8DiaryEvent.util.test.ts",
     "test:db": "bun test ./src/lib/db/postgres-client.test.ts",
+    "test:sso": "bun test ./src/modules/sso/sso.service.test.ts",
     "test:sm8-diary-smoke": "bun scripts/smoke-servicem8-diary-event.ts",
     "dev": "NODE_ENV=development bun --watch src/server.ts",
     "build": "tsc",

@@ -5,7 +5,7 @@ import { Eye, EyeOff, Loader2, CheckCircle2, User, Mail, Lock } from "lucide-rea
 import Link from "next/link";
 import axios from "axios";
 import { API_ROUTES } from "@/src/constants/api.constants";
-import { GoogleAuthButton } from "../shared/GoogleAuthButton";
+import { SsoButtons } from "../shared/SsoButtons";
 
 // ── Password strength ─────────────────────────────────────────────────────────
 function getStrength(p: string): { score: number; label: string; color: string } {
@@ -110,8 +110,8 @@ export function CreateAccountForm() {
     <div className="w-full">
       {/* Heading */}
       <div className="mb-7">
-        <h2 className="text-2xl font-bold text-foreground tracking-tight">Create an account</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Fill in the details below to get started</p>
+        <h2 className="text-2xl font-bold text-foreground tracking-tight">Create your account</h2>
+        <p className="mt-1 text-sm text-muted-foreground">A personal workspace, just for you</p>
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4 w-full">
@@ -275,7 +275,7 @@ export function CreateAccountForm() {
         <div className="flex-1 h-px bg-border/60" />
       </div>
 
-      <GoogleAuthButton className="mt-5" label="Sign up with Google" />
+      <SsoButtons className="mt-5" labels={{ google: "Sign up with Google", microsoft: "Sign up with Microsoft" }} />
 
       {/* Sign-in link */}
       <p className="mt-6 text-center text-sm text-muted-foreground">

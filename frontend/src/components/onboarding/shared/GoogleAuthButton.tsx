@@ -1,51 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
-import { startGoogleSignIn } from "@/src/lib/auth/provider";
+import { SsoProviderButton } from "./SsoButtons";
 
 type GoogleAuthButtonProps = {
   className?: string;
   label?: string;
 };
 
+/** Single Google button — prefer <SsoButtons /> to also offer Microsoft. */
 export function GoogleAuthButton({
   className = "",
   label = "Continue with Google",
 }: GoogleAuthButtonProps) {
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const handleGoogleAuth = async () => {
-    if (isLoading) return;
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      await startGoogleSignIn();
-    } catch (authError: unknown) {
-      setError(authError instanceof Error ? authError.message : "Google sign-in failed");
-      setIsLoading(false);
-    }
-  };
 
   return (
     <div className={className}>
-      <button
-        type="button"
-        onClick={handleGoogleAuth}
-        disabled={isLoading}
-        className="w-full rounded-xl border border-border/70 bg-background px-5 py-3 text-sm font-semibold text-foreground transition-all hover:border-primary/40 hover:bg-primary/5 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 flex items-center justify-center gap-3"
-      >
-        {isLoading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-[13px] font-bold text-[#4285F4] shadow-sm">
-            G
-          </span>
-        )}
-        {isLoading ? "Opening Google..." : label}
-      </button>
+      <SsoProviderButton provider="google" label={label} onError={setError} />
       {error && (
         <p className="mt-2 text-xs font-medium text-destructive">{error}</p>
       )}

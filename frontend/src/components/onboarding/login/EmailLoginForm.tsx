@@ -1,14 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { Building2, Loader2 } from "lucide-react";
 import Link from "next/link";
 import axios from "axios";
 import { API_ROUTES } from "@/src/constants/api.constants";
 import { persistLoginResponse } from "@/src/services/auth.service";
-import { GoogleAuthButton } from "../shared/GoogleAuthButton";
+import { COMPANY_SSO_ENABLED } from "@/src/lib/auth/provider";
+import { SsoButtons } from "../shared/SsoButtons";
+import { CompanySsoForm } from "./CompanySsoForm";
 
 export function EmailLoginForm() {
+  const [mode, setMode]         = useState<"options" | "company">("options");
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [error, setError]       = useState<string | null>(null);
@@ -47,6 +50,8 @@ export function EmailLoginForm() {
     }
   };
 
+  if (mode === "company") return <CompanySsoForm onBack={() => setMode("options")} />;
+
   return (
     <div className="w-full">
 
@@ -56,7 +61,28 @@ export function EmailLoginForm() {
         <p className="mt-1 text-sm text-muted-foreground">Sign in to your account to continue</p>
       </div>
 
-      {/* ── Login form ── */}
+      {/* ── Google / Microsoft / company SSO ── */}
+      <SsoButtons />
+
+      {COMPANY_SSO_ENABLED && (
+        <button
+          type="button"
+          onClick={() => setMode("company")}
+          className="mt-3 w-full rounded-xl border border-border/70 bg-background px-5 py-3 text-sm font-semibold text-foreground transition-all hover:border-primary/40 hover:bg-primary/5 active:scale-[0.98] flex items-center justify-center gap-3"
+        >
+          <Building2 className="h-4 w-4 text-primary" />
+          Sign in with company SSO
+        </button>
+      )}
+
+      {/* ── Divider ── */}
+      <div className="my-6 flex items-center gap-3">
+        <div className="flex-1 h-px bg-border/60" />
+        <span className="text-xs text-muted-foreground font-medium">or sign in with email</span>
+        <div className="flex-1 h-px bg-border/60" />
+      </div>
+
+      {/* ── Email + password ── */}
       <form onSubmit={handleLogin} className="flex flex-col gap-4 w-full">
 
         <div className="flex flex-col gap-1.5">
@@ -121,27 +147,25 @@ export function EmailLoginForm() {
         </button>
       </form>
 
-      {/* ── Divider ── */}
-      <div className="mt-7 flex items-center gap-3">
-        <div className="flex-1 h-px bg-border/60" />
-        <span className="text-xs text-muted-foreground font-medium">or</span>
-        <div className="flex-1 h-px bg-border/60" />
-      </div>
-
-      {/* ── First-time setup card — always visible ── */}
-      <GoogleAuthButton className="mt-5" />
+      {/* ── New here ── */}
+      <p className="mt-6 text-center text-sm text-muted-foreground">
+        Don&apos;t have an account?{" "}
+        <Link href="/sign-up" className="font-semibold text-primary hover:text-primary/80">
+          Sign up
+        </Link>
+      </p>
 
       <Link
-        href="/setup"
+        href="/sign-up?type=company"
         className="mt-5 flex items-center gap-4 rounded-xl border border-border/70 bg-card px-4 py-4 transition-all hover:border-primary/40 hover:bg-primary/5 hover:shadow-sm group"
       >
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 border border-primary/20 group-hover:bg-primary/15 transition-colors">
-          <ShieldCheck className="h-4.5 w-4.5 text-primary" style={{ height: "1.125rem", width: "1.125rem" }} />
+          <Building2 className="h-4 w-4 text-primary" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-foreground">Create admin account</p>
+          <p className="text-sm font-semibold text-foreground">Set up your company</p>
           <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
-            First time here? Set up your admin account to get started
+            Create a company workspace your team signs in to with Google Workspace or Microsoft 365
           </p>
         </div>
         <svg

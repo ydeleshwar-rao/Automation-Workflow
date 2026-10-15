@@ -1,4 +1,4 @@
-import { Users, PlusCircle, ArrowRight, ArrowLeft } from "lucide-react";
+import { Users, PlusCircle, ArrowRight, ArrowLeft, Building2 } from "lucide-react";
 import Link from "next/link";
 
 const quickActions = [
@@ -13,6 +13,12 @@ const quickActions = [
     description: "Assign developers and manage page permissions",
     href: "/admin/access",
     icon: Users,
+  },
+  {
+    title: "Company SSO",
+    description: "Google Workspace / Microsoft 365 sign-in for your team",
+    href: "/admin/sso",
+    icon: Building2,
   },
 ];
 

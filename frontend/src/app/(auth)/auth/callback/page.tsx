@@ -2,51 +2,40 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import axios from "axios";
 import { Loader2 } from "lucide-react";
-import { API_ROUTES } from "@/src/constants/api.constants";
-import { getGoogleCallbackToken, finishGoogleSignIn } from "@/src/lib/auth/provider";
+import { completeSsoCallback, lastSsoIntent } from "@/src/lib/auth/provider";
 import { persistLoginResponse } from "@/src/services/auth.service";
 
 export default function AuthCallbackPage() {
   const [error, setError] = useState<string | null>(null);
+  const [backHref, setBackHref] = useState("/login");
 
   useEffect(() => {
     let cancelled = false;
 
-    async function finishGoogleSignIn() {
+    async function finishSignIn() {
       try {
-        const token = await getGoogleCallbackToken();
+        const result = await completeSsoCallback();
+        if (cancelled) return;
 
-        const { data: apiRes } = await axios.post(API_ROUTES.AUTH.GOOGLE, {
-          access_token: token,
-        }, {
-          withCredentials: true,
-        });
-
-        if (!apiRes?.success) {
-          throw new Error(apiRes?.message || "Google sign-in failed");
+        if (result.intent === "connect") {
+          window.location.assign("/admin/sso?connected=1");
+          return;
         }
 
-        persistLoginResponse(apiRes.data);
-        await finishGoogleSignIn();
-
-        if (!cancelled) {
-          window.location.assign("/dashboard");
-        }
+        persistLoginResponse(result.data as Parameters<typeof persistLoginResponse>[0]);
+        window.location.assign("/dashboard");
       } catch (err: unknown) {
         if (cancelled) return;
-        const message =
-          axios.isAxiosError(err)
-            ? err.response?.data?.message ?? err.message
-            : err instanceof Error
-              ? err.message
-              : "Google sign-in failed";
-        setError(message);
+        // A failed "connect" started from the admin page should go back there
+        const intent = lastSsoIntent();
+        if (intent === "connect") setBackHref("/admin/sso");
+        if (intent === "company-setup") setBackHref("/sign-up?type=company");
+        setError(err instanceof Error ? err.message : "Sign-in failed");
       }
     }
 
-    finishGoogleSignIn();
+    finishSignIn();
 
     return () => {
       cancelled = true;
@@ -61,18 +50,18 @@ export default function AuthCallbackPage() {
             <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />
             <h1 className="mt-4 text-lg font-semibold text-foreground">Finishing sign-in</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Your Google account is being connected securely.
+              Your account is being connected securely.
             </p>
           </>
         ) : (
           <>
-            <h1 className="text-lg font-semibold text-foreground">Google sign-in failed</h1>
+            <h1 className="text-lg font-semibold text-foreground">Sign-in failed</h1>
             <p className="mt-2 text-sm text-muted-foreground">{error}</p>
             <Link
-              href="/login"
+              href={backHref}
               className="mt-5 inline-flex w-full items-center justify-center rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary/90"
             >
-              Back to sign in
+              {backHref === "/admin/sso" ? "Back to Company SSO" : backHref === "/login" ? "Back to sign in" : "Back to company setup"}
             </Link>
           </>
         )}

@@ -98,7 +98,27 @@ Check state with `bun run db:migrate:status`. To migrate production, set `NODE_E
 > the `ai_workflows` tables or the DB-side defaults, so Prisma would try to drop/alter them.
 > Add a new migration folder by hand instead (next number, `create_<table>` / `alter_<table>`).
 
-The first account: open http://localhost:3000/setup to create the first admin, or use sign-up.
+The first account: open http://localhost:3000/sign-up (individual or company), or /setup for a
+company admin with email and password.
+
+## Sign-in options: individuals and company SSO (postgres provider)
+
+| Who | How they sign up / in | Workspace |
+|---|---|---|
+| Individual | Email + password, personal Google (gmail.com) or Microsoft (outlook.com) | Personal workspace; they are its admin |
+| Company admin | `/sign-up` → **For my company** → Google Workspace or Microsoft 365 work account | Company workspace bound to that Workspace domain / Microsoft tenant |
+| Employee | **Continue with Google/Microsoft**, or **Sign in with company SSO** (work email) | Joins the company automatically as a developer with **no page access** until an admin grants it |
+
+- A company is tied to the identity provider's **verified** tenant (Google `hd` domain, Microsoft `tid`). It is
+  not tied to an email domain the user typed, and each tenant can belong to only one workspace.
+- Existing workspaces can connect SSO later: **Admin → Company SSO → Connect**.
+- **Require company SSO** (same page) blocks password login for members and email sign-ups from the domain.
+  It can only be turned on by an admin who can sign in with company SSO, so nobody locks themselves out.
+- Setup: Google OAuth client (`GOOGLE_CLIENT_ID` / `NEXT_PUBLIC_GOOGLE_CLIENT_ID`) and/or a Microsoft Entra
+  app registration (`MICROSOFT_CLIENT_ID` / `NEXT_PUBLIC_MICROSOFT_CLIENT_ID`); see the comments in
+  `backend/.env.example`. Both use the redirect URI `http://localhost:3000/auth/callback`.
+- Code: `backend/src/lib/auth/oidc.ts` (token verification), `backend/src/modules/sso/` (rules + `/sso/*` API),
+  `frontend/src/lib/auth/provider.ts` (redirects + callback).
 
 ## 5. Run
 
@@ -122,6 +142,7 @@ bun start               # start both
 ```
 bun run test            # backend tests
 bun run --filter backend test:db   # query-builder tests; needs TEST_DATABASE_URL (empty, migrated DB)
+bun run --filter backend test:sso  # company SSO rules + token checks; needs TEST_DATABASE_URL
 bun run lint            # frontend lint
 bun run prisma:generate # regenerate the Prisma client after editing schema.prisma
 ```
