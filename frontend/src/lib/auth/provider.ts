@@ -27,12 +27,16 @@ const CLIENT_IDS: Record<SsoProvider, string | undefined> = {
   microsoft: process.env.NEXT_PUBLIC_MICROSOFT_CLIENT_ID,
 };
 
-/** Which sign-in buttons to show. Microsoft and company SSO need the postgres provider. */
+/**
+ * Which sign-in buttons to show. Both are always shown with the postgres provider;
+ * one whose client ID isn't configured explains that when clicked.
+ * Microsoft and company SSO need the postgres provider.
+ */
 export const SSO_ENABLED: Record<SsoProvider, boolean> = {
-  google: AUTH_PROVIDER === "supabase" || Boolean(CLIENT_IDS.google),
-  microsoft: AUTH_PROVIDER === "postgres" && Boolean(CLIENT_IDS.microsoft),
+  google: true,
+  microsoft: AUTH_PROVIDER === "postgres",
 };
-export const COMPANY_SSO_ENABLED = AUTH_PROVIDER === "postgres" && (SSO_ENABLED.google || SSO_ENABLED.microsoft);
+export const COMPANY_SSO_ENABLED = AUTH_PROVIDER === "postgres";
 
 export const PROVIDER_LABEL: Record<SsoProvider, { personal: string; company: string }> = {
   google: { personal: "Google", company: "Google Workspace" },
@@ -97,8 +101,8 @@ export async function startSsoSignIn(
   const clientId = CLIENT_IDS[provider];
   if (!clientId) {
     throw new Error(
-      `${PROVIDER_LABEL[provider].personal} sign-in is not configured ` +
-      `(NEXT_PUBLIC_${provider.toUpperCase()}_CLIENT_ID is missing)`,
+      `${PROVIDER_LABEL[provider].personal} sign-in isn't set up yet. ` +
+      `Add NEXT_PUBLIC_${provider.toUpperCase()}_CLIENT_ID (frontend) and ${provider.toUpperCase()}_CLIENT_ID (backend), then restart.`,
     );
   }
 
