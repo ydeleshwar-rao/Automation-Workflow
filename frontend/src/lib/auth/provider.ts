@@ -1,26 +1,19 @@
 /**
- * Auth provider switch for the flows that don't go through our backend's
- * email/password login: Google / Microsoft sign-in, company SSO and password reset.
+ * Auth flows that don't go through our backend's email/password login:
+ * Google / Microsoft sign-in, company SSO and password reset.
  *
- * NEXT_PUBLIC_AUTH_PROVIDER (must match the backend's DB_PROVIDER):
- *   postgres (default)  OpenID Connect ID-token flow verified by our backend (/sso/*),
- *                       company SSO, backend /auth/forgot-password & /auth/reset-password.
- *                       Needs NEXT_PUBLIC_GOOGLE_CLIENT_ID and/or NEXT_PUBLIC_MICROSOFT_CLIENT_ID.
- *   supabase            Supabase Auth for Google + password reset (no Microsoft / company SSO).
+ * Sign-in uses the OpenID Connect ID-token flow verified by our backend (/sso/*);
+ * password reset uses backend /auth/forgot-password and /auth/reset-password.
+ * Needs NEXT_PUBLIC_GOOGLE_CLIENT_ID and/or NEXT_PUBLIC_MICROSOFT_CLIENT_ID.
  */
 
 import axios from "axios";
 import { API_ROUTES } from "@/src/constants/api.constants";
-import { createClient } from "@/src/lib/supabase/client";
 
-export type AuthProvider = "postgres" | "supabase";
 export type SsoProvider = "google" | "microsoft";
 
 /** signin: log in / sign up · company-setup: create a company workspace · connect: admin links SSO to current workspace */
 export type SsoIntent = "signin" | "company-setup" | "connect";
-
-export const AUTH_PROVIDER: AuthProvider =
-  process.env.NEXT_PUBLIC_AUTH_PROVIDER === "supabase" ? "supabase" : "postgres";
 
 const CLIENT_IDS: Record<SsoProvider, string | undefined> = {
   google: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
@@ -28,15 +21,10 @@ const CLIENT_IDS: Record<SsoProvider, string | undefined> = {
 };
 
 /**
- * Which sign-in buttons to show. Both are always shown with the postgres provider;
- * one whose client ID isn't configured explains that when clicked.
- * Microsoft and company SSO need the postgres provider.
+ * Sign-in buttons to show. Both are always shown; one whose client ID
+ * isn't configured explains that when clicked.
  */
-export const SSO_ENABLED: Record<SsoProvider, boolean> = {
-  google: true,
-  microsoft: AUTH_PROVIDER === "postgres",
-};
-export const COMPANY_SSO_ENABLED = AUTH_PROVIDER === "postgres";
+export const SSO_PROVIDERS: readonly SsoProvider[] = ["google", "microsoft"];
 
 export const PROVIDER_LABEL: Record<SsoProvider, { personal: string; company: string }> = {
   google: { personal: "Google", company: "Google Workspace" },
@@ -82,21 +70,6 @@ export async function startSsoSignIn(
   options: { intent?: SsoIntent; organizationName?: string; loginHint?: string; domainHint?: string } = {},
 ): Promise<void> {
   const intent = options.intent ?? "signin";
-
-  if (AUTH_PROVIDER === "supabase") {
-    if (provider !== "google" || intent !== "signin") {
-      throw new Error("Microsoft and company SSO need NEXT_PUBLIC_AUTH_PROVIDER=postgres");
-    }
-    const { error } = await createClient().auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: callbackUrl(),
-        queryParams: { access_type: "offline", prompt: "select_account" },
-      },
-    });
-    if (error) throw error;
-    return;
-  }
 
   const clientId = CLIENT_IDS[provider];
   if (!clientId) {
@@ -151,22 +124,6 @@ export type SsoCallbackResult =
  * current workspace.
  */
 export async function completeSsoCallback(): Promise<SsoCallbackResult> {
-  if (AUTH_PROVIDER === "supabase") {
-    const supabase = createClient();
-    const { data, error } = await supabase.auth.getSession();
-    if (error || !data.session?.access_token) {
-      throw new Error(error?.message ?? "Google sign-in session was not found");
-    }
-    try {
-      const { data: apiRes } = await axios.post(API_ROUTES.AUTH.GOOGLE, { access_token: data.session.access_token }, { withCredentials: true });
-      return { intent: "signin", data: apiRes.data };
-    } catch (err) {
-      throw apiError(err, "Google sign-in failed");
-    } finally {
-      await supabase.auth.signOut();
-    }
-  }
-
   const hash = new URLSearchParams(window.location.hash.slice(1));
   const query = new URLSearchParams(window.location.search);
   const raw = sessionStorage.getItem(SSO_STATE_KEY);
@@ -223,15 +180,6 @@ export async function discoverCompanySso(email: string): Promise<SsoDiscovery> {
 // ── Password reset ─────────────────────────────────────────────────────────
 
 export async function requestPasswordReset(email: string): Promise<void> {
-  if (AUTH_PROVIDER === "supabase") {
-    // The redirect URL must be allowed in Supabase → Authentication → URL Configuration
-    const { error } = await createClient().auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/update-password`,
-    });
-    if (error) throw error;
-    return;
-  }
-
   try {
     await axios.post(API_ROUTES.AUTH.FORGOT_PASSWORD, { email });
   } catch (err) {
@@ -241,24 +189,12 @@ export async function requestPasswordReset(email: string): Promise<void> {
 
 /** On /update-password: throws if the reset link is missing, invalid or expired. */
 export async function checkPasswordResetLink(): Promise<void> {
-  if (AUTH_PROVIDER === "supabase") {
-    const { data, error } = await createClient().auth.getSession();
-    if (!data.session) throw new Error(error?.message ?? "Invalid or expired reset link. Please request a new one.");
-    return;
-  }
-
   if (!new URLSearchParams(window.location.search).get("token")) {
     throw new Error("Invalid or expired reset link. Please request a new one.");
   }
 }
 
 export async function updatePasswordFromResetLink(password: string): Promise<void> {
-  if (AUTH_PROVIDER === "supabase") {
-    const { error } = await createClient().auth.updateUser({ password });
-    if (error) throw error;
-    return;
-  }
-
   try {
     const token = new URLSearchParams(window.location.search).get("token") ?? "";
     await axios.post(API_ROUTES.AUTH.RESET_PASSWORD, { token, password });
@@ -267,5 +203,5 @@ export async function updatePasswordFromResetLink(password: string): Promise<voi
   }
 }
 
-/** Where to send the user after a successful reset (postgres: must log in with the new password). */
-export const AFTER_PASSWORD_RESET_PATH = AUTH_PROVIDER === "supabase" ? "/dashboard" : "/login";
+/** Where to send the user after a successful reset: they must log in with the new password. */
+export const AFTER_PASSWORD_RESET_PATH = "/login";

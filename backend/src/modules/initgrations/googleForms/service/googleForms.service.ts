@@ -1,7 +1,8 @@
 import axios, { AxiosInstance } from "axios";
-import { supabase } from "../../../../config/db.config.js";
+import type { GoogleFormsIntegration } from "@prisma/client";
 import { ApiError } from "../../../../utils/ApiError.js";
 import { refreshGoogleFormsAccessToken } from "../utils/refreshAccessToken.js";
+import { googleFormsRepository } from "../repositories/googleForms.repository.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -23,13 +24,7 @@ const refreshLocks = new Map<string, Promise<any>>();
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface GoogleFormsIntegrationRow {
-  user_id: string;
-  access_token: string;
-  refresh_token: string;
-  expires_at: string;
-  needs_reauth: boolean;
-}
+export type GoogleFormsIntegrationRow = GoogleFormsIntegration;
 
 export interface GoogleForm {
   form_id: string;
@@ -50,19 +45,15 @@ export interface GoogleFormResponse {
 // ─── Integration row helpers ──────────────────────────────────────────────────
 
 const getIntegrationRaw = async (userId: string): Promise<GoogleFormsIntegrationRow> => {
-  const { data, error } = await supabase
-    .from("google_forms_integrations")
-    .select("user_id, access_token, refresh_token, expires_at, needs_reauth")
-    .eq("user_id", userId)
-    .single();
+  const integration = await googleFormsRepository.findIntegrationByUserId(userId);
 
-  if (error || !data) {
+  if (!integration) {
     throw new ApiError(
       404,
       "Google Forms integration not found. Please connect your account first."
     );
   }
-  return data as GoogleFormsIntegrationRow;
+  return integration;
 };
 
 export const getIntegration = async (
@@ -75,8 +66,7 @@ export const getIntegration = async (
     throw new ApiError(401, "Google Forms requires re-authentication. Please reconnect.");
   }
 
-  const isExpiringSoon =
-    new Date(row.expires_at).getTime() <= Date.now() + REFRESH_BUFFER_MS;
+  const isExpiringSoon = row.expires_at.getTime() <= Date.now() + REFRESH_BUFFER_MS;
 
   if (!isExpiringSoon && !forceRefresh) return row;
 
@@ -188,51 +178,39 @@ export class GoogleFormsService {
     const expiresAt = new Date();
     expiresAt.setSeconds(expiresAt.getSeconds() + (body.expires_in || 3600));
 
-    const { error } = await supabase.from("google_forms_integrations").upsert({
-      user_id: userId,
+    await googleFormsRepository.saveTokens(userId, {
       access_token: body.access_token,
       refresh_token: body.refresh_token,
-      expires_at: expiresAt.toISOString(),
-      needs_reauth: false,
+      expires_at: expiresAt,
     });
 
-    if (error) throw new ApiError(500, `Failed to save Google tokens: ${error.message}`);
     console.log(`[GoogleForms] ✅ Connected user=${userId}`);
   }
 
   static async getConnectionStatus(userId: string) {
-    const { data } = await supabase
-      .from("google_forms_integrations")
-      .select("user_id, needs_reauth, expires_at")
-      .eq("user_id", userId)
-      .maybeSingle();
+    const integration = await googleFormsRepository.findIntegrationByUserId(userId);
 
-    if (!data) return { connected: false };
-    return { connected: true, needs_reauth: data.needs_reauth, expires_at: data.expires_at };
+    if (!integration) return { connected: false };
+    return {
+      connected: true,
+      needs_reauth: integration.needs_reauth,
+      expires_at: integration.expires_at,
+    };
   }
 
   static async disconnect(userId: string) {
-    const { data: row } = await supabase
-      .from("google_forms_integrations")
-      .select("access_token")
-      .eq("user_id", userId)
-      .maybeSingle();
+    const integration = await googleFormsRepository.findIntegrationByUserId(userId);
 
-    // Revoke token at Google
-    if (row?.access_token) {
+    // Revoke token at Google; a failed revoke must not block disconnecting locally
+    if (integration?.access_token) {
       await fetch(
-        `https://oauth2.googleapis.com/revoke?token=${row.access_token}`,
+        `https://oauth2.googleapis.com/revoke?token=${integration.access_token}`,
         { method: "POST" }
       ).catch(() => {});
     }
 
-    await supabase.from("google_forms_integrations").delete().eq("user_id", userId);
-
-    await Promise.allSettled([
-      supabase.from("google_forms_list").delete().eq("user_id", userId),
-      supabase.from("google_form_responses").delete().eq("user_id", userId),
-      supabase.from("google_form_watches").delete().eq("user_id", userId),
-    ]);
+    await googleFormsRepository.deleteIntegration(userId);
+    await googleFormsRepository.deleteWatchesForUser(userId);
 
     return { disconnected: true };
   }
@@ -269,14 +247,6 @@ export class GoogleFormsService {
       } while (pageToken);
     });
 
-    // Upsert to DB
-    if (forms.length) {
-      await supabase.from("google_forms_list").upsert(
-        forms.map((f) => ({ ...f, user_id: userId, google_id: f.form_id })),
-        { onConflict: "user_id,google_id" }
-      );
-    }
-
     return forms;
   }
 
@@ -291,7 +261,20 @@ export class GoogleFormsService {
 
   // ─── Get Responses ───────────────────────────────────────────────────────
 
+  /** Fetches responses live from Google and advances the form watch's sync cursor. */
   static async getResponses(
+    userId: string,
+    formId: string,
+    sinceTimestamp?: string
+  ): Promise<GoogleFormResponse[]> {
+    const responses = await GoogleFormsService.fetchResponses(userId, formId, sinceTimestamp);
+    if (responses.length) {
+      await googleFormsRepository.markWatchSynced(userId, formId);
+    }
+    return responses;
+  }
+
+  private static async fetchResponses(
     userId: string,
     formId: string,
     sinceTimestamp?: string
@@ -321,28 +304,6 @@ export class GoogleFormsService {
       } while (pageToken);
     });
 
-    // Upsert to DB
-    if (responses.length) {
-      await supabase.from("google_form_responses").upsert(
-        responses.map((r) => ({
-          user_id: userId,
-          google_id: r.response_id,
-          form_id: r.form_id,
-          create_time: r.create_time,
-          last_submitted_time: r.last_submitted_time,
-          answers: r.answers,
-        })),
-        { onConflict: "user_id,google_id" }
-      );
-
-      // Update last_synced_at for this form's watch
-      await supabase
-        .from("google_form_watches")
-        .update({ last_synced_at: new Date().toISOString() })
-        .eq("user_id", userId)
-        .eq("form_id", formId);
-    }
-
     return responses;
   }
 
@@ -350,12 +311,9 @@ export class GoogleFormsService {
   // Polls all watched forms for new responses since last sync.
 
   static async syncNewResponses(userId: string) {
-    const { data: watches } = await supabase
-      .from("google_form_watches")
-      .select("form_id, last_synced_at")
-      .eq("user_id", userId);
+    const watches = await googleFormsRepository.findWatchesByUserId(userId);
 
-    if (!watches?.length) return { message: "No watched forms", results: {} };
+    if (!watches.length) return { message: "No watched forms", results: {} };
 
     const results: Record<string, any> = {};
 
@@ -364,7 +322,7 @@ export class GoogleFormsService {
         const newResponses = await GoogleFormsService.getResponses(
           userId,
           watch.form_id,
-          watch.last_synced_at ?? undefined
+          watch.last_synced_at?.toISOString()
         );
         results[watch.form_id] = { new_responses: newResponses.length };
       } catch (err: any) {
@@ -379,54 +337,47 @@ export class GoogleFormsService {
   // "Watch" a form = store it in DB so syncNewResponses polls it each time.
 
   static async watchForm(userId: string, formId: string) {
-    const { error } = await supabase.from("google_form_watches").upsert(
-      { user_id: userId, form_id: formId, last_synced_at: null, active: true },
-      { onConflict: "user_id,form_id" }
-    );
-    if (error) throw new ApiError(500, error.message);
+    await googleFormsRepository.saveWatch(userId, formId);
     return { watched: true, form_id: formId };
   }
 
   static async unwatchForm(userId: string, formId: string) {
-    await supabase
-      .from("google_form_watches")
-      .delete()
-      .eq("user_id", userId)
-      .eq("form_id", formId);
+    await googleFormsRepository.deleteWatch(userId, formId);
     return { unwatched: true, form_id: formId };
   }
 
-  static async listWatches(userId: string) {
-    const { data, error } = await supabase
-      .from("google_form_watches")
-      .select("*")
-      .eq("user_id", userId);
-    if (error) throw new ApiError(500, error.message);
-    return data ?? [];
+  static listWatches(userId: string) {
+    return googleFormsRepository.findWatchesByUserId(userId);
   }
 
-  // ─── DB reads ────────────────────────────────────────────────────────────
+  // ─── Live reads in the shape of the former "from DB" endpoints ───────────
+  // Vendor data is not copied into our database (credentials/config only), so
+  // these fetch from Google and keep the response keys the frontend already uses.
 
   static async getFormsFromDb(userId: string) {
-    const { data, error } = await supabase
-      .from("google_forms_list")
-      .select("*")
-      .eq("user_id", userId);
-    if (error) throw new ApiError(500, error.message);
-    return data ?? [];
+    const forms = await GoogleFormsService.listForms(userId);
+    return forms.map((form) => ({ ...form, user_id: userId, google_id: form.form_id }));
   }
 
   static async getResponsesFromDb(userId: string, formId?: string) {
-    let query = supabase
-      .from("google_form_responses")
-      .select("*")
-      .eq("user_id", userId)
-      .order("create_time", { ascending: false });
+    const formIds = formId
+      ? [formId]
+      : (await GoogleFormsService.listForms(userId)).map((form) => form.form_id);
 
-    if (formId) query = query.eq("form_id", formId);
+    const responses: GoogleFormResponse[] = [];
+    for (const currentFormId of formIds) {
+      responses.push(...(await GoogleFormsService.fetchResponses(userId, currentFormId)));
+    }
 
-    const { data, error } = await query;
-    if (error) throw new ApiError(500, error.message);
-    return data ?? [];
+    return responses
+      .sort((first, second) => second.create_time.localeCompare(first.create_time))
+      .map((response) => ({
+        user_id: userId,
+        google_id: response.response_id,
+        form_id: response.form_id,
+        create_time: response.create_time,
+        last_submitted_time: response.last_submitted_time,
+        answers: response.answers,
+      }));
   }
 }

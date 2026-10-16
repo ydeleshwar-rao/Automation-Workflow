@@ -10,11 +10,11 @@ import {
   activateWorkflowService,
   bulkMoveWorkflowsService,
   reorderWorkflowsService,
+  getEditorNameService,
 } from "./workflow.service.js";
 import { validateId } from "../../../utils/CustomFunc.js";
 import { ApiResponse } from "../../../utils/ApiResponse.js";
 import { getUserId } from "../../../common/function.js";
-import { supabase } from "../../../config/db.config.js";
 
 export async function createWorkflowController(
   req: Request,
@@ -82,15 +82,7 @@ export async function updateWorkflowController(
       const userId = await getUserId(req);
       if (userId) {
         last_edited_by = userId;
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("first_name, last_name")
-          .eq("id", userId)
-          .single();
-        if (profile) {
-          last_edited_by_name =
-            [profile.first_name, profile.last_name].filter(Boolean).join(" ") || undefined;
-        }
+        last_edited_by_name = (await getEditorNameService(userId)) ?? undefined;
       }
     } catch {
       // Non-fatal: tracking is best-effort

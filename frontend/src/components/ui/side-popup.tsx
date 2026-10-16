@@ -29,7 +29,7 @@ export function SidePopup({
       {/* Click-outside overlay */}
       <div
         className="fixed inset-0 z-[90] cursor-default"
-        onClick={(e) => { e.stopPropagation(); onClose(); }}
+        onClick={(event) => { event.stopPropagation(); onClose(); }}
       />
 
       {/* Panel */}
@@ -43,7 +43,7 @@ export function SidePopup({
           right: `${position.right}px`,
           maxHeight: `calc(100vh - ${position.top + 24}px)`,
         }}
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
         {/* Title header */}
         {title && (

@@ -8,8 +8,8 @@ import { resolveIcon } from "@/src/lib/icon-registry";
 import { IntegrationApp } from "@/src/components/work-flow/uiOrchestrator/types";
 import { BUILT_IN_TOOLS, WORKFLOW_APPS } from "@/src/constants/intigrationApp.constants";
 
-const apps: IntegrationApp[]  = WORKFLOW_APPS.map(a => ({ ...a, icon: resolveIcon(a.iconName) }));
-const tools: IntegrationApp[] = BUILT_IN_TOOLS.map(t => ({ ...t, icon: resolveIcon(t.iconName) }));
+const apps: IntegrationApp[]  = WORKFLOW_APPS.map(app => ({ ...app, icon: resolveIcon(app.iconName) }));
+const tools: IntegrationApp[] = BUILT_IN_TOOLS.map(tool => ({ ...tool, icon: resolveIcon(tool.iconName) }));
 
 interface EventSelectorProps {
   isOpen: boolean;
@@ -37,7 +37,7 @@ export function EventSelector({ isOpen, onClose, onSelect }: EventSelectorProps)
     >
       <div
         className="relative nm-card w-full max-w-[680px] h-[560px] rounded-2xl flex overflow-hidden animate-in zoom-in-95 duration-200"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
         {/* Content */}
         <div className="flex-1 flex flex-col min-w-0">
@@ -54,7 +54,7 @@ export function EventSelector({ isOpen, onClose, onSelect }: EventSelectorProps)
                   placeholder="Search apps"
                   className="flex-1 bg-transparent text-foreground text-[13px] font-medium placeholder:text-muted-foreground focus:outline-none"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(event) => setSearchQuery(event.target.value)}
                   autoFocus
                 />
               </div>

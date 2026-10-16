@@ -70,7 +70,7 @@ export function ExecutionStepRow({ step, index }: Props) {
             {/* ── Row header ── */}
             <div
                 className="flex items-center gap-3 px-4 py-3 cursor-pointer"
-                onClick={() => hasDetails && setExpanded((v) => !v)}
+                onClick={() => hasDetails && setExpanded((wasExpanded) => !wasExpanded)}
             >
                 {/* Step number */}
                 <div className="w-6 h-6 rounded-full bg-white border flex items-center justify-center text-xs font-bold text-slate-600 shrink-0">

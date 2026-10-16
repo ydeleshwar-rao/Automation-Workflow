@@ -1,11 +1,36 @@
 import nodemailer from "nodemailer";
-import { v4 as uuidv4 } from "uuid";
-import { supabase } from "../../../../config/db.config.js";
 import { rsaDecrypt, aesEncrypt, aesDecrypt } from "../../../../utils/smtp-crypto.util.js";
 import { smtpLogger as log } from "../../../../utils/logger.js";
+import { ApiError } from "../../../../utils/ApiError.js";
+import {
+  smtpConnectionRepository,
+  type CreateEmailLogInput,
+  type PublicSmtpConnection,
+} from "../repositories/smtp-connection.repository.js";
 
-function normalize(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+const SMTPS_PORT = 465;
+
+/** The table column is user_id; the API has always exposed it as created_by. */
+function toConnectionResponse({ user_id, ...connection }: PublicSmtpConnection) {
+  return { ...connection, created_by: user_id };
+}
+
+/** Logging and counting must never change the send result, so failures here are only logged. */
+async function recordEmailOutcome(emailLog: CreateEmailLogInput) {
+  try {
+    await smtpConnectionRepository.createEmailLog(emailLog);
+    if (emailLog.status === "success") {
+      await smtpConnectionRepository.incrementSentCount(emailLog.smtp_id);
+    } else {
+      await smtpConnectionRepository.incrementFailedCount(emailLog.smtp_id);
+    }
+  } catch (error: any) {
+    log.error("failed to record email outcome", { smtpId: emailLog.smtp_id, error: error.message });
+  }
+}
+
+function normalize(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 // Build a lookup: normalized key → value, for fuzzy matching prefixed tokens.
@@ -63,7 +88,7 @@ export async function createSmtpConnection(payload: any) {
   const transporter = nodemailer.createTransport({
     host: cleanHost,
     port,
-    secure: port === 465,
+    secure: port === SMTPS_PORT,
     auth: { user: cleanUsername, pass: plainPassword },
   });
 
@@ -74,41 +99,31 @@ export async function createSmtpConnection(payload: any) {
   log.info("SMTP verified", { host: cleanHost, port });
 
   // AES-256-GCM at rest — DB stores only ciphertext
-  const storedPassword = aesEncrypt(plainPassword);
-  const storedUsername = aesEncrypt(cleanUsername);
-
-  const { data, error } = await supabase
-    .from("smtp_connections")
-    .insert({
-      id: uuidv4(),
-      created_by,
-      name: name?.trim() ?? cleanUsername,
-      host: cleanHost,
-      port,
-      username: storedUsername,
-      encrypted_password: storedPassword,
-      use_tls,
-    })
-    .select("id, created_by, name, host, port, use_tls, status, created_at")
-    .single();
-
-  if (error) throw error;
-
-  log.info("SMTP account created", {
-    smtpId: data.id,
-    name: data.name,
-    host: data.host,
-    port: data.port,
-    useTls: data.use_tls,
-    createdBy: data.created_by,
+  const connection = await smtpConnectionRepository.create({
+    user_id: created_by,
+    name: name?.trim() || cleanUsername,
+    host: cleanHost,
+    port,
+    username: aesEncrypt(cleanUsername),
+    encrypted_password: aesEncrypt(plainPassword),
+    use_tls: use_tls ?? true,
   });
 
-  return { data };
+  log.info("SMTP account created", {
+    smtpId: connection.id,
+    name: connection.name,
+    host: connection.host,
+    port: connection.port,
+    useTls: connection.use_tls,
+    createdBy: connection.user_id,
+  });
+
+  return { data: toConnectionResponse(connection) };
 }
 
 // ── Send Email ────────────────────────────────────────────────────────────────
 // user_id injected by controller from req.user.id.
-// Templates are global (no location_id). Logs are per-user (user_id).
+// Logs are per-user (user_id). Templates are not stored — the HTML is rendered and sent.
 export async function sendAndSaveEmail(payload: any) {
   const {
     smtp_id,
@@ -128,16 +143,10 @@ export async function sendAndSaveEmail(payload: any) {
     throw new Error("Missing required fields");
   }
 
-  const { data: smtp, error: smtpError } = await supabase
-    .from("smtp_connections")
-    .select("*")
-    .eq("id", smtp_id)
-    .eq("status", "active")
-    .single();
-
-  if (smtpError || !smtp) {
+  const smtp = await smtpConnectionRepository.findActiveById(smtp_id);
+  if (!smtp) {
     log.error("active SMTP not found", { smtpId: smtp_id, userId: user_id, to: to_email });
-    throw new Error("Active SMTP not found");
+    throw new ApiError(404, "Active SMTP not found");
   }
 
   log.info("SMTP resolved", {
@@ -153,30 +162,17 @@ export async function sendAndSaveEmail(payload: any) {
   const plainPassword = aesDecrypt(smtp.encrypted_password);
   const plainUsername = aesDecrypt(smtp.username);
 
-  // Templates are global — no location_id
-  const templateId = uuidv4();
-  const { error: templateError } = await supabase.from("email_templates").insert({
-    id: templateId,
-    name: name || "Auto Template",
-    subject,
-    html_template,
-    body,
-    default_reply_to: plainUsername,
-  });
-
-  if (templateError) throw templateError;
-
   const finalHtml = mapTemplate(html_template, data);
   const finalBody = body ? mapTemplate(body, data) : undefined;
 
   const transporter = nodemailer.createTransport({
     host: smtp.host,
     port: smtp.port,
-    secure: smtp.port === 465,
+    secure: smtp.port === SMTPS_PORT,
     auth: { user: plainUsername, pass: plainPassword },
   });
 
-  const logId = uuidv4();
+  const emailLogBase = { user_id, smtp_id, to_email, cc, bcc, attachments, subject };
 
   try {
     await transporter.sendMail({
@@ -187,60 +183,12 @@ export async function sendAndSaveEmail(payload: any) {
       replyTo: plainUsername,
       subject,
       html: finalHtml,
-      text: finalBody,
+      ...(finalBody !== undefined ? { text: finalBody } : {}),
     });
-
-    await supabase.from("email_logs").insert({
-      id: logId,
-      user_id,
-      smtp_id,
-      template_id: templateId,
-      to_email,
-      cc,
-      bcc,
-      attachments,
-      subject,
-      status: "success",
-      attempt_count: 1,
-      error_message: null,
-    });
-
-    await supabase.rpc("increment_total_mail_sent", { smtp_id_input: smtp_id });
-
-    log.info("email sent", {
-      logId,
-      smtpId: smtp.id,
-      smtpName: smtp.name,
-      host: smtp.host,
-      userId: user_id,
-      to: to_email,
-      subject,
-      cc: cc.length ? cc : undefined,
-      bcc: bcc.length ? bcc : undefined,
-      status: "success",
-    });
-
-    return { status: "success" };
   } catch (error: any) {
-    await supabase.from("email_logs").insert({
-      id: logId,
-      user_id,
-      smtp_id,
-      template_id: templateId,
-      to_email,
-      cc,
-      bcc,
-      attachments,
-      subject,
-      status: "failed",
-      attempt_count: 1,
-      error_message: error.message,
-    });
-
-    await supabase.rpc("increment_total_mail_failed", { smtp_id_input: smtp_id });
+    await recordEmailOutcome({ ...emailLogBase, status: "failed", error_message: error.message });
 
     log.error("email send failed", {
-      logId,
       smtpId: smtp.id,
       smtpName: smtp.name,
       host: smtp.host,
@@ -252,26 +200,34 @@ export async function sendAndSaveEmail(payload: any) {
 
     return { status: "failed", error: error.message };
   }
+
+  await recordEmailOutcome({ ...emailLogBase, status: "success", error_message: null });
+
+  log.info("email sent", {
+    smtpId: smtp.id,
+    smtpName: smtp.name,
+    host: smtp.host,
+    userId: user_id,
+    to: to_email,
+    subject,
+    cc: cc.length ? cc : undefined,
+    bcc: bcc.length ? bcc : undefined,
+    status: "success",
+  });
+
+  return { status: "success" };
 }
 
 // ── Connections ───────────────────────────────────────────────────────────────
 // Global — all authenticated users see all SMTP connections.
 // Never returns username or encrypted_password to the client.
 export async function getConnectionsService() {
-  const { data } = await supabase
-    .from("smtp_connections")
-    .select("id, created_by, name, host, port, use_tls, status, total_sent, total_failed, created_at");
-
-  return data ?? [];
+  const connections = await smtpConnectionRepository.findAllPublic();
+  return connections.map(toConnectionResponse);
 }
 
 // ── Logs ──────────────────────────────────────────────────────────────────────
 // Each user sees only the emails they triggered.
-export async function getEmailLogs(userId: string) {
-  const { data } = await supabase
-    .from("email_logs")
-    .select("*")
-    .eq("user_id", userId);
-
-  return data ?? [];
+export function getEmailLogs(userId: string) {
+  return smtpConnectionRepository.findEmailLogsByUserId(userId);
 }

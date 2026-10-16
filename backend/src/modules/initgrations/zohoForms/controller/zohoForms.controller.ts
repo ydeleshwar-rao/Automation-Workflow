@@ -69,7 +69,7 @@ export class ZohoFormsController {
   static getFormsFromDb = async (req: Request, res: Response) => {
     const userId = await getUserId(req);
     const data = await ZohoFormsService.getFormsFromDb(userId);
-    return ApiResponse(res, 200, "Forms fetched from DB", data);
+    return ApiResponse(res, 200, "Forms fetched from Zoho", data);
   };
 
   static getFormDetails = async (req: Request, res: Response) => {
@@ -101,13 +101,7 @@ export class ZohoFormsController {
     const userId = await getUserId(req);
     const formId = req.query.form_id as string | undefined;
     const data = await ZohoFormsService.getSubmissionsFromDb(userId, formId);
-    return ApiResponse(res, 200, "Submissions fetched from DB", data);
-  };
-
-  static syncAllSubmissions = async (req: Request, res: Response) => {
-    const userId = await getUserId(req);
-    const data = await ZohoFormsService.syncAllSubmissions(userId);
-    return ApiResponse(res, 200, "All submissions synced", data);
+    return ApiResponse(res, 200, "Submissions fetched from Zoho", data);
   };
 
   // ─── Webhooks ─────────────────────────────────────────────────────────

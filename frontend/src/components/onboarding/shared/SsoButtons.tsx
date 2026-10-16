@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import {
   PROVIDER_LABEL,
-  SSO_ENABLED,
+  SSO_PROVIDERS,
   startSsoSignIn,
   type SsoIntent,
   type SsoProvider,
@@ -105,8 +105,7 @@ export function SsoButtons({
   className?: string;
 }) {
   const [error, setError] = useState<string | null>(null);
-  const providers = (["google", "microsoft"] as const).filter((p) => SSO_ENABLED[p]);
-  if (providers.length === 0) return null;
+  const providers = SSO_PROVIDERS;
 
   const kind = intent === "signin" ? "personal" : "company";
 

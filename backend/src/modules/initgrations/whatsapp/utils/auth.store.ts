@@ -4,32 +4,37 @@ import {
   BufferJSON,
   proto,
 } from "@whiskeysockets/baileys";
-import { supabase } from "../../../../config/db.config.js";
+import type { Prisma } from "@prisma/client";
+import { whatsappRepository, type WhatsappAuthKeyEntry } from "../repository/whatsapp.repository.js";
+
+const CREDS_KEY_ID = "creds";
+const APP_STATE_SYNC_KEY_TYPE = "app-state-sync-key";
+
+/** Baileys values contain Buffers; round-trip through BufferJSON so they survive JSON storage. */
+function toStorableJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value, BufferJSON.replacer));
+}
+
+function fromStoredJson(value: unknown): any {
+  return JSON.parse(JSON.stringify(value), BufferJSON.reviver);
+}
 
 /**
- * Supabase-backed Baileys auth state.
+ * Database-backed Baileys auth state.
  * Persists WhatsApp session credentials across server restarts.
  */
-export async function useSupabaseAuthState(userId: string): Promise<{
+export async function useDatabaseAuthState(userId: string): Promise<{
   state: AuthenticationState;
   saveCreds: () => Promise<void>;
 }> {
-  const { data: rows, error: loadError } = await supabase
-    .from("whatsapp_auth_keys")
-    .select("key_id, key_data")
-    .eq("user_id", userId);
-  if (loadError) {
-    throw new Error(`Failed to load WhatsApp auth keys: ${loadError.message}`);
+  const storedKeys = await whatsappRepository.findAuthKeys(userId);
+
+  const keyMap: Record<string, unknown> = {};
+  for (const storedKey of storedKeys) {
+    keyMap[storedKey.key_id] = storedKey.key_data;
   }
 
-  const keyMap: Record<string, any> = {};
-  for (const row of rows ?? []) {
-    keyMap[row.key_id] = row.key_data;
-  }
-
-  const creds = keyMap["creds"]
-    ? JSON.parse(JSON.stringify(keyMap["creds"]), BufferJSON.reviver)
-    : initAuthCreds();
+  const creds = keyMap[CREDS_KEY_ID] ? fromStoredJson(keyMap[CREDS_KEY_ID]) : initAuthCreds();
 
   const state: AuthenticationState = {
     creds,
@@ -40,9 +45,9 @@ export async function useSupabaseAuthState(userId: string): Promise<{
           const keyId = `${type}-${id}`;
           let value = keyMap[keyId];
           if (value) {
-            value = JSON.parse(JSON.stringify(value), BufferJSON.reviver);
-            if (type === "app-state-sync-key") {
-              value = proto.Message.AppStateSyncKeyData.fromObject(value);
+            value = fromStoredJson(value);
+            if (type === APP_STATE_SYNC_KEY_TYPE) {
+              value = proto.Message.AppStateSyncKeyData.fromObject(value as object);
             }
           }
           result[id] = value;
@@ -51,56 +56,37 @@ export async function useSupabaseAuthState(userId: string): Promise<{
       },
 
       set: async (data: Record<string, Record<string, any>>) => {
-        const upsertRows: any[] = [];
-        const deleteKeys: string[] = [];
+        const entriesToSave: WhatsappAuthKeyEntry[] = [];
+        const keyIdsToDelete: string[] = [];
 
         for (const [type, typeData] of Object.entries(data)) {
           for (const [id, value] of Object.entries(typeData)) {
             const keyId = `${type}-${id}`;
             if (value) {
-              const keyData = JSON.parse(JSON.stringify(value, BufferJSON.replacer));
-              upsertRows.push({ user_id: userId, key_id: keyId, key_data: keyData });
+              const keyData = toStorableJson(value);
+              entriesToSave.push({ key_id: keyId, key_data: keyData });
               keyMap[keyId] = keyData;
             } else {
-              deleteKeys.push(keyId);
+              keyIdsToDelete.push(keyId);
               delete keyMap[keyId];
             }
           }
         }
 
-        if (upsertRows.length > 0) {
-          const { error } = await supabase
-            .from("whatsapp_auth_keys")
-            .upsert(upsertRows, { onConflict: "user_id,key_id" });
-          if (error) {
-            throw new Error(`Failed to save WhatsApp auth keys: ${error.message}`);
-          }
+        if (entriesToSave.length > 0) {
+          await whatsappRepository.upsertAuthKeys(userId, entriesToSave);
         }
-
-        for (const keyId of deleteKeys) {
-          const { error } = await supabase
-            .from("whatsapp_auth_keys")
-            .delete()
-            .eq("user_id", userId)
-            .eq("key_id", keyId);
-          if (error) {
-            throw new Error(`Failed to delete WhatsApp auth key ${keyId}: ${error.message}`);
-          }
+        if (keyIdsToDelete.length > 0) {
+          await whatsappRepository.deleteAuthKeys(userId, keyIdsToDelete);
         }
       },
     },
   };
 
   const saveCreds = async () => {
-    const credsData = JSON.parse(JSON.stringify(creds, BufferJSON.replacer));
-    const { error } = await supabase.from("whatsapp_auth_keys").upsert(
-      { user_id: userId, key_id: "creds", key_data: credsData },
-      { onConflict: "user_id,key_id" }
-    );
-    if (error) {
-      throw new Error(`Failed to save WhatsApp creds: ${error.message}`);
-    }
-    keyMap["creds"] = credsData;
+    const credsData = toStorableJson(creds);
+    await whatsappRepository.upsertAuthKeys(userId, [{ key_id: CREDS_KEY_ID, key_data: credsData }]);
+    keyMap[CREDS_KEY_ID] = credsData;
   };
 
   return { state, saveCreds };

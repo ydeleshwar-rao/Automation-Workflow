@@ -37,7 +37,7 @@ function formatLabel(key: string): string {
   label = label.replace(/([a-z])([A-Z])/g, "$1 $2");
   label = label.replace(/[_-]/g, " ");
   label = label.replace(/\s+/g, " ").trim();
-  label = label.replace(/\b\w/g, (c) => c.toUpperCase());
+  label = label.replace(/\b\w/g, (firstLetter) => firstLetter.toUpperCase());
   return label;
 }
 

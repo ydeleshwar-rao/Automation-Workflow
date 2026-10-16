@@ -91,18 +91,18 @@ function SchedulingVisual() {
   return (
     <div className="w-full h-full flex flex-col gap-3 p-5">
       <div className="flex gap-2 text-xs font-semibold text-muted-foreground px-1">
-        {days.map((d) => <div key={d} className="flex-1 text-center">{d}</div>)}
+        {days.map((day) => <div key={day} className="flex-1 text-center">{day}</div>)}
       </div>
       <div className="flex gap-2 flex-1 relative">
         {days.map((_, di) => (
           <div key={di} className="flex-1 rounded-lg bg-muted/50 border border-border/50 relative min-h-[120px]">
-            {jobs.filter((j) => j.day === di).map((j) => (
+            {jobs.filter((job) => job.day === di).map((job) => (
               <div
-                key={j.label}
+                key={job.label}
                 className="absolute left-1 right-1 rounded px-1.5 py-1 text-[10px] font-medium text-white truncate"
-                style={{ top: `${j.top}px`, backgroundColor: j.color }}
+                style={{ top: `${job.top}px`, backgroundColor: job.color }}
               >
-                {j.label}
+                {job.label}
               </div>
             ))}
           </div>
@@ -125,23 +125,23 @@ function WorkforceVisual() {
   ];
   return (
     <div className="w-full flex flex-col gap-3 p-5">
-      {team.map((m) => (
-        <div key={m.name} className="flex items-center gap-3 bg-muted/40 rounded-xl px-3 py-2.5 border border-border/50">
+      {team.map((member) => (
+        <div key={member.name} className="flex items-center gap-3 bg-muted/40 rounded-xl px-3 py-2.5 border border-border/50">
           <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary flex-shrink-0">
-            {m.name.split(" ").map((n) => n[0]).join("")}
+            {member.name.split(" ").map((namePart) => namePart[0]).join("")}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-foreground">{m.name}</p>
-            <p className="text-[10px] text-muted-foreground">{m.role}</p>
+            <p className="text-xs font-semibold text-foreground">{member.name}</p>
+            <p className="text-[10px] text-muted-foreground">{member.role}</p>
           </div>
           <span
             className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
             style={{
-              backgroundColor: m.status === "Available" ? "hsl(142 71% 45% / 0.15)" : "hsl(244 75% 59% / 0.12)",
-              color: m.status === "Available" ? "#10b981" : "#6366f1",
+              backgroundColor: member.status === "Available" ? "hsl(142 71% 45% / 0.15)" : "hsl(244 75% 59% / 0.12)",
+              color: member.status === "Available" ? "#10b981" : "#6366f1",
             }}
           >
-            {m.status}
+            {member.status}
           </span>
         </div>
       ))}
@@ -166,21 +166,21 @@ function FinanceVisual() {
           { label: "Outstanding",   value: "$6,400",  up: false },
           { label: "Invoices sent", value: "34",      up: true  },
           { label: "Avg job value", value: "$1,418",  up: true  },
-        ].map((c) => (
-          <div key={c.label} className="bg-muted/40 rounded-xl p-3 border border-border/50">
-            <p className="text-[10px] text-muted-foreground">{c.label}</p>
-            <p className="text-base font-bold text-foreground">{c.value}</p>
-            <p className={`text-[10px] font-medium ${c.up ? "text-green-500" : "text-red-400"}`}>
-              {c.up ? "▲" : "▼"} this month
+        ].map((statCard) => (
+          <div key={statCard.label} className="bg-muted/40 rounded-xl p-3 border border-border/50">
+            <p className="text-[10px] text-muted-foreground">{statCard.label}</p>
+            <p className="text-base font-bold text-foreground">{statCard.value}</p>
+            <p className={`text-[10px] font-medium ${statCard.up ? "text-green-500" : "text-red-400"}`}>
+              {statCard.up ? "▲" : "▼"} this month
             </p>
           </div>
         ))}
       </div>
       <div className="flex items-end gap-1.5 h-16">
-        {bars.map((b) => (
-          <div key={b.month} className="flex-1 flex flex-col items-center gap-1">
-            <div className="w-full rounded-t-sm bg-primary/70" style={{ height: `${b.val * 0.56}px` }} />
-            <p className="text-[9px] text-muted-foreground">{b.month}</p>
+        {bars.map((bar) => (
+          <div key={bar.month} className="flex-1 flex flex-col items-center gap-1">
+            <div className="w-full rounded-t-sm bg-primary/70" style={{ height: `${bar.val * 0.56}px` }} />
+            <p className="text-[9px] text-muted-foreground">{bar.month}</p>
           </div>
         ))}
       </div>
@@ -202,17 +202,17 @@ function ClientsVisual() {
   };
   return (
     <div className="w-full flex flex-col gap-2 p-5">
-      {clients.map((c) => (
-        <div key={c.name} className="flex items-center gap-3 bg-muted/40 rounded-xl px-3 py-2.5 border border-border/50">
+      {clients.map((client) => (
+        <div key={client.name} className="flex items-center gap-3 bg-muted/40 rounded-xl px-3 py-2.5 border border-border/50">
           <div className="w-7 h-7 rounded-full bg-accent flex items-center justify-center text-[10px] font-bold text-accent-foreground flex-shrink-0">
-            {c.name[0]}
+            {client.name[0]}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-foreground truncate">{c.name}</p>
-            <p className="text-[10px] text-muted-foreground">{c.jobs} jobs · {c.last}</p>
+            <p className="text-xs font-semibold text-foreground truncate">{client.name}</p>
+            <p className="text-[10px] text-muted-foreground">{client.jobs} jobs · {client.last}</p>
           </div>
-          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusStyle[c.status]}`}>
-            {c.status}
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusStyle[client.status]}`}>
+            {client.status}
           </span>
         </div>
       ))}
@@ -233,20 +233,20 @@ function ReportingVisual() {
         {[
           { label: "Jobs this week", value: "47" },
           { label: "Avg duration",   value: "2.4h" },
-        ].map((s) => (
-          <div key={s.label} className="bg-muted/40 rounded-xl p-3 border border-border/50 text-center">
-            <p className="text-lg font-bold text-foreground">{s.value}</p>
-            <p className="text-[10px] text-muted-foreground">{s.label}</p>
+        ].map((stat) => (
+          <div key={stat.label} className="bg-muted/40 rounded-xl p-3 border border-border/50 text-center">
+            <p className="text-lg font-bold text-foreground">{stat.value}</p>
+            <p className="text-[10px] text-muted-foreground">{stat.label}</p>
           </div>
         ))}
       </div>
-      {metrics.map((m) => (
-        <div key={m.label} className="flex items-center gap-2">
-          <p className="text-[10px] text-muted-foreground w-28 flex-shrink-0">{m.label}</p>
+      {metrics.map((metric) => (
+        <div key={metric.label} className="flex items-center gap-2">
+          <p className="text-[10px] text-muted-foreground w-28 flex-shrink-0">{metric.label}</p>
           <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-            <div className="h-full rounded-full" style={{ width: `${m.pct}%`, backgroundColor: m.color }} />
+            <div className="h-full rounded-full" style={{ width: `${metric.pct}%`, backgroundColor: metric.color }} />
           </div>
-          <p className="text-[10px] font-semibold text-foreground w-7 text-right">{m.pct}%</p>
+          <p className="text-[10px] font-semibold text-foreground w-7 text-right">{metric.pct}%</p>
         </div>
       ))}
     </div>
@@ -268,20 +268,20 @@ function ComplianceVisual() {
   return (
     <div className="w-full flex flex-col gap-3 p-5">
       <div className="flex flex-col gap-1.5">
-        {checks.map((c) => (
-          <div key={c.label} className="flex items-center gap-2.5 bg-muted/40 rounded-lg px-3 py-2 border border-border/40">
-            <div className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${c.done ? "bg-green-500" : "bg-muted border border-border"}`}>
-              {c.done && <svg viewBox="0 0 12 12" fill="white" className="w-2.5 h-2.5"><path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+        {checks.map((check) => (
+          <div key={check.label} className="flex items-center gap-2.5 bg-muted/40 rounded-lg px-3 py-2 border border-border/40">
+            <div className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${check.done ? "bg-green-500" : "bg-muted border border-border"}`}>
+              {check.done && <svg viewBox="0 0 12 12" fill="white" className="w-2.5 h-2.5"><path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>}
             </div>
-            <p className={`text-xs ${c.done ? "text-foreground" : "text-muted-foreground"}`}>{c.label}</p>
+            <p className={`text-xs ${check.done ? "text-foreground" : "text-muted-foreground"}`}>{check.label}</p>
           </div>
         ))}
       </div>
-      {certs.map((c) => (
-        <div key={c.name} className={`flex items-center gap-2 rounded-lg px-3 py-2 border text-xs ${c.warn ? "bg-red-500/5 border-red-500/30" : "bg-muted/30 border-border/40"}`}>
-          <p className="font-medium text-foreground flex-1">{c.name} · {c.cert}</p>
-          <span className={`font-semibold ${c.warn ? "text-red-500" : "text-muted-foreground"}`}>
-            {c.warn ? "⚠ " : ""}{c.days}d
+      {certs.map((cert) => (
+        <div key={cert.name} className={`flex items-center gap-2 rounded-lg px-3 py-2 border text-xs ${cert.warn ? "bg-red-500/5 border-red-500/30" : "bg-muted/30 border-border/40"}`}>
+          <p className="font-medium text-foreground flex-1">{cert.name} · {cert.cert}</p>
+          <span className={`font-semibold ${cert.warn ? "text-red-500" : "text-muted-foreground"}`}>
+            {cert.warn ? "⚠ " : ""}{cert.days}d
           </span>
         </div>
       ))}
@@ -298,17 +298,17 @@ function AutomationVisual() {
   ];
   return (
     <div className="w-full flex flex-col items-center gap-1 p-5">
-      {steps.map((s, i) => (
-        <div key={s.label} className="w-full flex flex-col items-center">
+      {steps.map((step, index) => (
+        <div key={step.label} className="w-full flex flex-col items-center">
           <div className="w-full flex items-center gap-3 bg-muted/40 rounded-xl px-3 py-2.5 border border-border/50">
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0"
-              style={{ backgroundColor: `${s.color}1a` }}>
-              {s.icon}
+              style={{ backgroundColor: `${step.color}1a` }}>
+              {step.icon}
             </div>
-            <p className="text-xs font-medium text-foreground">{s.label}</p>
+            <p className="text-xs font-medium text-foreground">{step.label}</p>
             <div className="ml-auto w-2 h-2 rounded-full bg-green-500" />
           </div>
-          {i < steps.length - 1 && (
+          {index < steps.length - 1 && (
             <div className="w-px h-3 bg-border" />
           )}
         </div>
@@ -396,23 +396,23 @@ export function SolutionsSection() {
         ref={tabsRef}
         className="flex gap-1 overflow-x-auto no-scrollbar border-b border-border pb-0"
       >
-        {TABS.map((t, i) => (
+        {TABS.map((tabItem, tabIndex) => (
           <button
-            key={t.id}
-            data-active={i === active}
-            onClick={() => switchTab(i)}
+            key={tabItem.id}
+            data-active={tabIndex === active}
+            onClick={() => switchTab(tabIndex)}
             className={`
               relative flex-shrink-0 px-4 py-2.5 text-sm font-medium rounded-t-lg
               transition-colors duration-200 outline-none
-              ${i === active
+              ${tabIndex === active
                 ? "text-primary"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
               }
             `}
           >
-            {t.label}
+            {tabItem.label}
             {/* Active underline */}
-            {i === active && (
+            {tabIndex === active && (
               <span
                 className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-primary"
                 style={{ transition: "none" }}
@@ -455,8 +455,8 @@ export function SolutionsSection() {
 
           {/* Feature bullets */}
           <ul className="flex flex-col gap-2">
-            {getFeatureBullets(tab.id).map((b) => (
-              <li key={b} className="flex items-center gap-2.5 text-sm text-foreground">
+            {getFeatureBullets(tab.id).map((bullet) => (
+              <li key={bullet} className="flex items-center gap-2.5 text-sm text-foreground">
                 <span
                   className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
                   style={{ backgroundColor: `${tab.accentColor}22` }}
@@ -466,7 +466,7 @@ export function SolutionsSection() {
                     <path d="M2 6l3 3 5-5" />
                   </svg>
                 </span>
-                {b}
+                {bullet}
               </li>
             ))}
           </ul>

@@ -15,18 +15,18 @@ import type { JobsFilters, Period } from "@/src/types/dashboard.types";
 
 // ── Sparkline SVG ─────────────────────────────────────────────
 function Sparkline({ data, color, fill }: { data: number[]; color: string; fill: string }) {
-  const w = 90; const h = 32;
+  const chartWidth = 90; const chartHeight = 32;
   const max = Math.max(...data);
   const min = Math.min(...data);
   const range = max - min || 1;
-  const pts = data.map((v, i) => [
-    (i / (data.length - 1 || 1)) * w,
-    h - ((v - min) / range) * (h - 4) - 2,
+  const points = data.map((value, index) => [
+    (index / (data.length - 1 || 1)) * chartWidth,
+    chartHeight - ((value - min) / range) * (chartHeight - 4) - 2,
   ]);
-  const line = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
-  const area = `${line} L${w} ${h} L0 ${h} Z`;
+  const line = points.map((point, index) => `${index === 0 ? "M" : "L"}${point[0].toFixed(1)} ${point[1].toFixed(1)}`).join(" ");
+  const area = `${line} L${chartWidth} ${chartHeight} L0 ${chartHeight} Z`;
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+    <svg width={chartWidth} height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`}>
       <path d={area} fill={fill} />
       <path d={line} fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
@@ -39,12 +39,12 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
   return (
     <div className="bg-popover border border-border rounded-xl shadow-lg px-3 py-2.5 text-xs">
       <p className="font-semibold text-foreground mb-1.5">{label}</p>
-      {payload.map((p) => (
-        <div key={p.name} className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
-          <span className="text-muted-foreground capitalize">{p.name}:</span>
+      {payload.map((entry) => (
+        <div key={entry.name} className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+          <span className="text-muted-foreground capitalize">{entry.name}:</span>
           <span className="font-semibold text-foreground">
-            {p.name === "revenue" ? `$${p.value.toLocaleString()}` : p.value}
+            {entry.name === "revenue" ? `$${entry.value.toLocaleString()}` : entry.value}
           </span>
         </div>
       ))}
@@ -83,20 +83,20 @@ function StatCard({
 }
 
 // ── Period filter pill ────────────────────────────────────────
-function PeriodFilter({ active, onChange }: { active: Period; onChange: (p: Period) => void }) {
+function PeriodFilter({ active, onChange }: { active: Period; onChange: (period: Period) => void }) {
   return (
     <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
-      {(["week", "month", "year"] as Period[]).map((p) => (
+      {(["week", "month", "year"] as Period[]).map((periodOption) => (
         <button
-          key={p}
-          onClick={() => onChange(p)}
+          key={periodOption}
+          onClick={() => onChange(periodOption)}
           className={`px-3 py-1 rounded-md text-xs font-semibold capitalize transition-all duration-200 ${
-            active === p
+            active === periodOption
               ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          {p}
+          {periodOption}
         </button>
       ))}
     </div>
@@ -109,18 +109,18 @@ function StatusFilter({
 }: {
   options: string[];
   value: string | undefined;
-  onChange: (v: string | undefined) => void;
+  onChange: (value: string | undefined) => void;
 }) {
   if (options.length === 0) return null;
   return (
     <select
       value={value ?? ""}
-      onChange={(e) => onChange(e.target.value || undefined)}
+      onChange={(event) => onChange(event.target.value || undefined)}
       className="text-xs px-3 py-1.5 rounded-lg border border-border bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
     >
       <option value="">All statuses</option>
-      {options.map((s) => (
-        <option key={s} value={s}>{s}</option>
+      {options.map((statusOption) => (
+        <option key={statusOption} value={statusOption}>{statusOption}</option>
       ))}
     </select>
   );
@@ -130,10 +130,10 @@ function StatusFilter({
 // 5:00–11:59  → Good morning
 // 12:00–16:59 → Good afternoon
 // 17:00–04:59 → Good evening
-function getTimeOfDayGreeting(d: Date = new Date()): string {
-  const h = d.getHours();
-  if (h >= 5 && h < 12) return "Good morning";
-  if (h >= 12 && h < 17) return "Good afternoon";
+function getTimeOfDayGreeting(date: Date = new Date()): string {
+  const hour = date.getHours();
+  if (hour >= 5 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 17) return "Good afternoon";
   return "Good evening";
 }
 
@@ -187,26 +187,26 @@ export function DashboardOverview() {
   const pendData =
     pendingPeriod === "week"
       ? aggregates.pending_by_day
-      : aggregates.activity.map((b) => ({ ...b }));
-  const pendTotal = pendData.reduce((s, d) => s + d.jobs, 0);
+      : aggregates.activity.map((bucket) => ({ ...bucket }));
+  const pendTotal = pendData.reduce((sum, bucket) => sum + bucket.jobs, 0);
   const urgentPct =
     pendTotal > 0
-      ? Math.round((pendData.reduce((s, d) => s + d.pending, 0) / pendTotal) * 100)
+      ? Math.round((pendData.reduce((sum, bucket) => sum + bucket.pending, 0) / pendTotal) * 100)
       : 0;
 
   const statusOptions = useMemo(() => {
     const set = new Set<string>();
-    jobs.forEach((j) => set.add(j.status));
+    jobs.forEach((job) => set.add(job.status));
     return [...set].sort();
   }, [jobs]);
 
   // Sparklines are derived directly from real activity buckets — no synthetic
   // padding. If a series has no data, the StatCard hides its sparkline.
-  const sparkJobs      = activityData.map((b) => b.jobs);
-  const sparkRevenue   = activityData.map((b) => b.revenue);
-  const sparkCompleted = activityData.map((b) => b.completed);
+  const sparkJobs      = activityData.map((bucket) => bucket.jobs);
+  const sparkRevenue   = activityData.map((bucket) => bucket.revenue);
+  const sparkCompleted = activityData.map((bucket) => bucket.completed);
 
-  const donutTotal = aggregates.job_status.reduce((s, d) => s + d.value, 0);
+  const donutTotal = aggregates.job_status.reduce((sum, statusRow) => sum + statusRow.value, 0);
 
   return (
     <div className="flex flex-col gap-5 p-5 h-full overflow-y-auto">
@@ -301,10 +301,10 @@ export function DashboardOverview() {
               </ResponsiveContainer>
 
               <div className="flex items-center gap-4 mt-3">
-                {[{ color: "#6366f1", label: "Total Jobs" }, { color: "#10b981", label: "Completed" }].map((l) => (
-                  <div key={l.label} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: l.color }} />
-                    {l.label}
+                {[{ color: "#6366f1", label: "Total Jobs" }, { color: "#10b981", label: "Completed" }].map((legendItem) => (
+                  <div key={legendItem.label} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: legendItem.color }} />
+                    {legendItem.label}
                   </div>
                 ))}
               </div>
@@ -324,10 +324,10 @@ export function DashboardOverview() {
               { label: "Jobs",    val: `${totJobs}` },
               { label: "Revenue", val: `$${Math.round(totRev / 1000)}k` },
               { label: "Done",    val: `${compRate}%` },
-            ].map((s) => (
-              <div key={s.label} className="text-center">
-                <p className="text-base font-bold text-foreground">{s.val}</p>
-                <p className="text-[10px] text-muted-foreground">{s.label}</p>
+            ].map((summaryStat) => (
+              <div key={summaryStat.label} className="text-center">
+                <p className="text-base font-bold text-foreground">{summaryStat.val}</p>
+                <p className="text-[10px] text-muted-foreground">{summaryStat.label}</p>
               </div>
             ))}
           </div>
@@ -437,7 +437,7 @@ export function DashboardOverview() {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={aggregates.job_status} cx="50%" cy="50%" innerRadius={28} outerRadius={42} dataKey="value" strokeWidth={0}>
-                      {aggregates.job_status.map((d) => <Cell key={d.name} fill={d.color} />)}
+                      {aggregates.job_status.map((statusRow) => <Cell key={statusRow.name} fill={statusRow.color} />)}
                     </Pie>
                   </PieChart>
                 </ResponsiveContainer>
@@ -449,13 +449,13 @@ export function DashboardOverview() {
                 </div>
               </div>
               <div className="flex flex-col gap-1.5 flex-1">
-                {aggregates.job_status.map((d) => (
-                  <div key={d.name} className="flex items-center justify-between">
+                {aggregates.job_status.map((statusRow) => (
+                  <div key={statusRow.name} className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }} />
-                      <p className="text-[11px] text-muted-foreground">{d.name}</p>
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusRow.color }} />
+                      <p className="text-[11px] text-muted-foreground">{statusRow.name}</p>
                     </div>
-                    <p className="text-[11px] font-semibold text-foreground">{d.value}</p>
+                    <p className="text-[11px] font-semibold text-foreground">{statusRow.value}</p>
                   </div>
                 ))}
               </div>
@@ -468,16 +468,16 @@ export function DashboardOverview() {
               <p className="text-xs text-muted-foreground">No performer data yet.</p>
             ) : (
               <div className="flex flex-col gap-2">
-                {aggregates.top_performers.map((t) => (
-                  <div key={t.staff_id} className="flex items-center gap-2.5">
+                {aggregates.top_performers.map((performer) => (
+                  <div key={performer.staff_id} className="flex items-center gap-2.5">
                     <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-bold text-primary flex-shrink-0">
-                      {t.avatar}
+                      {performer.avatar}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-foreground truncate">{t.name}</p>
-                      <p className="text-[10px] text-muted-foreground">{t.jobs} jobs</p>
+                      <p className="text-xs font-medium text-foreground truncate">{performer.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{performer.jobs} jobs</p>
                     </div>
-                    <p className="text-xs font-semibold text-foreground">${t.revenue.toLocaleString()}</p>
+                    <p className="text-xs font-semibold text-foreground">${performer.revenue.toLocaleString()}</p>
                   </div>
                 ))}
               </div>

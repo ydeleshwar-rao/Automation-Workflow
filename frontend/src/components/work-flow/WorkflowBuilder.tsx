@@ -41,7 +41,7 @@ const MonitorPaneFallback = () => (
 const ExecutionList = dynamic(
   () =>
     import("./components/ExecutionMonitor/ExecutionList").then(
-      (m) => m.ExecutionList,
+      (executionModule) => executionModule.ExecutionList,
     ),
   { ssr: false, loading: () => <MonitorPaneFallback /> },
 );
@@ -49,7 +49,7 @@ const ExecutionList = dynamic(
 const ExecutionDetail = dynamic(
   () =>
     import("./components/ExecutionMonitor/ExecutionDetail").then(
-      (m) => m.ExecutionDetail,
+      (executionModule) => executionModule.ExecutionDetail,
     ),
   { ssr: false, loading: () => <MonitorPaneFallback /> },
 );
@@ -128,7 +128,7 @@ export function WorkflowBuilder() {
     setDynamicFooter(null);
   }, [activeNode?.id]);
 
-  const triggerNode = nodes.find((n) => n.type === "trigger");
+  const triggerNode = nodes.find((node) => node.type === "trigger");
   const triggerWebhookId =
     triggerNode?.config?.webhook?.id ?? triggerNode?.config?.webhook_id;
   /**

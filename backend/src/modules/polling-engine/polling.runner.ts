@@ -1,9 +1,18 @@
-import { supabase } from "../../config/db.config.js";
+import type { PollingSubscription } from "@prisma/client";
 import { getAdapter } from "./adapters/adapter.registry.js";
+import type { PollResult } from "./adapters/adapter.interface.js";
 import { executeWorkflow } from "../workflow-automation/processor/webhookProcessor.js";
 import { pollingLogger as log } from "../../utils/logger.js";
+import { pollingSubscriptionRepository } from "./repositories/polling-subscription.repository.js";
+import { workflowTriggerRepository } from "./repositories/workflow-trigger.repository.js";
+import { readSubscriptionConfig } from "./trigger-payload.js";
 
 const MAX_ERROR_COUNT = 5;
+const DEFAULT_POLL_INTERVAL_SECONDS = 300;
+const MIN_POLL_INTERVAL_SECONDS = 60;
+const MILLISECONDS_PER_SECOND = 1000;
+// ServiceM8 auto-poll paused — use poll-now manually
+const AUTO_POLL_EXCLUDED_INTEGRATIONS = ["service_m8"];
 
 /**
  * Returns true if current time is inside the quiet window defined by
@@ -16,19 +25,19 @@ const MAX_ERROR_COUNT = 5;
  * If either var is missing/invalid, quiet hours are disabled.
  */
 function isQuietHour(): boolean {
-  const startEnv = parseInt(process.env.POLL_QUIET_START ?? "", 10);
-  const endEnv   = parseInt(process.env.POLL_QUIET_END   ?? "", 10);
+  const startHour = parseInt(process.env.POLL_QUIET_START ?? "", 10);
+  const endHour = parseInt(process.env.POLL_QUIET_END ?? "", 10);
 
-  if (isNaN(startEnv) || isNaN(endEnv)) return false;
+  if (isNaN(startHour) || isNaN(endHour)) return false;
 
   const currentHour = new Date().getHours();
 
   // Crosses midnight (e.g. 23 → 6)
-  if (startEnv > endEnv) {
-    return currentHour >= startEnv || currentHour < endEnv;
+  if (startHour > endHour) {
+    return currentHour >= startHour || currentHour < endHour;
   }
   // Same day window (e.g. 2 → 5)
-  return currentHour >= startEnv && currentHour < endEnv;
+  return currentHour >= startHour && currentHour < endHour;
 }
 
 /**
@@ -36,26 +45,16 @@ function isQuietHour(): boolean {
  * (seconds). Falls back to 300 (5 min) if not set.
  */
 export function getDefaultPollInterval(): number {
-  const val = parseInt(process.env.POLL_DEFAULT_INTERVAL ?? "", 10);
-  return isNaN(val) || val < 60 ? 300 : val;
+  const configuredInterval = parseInt(process.env.POLL_DEFAULT_INTERVAL ?? "", 10);
+  return isNaN(configuredInterval) || configuredInterval < MIN_POLL_INTERVAL_SECONDS
+    ? DEFAULT_POLL_INTERVAL_SECONDS
+    : configuredInterval;
 }
 
-interface PollingSubscription {
-  id: string;
-  workflow_id: string;
-  node_id: string;
-  user_id: string;
-  integration_key: string;
-  event_key: string;
-  config: Record<string, any>;
-  poll_interval: number;
-  cursor_value: string | null;
-  cursor_type: string;
-  last_polled_at: string | null;
-  last_error: string | null;
-  error_count: number;
-  is_active: boolean;
-  created_at: string;
+function isDueForPoll(subscription: PollingSubscription, now: number): boolean {
+  if (!subscription.last_polled_at) return true;
+  const intervalMs = (subscription.poll_interval || DEFAULT_POLL_INTERVAL_SECONDS) * MILLISECONDS_PER_SECOND;
+  return now - subscription.last_polled_at.getTime() >= intervalMs;
 }
 
 /**
@@ -66,48 +65,18 @@ interface PollingSubscription {
  *   - last_polled_at is null OR (now - last_polled_at) >= poll_interval seconds
  */
 async function getDueSubscriptions(): Promise<PollingSubscription[]> {
-  const { data: subs, error } = await supabase
-    .from("polling_subscriptions")
-    .select("*")
-    .eq("is_active", true)
-    .lt("error_count", MAX_ERROR_COUNT)
-    .neq("integration_key", "service_m8")   // ServiceM8 auto-poll paused — use poll-now manually
-    .or(
-      "last_polled_at.is.null," +
-      `last_polled_at.lte.${new Date(Date.now() - 60 * 1000).toISOString()}`
-    );
-
-  if (error) {
-    log.error("failed to fetch subscriptions", { error: error.message });
-    return [];
-  }
-
-  // Apply per-subscription interval check for custom intervals > 60s
   const now = Date.now();
-  return (subs ?? []).filter((sub: PollingSubscription) => {
-    if (!sub.last_polled_at) return true;
-    const lastPolled = new Date(sub.last_polled_at).getTime();
-    const intervalMs = (sub.poll_interval || 300) * 1000;
-    return now - lastPolled >= intervalMs;
+  const candidates = await pollingSubscriptionRepository.findDue({
+    maxErrorCount: MAX_ERROR_COUNT,
+    excludedIntegrationKeys: AUTO_POLL_EXCLUDED_INTEGRATIONS,
+    polledBefore: new Date(now - MIN_POLL_INTERVAL_SECONDS * MILLISECONDS_PER_SECOND),
   });
+  // The query uses the minimum interval; custom intervals > 60s are checked here.
+  return candidates.filter((subscription) => isDueForPoll(subscription, now));
 }
 
-/**
- * Verify that the workflow linked to a subscription is still active.
- */
-async function isWorkflowActive(workflowId: string): Promise<boolean> {
-  const { data, error } = await supabase
-    .from("workflows")
-    .select("status")
-    .eq("id", workflowId)
-    .single();
-
-  if (error || !data) return false;
-  return data.status === "active";
-}
-
-interface SubResult {
-  subId: string;
+interface SubscriptionResult {
+  subscriptionId: string;
   status: "ok" | "skipped" | "error";
   polled: number;
   seeded: number;
@@ -115,305 +84,260 @@ interface SubResult {
   error?: string;
 }
 
+function emptyResult(subscriptionId: string, status: SubscriptionResult["status"]): SubscriptionResult {
+  return { subscriptionId, status, polled: 0, seeded: 0, triggered: 0 };
+}
+
+/** Newest cursor among the records (cursors sort lexicographically: ISO dates / padded ids). */
+function findMaxCursor(records: PollResult[]): string | undefined {
+  return records
+    .map((record) => record.cursorValue)
+    .filter((cursorValue) => cursorValue && cursorValue !== "")
+    .sort()
+    .pop();
+}
+
+function collectExternalIds(records: PollResult[]): string[] {
+  const externalIds = records
+    .flatMap((record) => [record.externalId, record.data?.__legacy_external_id])
+    .filter(Boolean);
+  return [...new Set(externalIds)];
+}
+
+function selectNewRecords(records: PollResult[], seenExternalIds: Set<string>): PollResult[] {
+  return records.filter((record) => {
+    if (seenExternalIds.has(record.externalId)) return false;
+
+    // Compatibility for proposal subscriptions created before proposal events
+    // used versioned IDs. Suppress only the initial sent marker if the old
+    // opportunity ID was already seen; later versions still trigger.
+    const legacyId = record.data?.__legacy_external_id;
+    const isInitialProposalSentId = legacyId && record.externalId === `${legacyId}:proposal_sent:1`;
+    return !(isInitialProposalSentId && seenExternalIds.has(legacyId));
+  });
+}
+
+/**
+ * First poll bootstrap: seed seen records + cursor, but DON'T trigger workflows.
+ */
+async function seedFirstPoll(
+  subscription: PollingSubscription,
+  records: PollResult[],
+  polledAt: Date,
+  tickId: string
+): Promise<SubscriptionResult> {
+  log.info("FIRST POLL — seeding without triggering", {
+    tickId,
+    subId: subscription.id,
+    integration: subscription.integration_key,
+    event: subscription.event_key,
+    count: records.length,
+  });
+
+  await pollingSubscriptionRepository.markSeen(
+    subscription.id,
+    records.map((record) => record.externalId)
+  );
+
+  const forcedCursor = findMaxCursor(records) ?? new Date().toISOString();
+  await pollingSubscriptionRepository.recordPollSuccess(subscription.id, polledAt, forcedCursor);
+
+  log.info("first poll complete", {
+    tickId,
+    subId: subscription.id,
+    seeded: records.length,
+    cursor: forcedCursor,
+  });
+
+  return { subscriptionId: subscription.id, status: "ok", polled: records.length, seeded: records.length, triggered: 0 };
+}
+
+/** Normal poll: mark each new record seen, then trigger its workflow run. */
+async function triggerNewRecords(
+  subscription: PollingSubscription,
+  newRecords: PollResult[],
+  tickId: string
+): Promise<number> {
+  if (newRecords.length === 0) {
+    log.info("no new records — nothing to trigger", { tickId, subId: subscription.id });
+  }
+
+  let triggered = 0;
+  for (const record of newRecords) {
+    // Mark as seen FIRST to prevent duplicate triggers
+    await pollingSubscriptionRepository.markSeen(subscription.id, [record.externalId]);
+
+    log.info("triggering workflow", {
+      tickId,
+      subId: subscription.id,
+      workflowId: subscription.workflow_id,
+      record: record.externalId,
+    });
+
+    executeWorkflow(subscription.workflow_id, record.data).catch((error) => {
+      log.error("workflow execution failed", {
+        tickId,
+        subId: subscription.id,
+        workflowId: subscription.workflow_id,
+        record: record.externalId,
+        error: error.message,
+      });
+    });
+
+    triggered++;
+  }
+  return triggered;
+}
+
+async function recordFailure(
+  subscription: PollingSubscription,
+  polledAt: Date,
+  errorMessage: string,
+  tickId: string
+): Promise<void> {
+  try {
+    await pollingSubscriptionRepository.recordPollFailure(subscription.id, polledAt, errorMessage);
+  } catch (error) {
+    // Losing the error state must not abort the rest of the tick.
+    log.error("failed to persist error state", {
+      tickId,
+      subId: subscription.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 /**
  * Process a single subscription: poll the adapter, deduplicate, trigger workflows.
  */
 async function processSubscription(
-  sub: PollingSubscription,
+  subscription: PollingSubscription,
   tickId: string
-): Promise<SubResult> {
-  const now = new Date().toISOString();
-  const t0 = Date.now();
+): Promise<SubscriptionResult> {
+  const polledAt = new Date();
+  const startedAt = Date.now();
 
   // 1. Verify workflow is still active
-  const active = await isWorkflowActive(sub.workflow_id);
-  if (!active) {
+  if (!(await workflowTriggerRepository.isWorkflowActive(subscription.workflow_id))) {
     log.info("workflow not active — skipping", {
       tickId,
-      subId: sub.id,
-      integration: sub.integration_key,
-      event: sub.event_key,
-      workflowId: sub.workflow_id,
+      subId: subscription.id,
+      integration: subscription.integration_key,
+      event: subscription.event_key,
+      workflowId: subscription.workflow_id,
     });
-    return { subId: sub.id, status: "skipped", polled: 0, seeded: 0, triggered: 0 };
+    return emptyResult(subscription.id, "skipped");
   }
 
   // 2. Get the adapter
-  const adapter = getAdapter(sub.integration_key);
+  const adapter = getAdapter(subscription.integration_key);
   if (!adapter) {
-    const msg = `No adapter registered for integration: ${sub.integration_key}`;
+    const errorMessage = `No adapter registered for integration: ${subscription.integration_key}`;
     log.error("no adapter registered", {
       tickId,
-      subId: sub.id,
-      integration: sub.integration_key,
-      error: msg,
+      subId: subscription.id,
+      integration: subscription.integration_key,
+      error: errorMessage,
     });
-    await supabase
-      .from("polling_subscriptions")
-      .update({
-        last_polled_at: now,
-        last_error: msg,
-        error_count: sub.error_count + 1,
-        updated_at: now,
-      })
-      .eq("id", sub.id);
-    return { subId: sub.id, status: "error", polled: 0, seeded: 0, triggered: 0, error: msg };
+    await recordFailure(subscription, polledAt, errorMessage, tickId);
+    return { ...emptyResult(subscription.id, "error"), error: errorMessage };
   }
 
   try {
     // 3. Poll the external API
-    const enrichedConfig = { ...sub.config, _subscriptionCreatedAt: sub.created_at };
+    const adapterConfig = {
+      ...readSubscriptionConfig(subscription.config),
+      _subscriptionCreatedAt: subscription.created_at.toISOString(),
+    };
     const records = await adapter.poll(
-      sub.user_id,
-      sub.event_key,
-      enrichedConfig,
-      sub.cursor_value
+      subscription.user_id,
+      subscription.event_key,
+      adapterConfig,
+      subscription.cursor_value
     );
 
     log.info("polled records", {
       tickId,
-      subId: sub.id,
-      integration: sub.integration_key,
-      event: sub.event_key,
+      subId: subscription.id,
+      integration: subscription.integration_key,
+      event: subscription.event_key,
       polled: records.length,
-      adapter_duration_ms: Date.now() - t0,
+      adapter_duration_ms: Date.now() - startedAt,
     });
 
     if (records.length === 0) {
-      // No new records — just update last_polled_at
-      await supabase
-        .from("polling_subscriptions")
-        .update({
-          last_polled_at: now,
-          last_error: null,
-          error_count: 0,
-          updated_at: now,
-        })
-        .eq("id", sub.id);
+      await pollingSubscriptionRepository.recordPollSuccess(subscription.id, polledAt);
       log.info("no records — marked polled, no trigger", {
         tickId,
-        subId: sub.id,
-        duration_ms: Date.now() - t0,
+        subId: subscription.id,
+        duration_ms: Date.now() - startedAt,
       });
-      return { subId: sub.id, status: "ok", polled: 0, seeded: 0, triggered: 0 };
+      return emptyResult(subscription.id, "ok");
     }
 
     // 4. Deduplicate against seen records
-    const externalIds = [
-      ...new Set(
-        records.flatMap((r) => [
-          r.externalId,
-          r.data?.__legacy_external_id,
-        ]).filter(Boolean)
-      ),
-    ];
-    const { data: seenRows, error: seenQErr } = await supabase
-      .from("polling_seen_records")
-      .select("external_id")
-      .eq("subscription_id", sub.id)
-      .in("external_id", externalIds);
-
-    if (seenQErr) {
-      log.error("seen-records query failed", {
-        tickId,
-        subId: sub.id,
-        error: seenQErr.message,
-      });
-      throw new Error(seenQErr.message);
-    }
-
-    const seenSet = new Set(seenRows?.map((s: any) => s.external_id) ?? []);
-    const newRecords = records.filter((r) => {
-      if (seenSet.has(r.externalId)) return false;
-
-      // Compatibility for proposal subscriptions created before proposal events
-      // used versioned IDs. Suppress only the initial sent marker if the old
-      // opportunity ID was already seen; later versions still trigger.
-      const legacyId = r.data?.__legacy_external_id;
-      const initialProposalSentId =
-        legacyId && r.externalId === `${legacyId}:proposal_sent:1`;
-      return !(initialProposalSentId && seenSet.has(legacyId));
-    });
+    const externalIds = collectExternalIds(records);
+    const seenExternalIds = await pollingSubscriptionRepository.findSeenExternalIds(subscription.id, externalIds);
+    const newRecords = selectNewRecords(records, seenExternalIds);
 
     log.debug("dedup", {
       tickId,
-      subId: sub.id,
+      subId: subscription.id,
       externalIds,
-      already_seen: [...seenSet],
-      new_records: newRecords.map((r) => r.externalId),
+      already_seen: [...seenExternalIds],
+      new_records: newRecords.map((record) => record.externalId),
       polled: records.length,
       new: newRecords.length,
     });
 
-    // 5. First poll bootstrap: seed seen records + cursor, but DON'T trigger workflows
-    const isFirstPoll = sub.cursor_value === null;
-    let seeded = 0;
-    let triggered = 0;
-
-    if (isFirstPoll) {
-      log.info("FIRST POLL — seeding without triggering", {
-        tickId,
-        subId: sub.id,
-        integration: sub.integration_key,
-        event: sub.event_key,
-        count: records.length,
-      });
-
-      const seenInserts = records.map((r) => ({
-        subscription_id: sub.id,
-        external_id: r.externalId,
-      }));
-
-      if (seenInserts.length > 0) {
-        const { error: seedErr } = await supabase
-          .from("polling_seen_records")
-          .upsert(seenInserts, { onConflict: "subscription_id,external_id" });
-      }
-
-      const forcedCursor = records
-        .map(r => r.cursorValue)
-        .filter(v => v && v !== "")
-        .sort()
-        .pop() ?? new Date().toISOString();
-
-      await supabase
-        .from("polling_subscriptions")
-        .update({
-          cursor_value: forcedCursor,
-          last_polled_at: now,
-          last_error: null,
-          error_count: 0,
-          updated_at: now,
-        })
-        .eq("id", sub.id);
-
-      log.info("first poll complete", {
-        tickId,
-        subId: sub.id,
-        seeded: records.length,
-        cursor: forcedCursor,
-      });
-
-      return { subId: sub.id, status: "ok", polled: records.length, seeded: records.length, triggered: 0 }; // exit after first poll — no workflows triggered
-    } else {
-      // 6. Normal poll: trigger workflows for new records
-      if (newRecords.length === 0) {
-        log.info("no new records — nothing to trigger", { tickId, subId: sub.id });
-      }
-
-      for (const record of newRecords) {
-        // Mark as seen FIRST to prevent duplicate triggers
-        await supabase.from("polling_seen_records").upsert(
-          {
-            subscription_id: sub.id,
-            external_id: record.externalId,
-          },
-          { onConflict: "subscription_id,external_id" }
-        );
-
-        log.info("triggering workflow", {
-          tickId,
-          subId: sub.id,
-          workflowId: sub.workflow_id,
-          record: record.externalId,
-        });
-
-        // Execute workflow after marking seen
-        executeWorkflow(sub.workflow_id, record.data).catch((err) => {
-          log.error("workflow execution failed", {
-            tickId,
-            subId: sub.id,
-            workflowId: sub.workflow_id,
-            record: record.externalId,
-            error: err.message,
-          });
-        });
-
-        triggered++;
-      }
+    // 5. First poll bootstrap — exit without triggering workflows
+    if (subscription.cursor_value === null) {
+      return await seedFirstPoll(subscription, records, polledAt, tickId);
     }
+
+    // 6. Normal poll: trigger workflows for new records
+    const triggered = await triggerNewRecords(subscription, newRecords, tickId);
 
     // 7. Update cursor to the sorted maximum value
-    const maxCursor = records.length > 0
-      ? (records
-          .map(r => r.cursorValue)
-          .filter(v => v && v !== "")
-          .sort()
-          .pop() ?? sub.cursor_value)
-      : sub.cursor_value;
-
-    const { error: cursorErr } = await supabase
-      .from("polling_subscriptions")
-      .update({
-        cursor_value: maxCursor,
-        last_polled_at: now,
-        last_error: null,
-        error_count: 0,
-        updated_at: now,
-      })
-      .eq("id", sub.id);
-
-    if (cursorErr) {
-      log.error("cursor update failed", {
-        tickId,
-        subId: sub.id,
-        error: cursorErr.message,
-      });
-      throw new Error(cursorErr.message);
-    }
+    const maxCursor = findMaxCursor(records) ?? subscription.cursor_value;
+    await pollingSubscriptionRepository.recordPollSuccess(subscription.id, polledAt, maxCursor);
 
     log.info("subscription done", {
       tickId,
-      subId: sub.id,
-      integration: sub.integration_key,
-      event: sub.event_key,
+      subId: subscription.id,
+      integration: subscription.integration_key,
+      event: subscription.event_key,
       polled: records.length,
-      seeded,
+      seeded: 0,
       triggered,
       cursor: maxCursor,
-      duration_ms: Date.now() - t0,
+      duration_ms: Date.now() - startedAt,
     });
-    return { subId: sub.id, status: "ok", polled: records.length, seeded, triggered };
-  } catch (err: any) {
-    const errMsg = err?.message || "Unknown error";
+    return { subscriptionId: subscription.id, status: "ok", polled: records.length, seeded: 0, triggered };
+  } catch (error) {
+    const errorMessage = (error instanceof Error && error.message) || "Unknown error";
     log.error("processing failed", {
       tickId,
-      subId: sub.id,
-      integration: sub.integration_key,
-      event: sub.event_key,
-      error: errMsg,
-      error_count: sub.error_count + 1,
+      subId: subscription.id,
+      integration: subscription.integration_key,
+      event: subscription.event_key,
+      error: errorMessage,
+      error_count: subscription.error_count + 1,
       max: MAX_ERROR_COUNT,
-      duration_ms: Date.now() - t0,
+      duration_ms: Date.now() - startedAt,
     });
 
-    const { error: updErr } = await supabase
-      .from("polling_subscriptions")
-      .update({
-        last_polled_at: now,
-        last_error: errMsg,
-        error_count: sub.error_count + 1,
-        updated_at: now,
-      })
-      .eq("id", sub.id);
+    await recordFailure(subscription, polledAt, errorMessage, tickId);
 
-    if (updErr) {
-      log.error("failed to persist error state", {
-        tickId,
-        subId: sub.id,
-        error: updErr.message,
-      });
-    }
-
-    if (sub.error_count + 1 >= MAX_ERROR_COUNT) {
+    if (subscription.error_count + 1 >= MAX_ERROR_COUNT) {
       log.error("MAX_ERROR_COUNT reached — subscription will be skipped", {
         tickId,
-        subId: sub.id,
+        subId: subscription.id,
         max: MAX_ERROR_COUNT,
       });
     }
 
-    return { subId: sub.id, status: "error", polled: 0, seeded: 0, triggered: 0, error: errMsg };
+    return { ...emptyResult(subscription.id, "error"), error: errorMessage };
   }
 }
 
@@ -423,6 +347,29 @@ async function processSubscription(
  */
 function newTickId(): string {
   return "t" + Date.now().toString(36).slice(-6);
+}
+
+function logTickSummary(tickId: string, results: SubscriptionResult[], tickStart: number): void {
+  const sumOf = (field: "polled" | "triggered" | "seeded") =>
+    results.reduce((total, result) => total + result[field], 0);
+  const countWithStatus = (status: SubscriptionResult["status"]) =>
+    results.filter((result) => result.status === status).length;
+
+  log.info("tick complete", {
+    tickId,
+    subs: results.length,
+    ok: countWithStatus("ok"),
+    skipped: countWithStatus("skipped"),
+    errors: countWithStatus("error"),
+    polled: sumOf("polled"),
+    seeded: sumOf("seeded"),
+    triggered: sumOf("triggered"),
+    duration_ms: Date.now() - tickStart,
+  });
+
+  for (const failedResult of results.filter((result) => result.status === "error")) {
+    log.error("failed subscription", { tickId, subId: failedResult.subscriptionId, error: failedResult.error });
+  }
 }
 
 /**
@@ -443,55 +390,33 @@ export async function runPollingTick(): Promise<void> {
     return;
   }
 
-  let dueSubs: PollingSubscription[];
+  let dueSubscriptions: PollingSubscription[];
   try {
-    dueSubs = await getDueSubscriptions();
-  } catch (err: any) {
-    log.error("failed to fetch due subscriptions", { tickId, error: err?.message });
+    dueSubscriptions = await getDueSubscriptions();
+  } catch (error) {
+    log.error("failed to fetch due subscriptions", {
+      tickId,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return;
   }
 
-  if (dueSubs.length === 0) {
+  if (dueSubscriptions.length === 0) {
     log.debug("idle — no due subscriptions", { tickId });
     return;
   }
 
   log.info("processing due subscriptions", {
     tickId,
-    count: dueSubs.length,
-    ids: dueSubs.map((s) => s.id),
+    count: dueSubscriptions.length,
+    ids: dueSubscriptions.map((subscription) => subscription.id),
   });
 
   // Process subscriptions sequentially to avoid overwhelming external APIs
-  const results: SubResult[] = [];
-  for (const sub of dueSubs) {
-    results.push(await processSubscription(sub, tickId));
+  const results: SubscriptionResult[] = [];
+  for (const subscription of dueSubscriptions) {
+    results.push(await processSubscription(subscription, tickId));
   }
 
-  const duration = Date.now() - tickStart;
-  const ok = results.filter((r) => r.status === "ok").length;
-  const skipped = results.filter((r) => r.status === "skipped").length;
-  const errors = results.filter((r) => r.status === "error").length;
-  const totalPolled = results.reduce((s, r) => s + r.polled, 0);
-  const totalTriggered = results.reduce((s, r) => s + r.triggered, 0);
-  const totalSeeded = results.reduce((s, r) => s + r.seeded, 0);
-
-  log.info("tick complete", {
-    tickId,
-    subs: dueSubs.length,
-    ok,
-    skipped,
-    errors,
-    polled: totalPolled,
-    seeded: totalSeeded,
-    triggered: totalTriggered,
-    duration_ms: duration,
-  });
-
-  if (errors > 0) {
-    const failed = results.filter((r) => r.status === "error");
-    for (const f of failed) {
-      log.error("failed subscription", { tickId, subId: f.subId, error: f.error });
-    }
-  }
+  logTickSummary(tickId, results, tickStart);
 }

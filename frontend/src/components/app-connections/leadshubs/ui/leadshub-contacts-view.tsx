@@ -32,8 +32,8 @@ export function LeadsHubContactsView() {
           The complex UI files for leads hub table and pagination were not included in the dynamic UI checkout. This is a placeholder to prevent build errors.
         </p>
         <ul className="list-disc pl-5">
-          {paginatedContacts.map((c: any) => (
-            <li key={c.id}>{c.first_name} {c.last_name} - {c.email}</li>
+          {paginatedContacts.map((contact: any) => (
+            <li key={contact.id}>{contact.first_name} {contact.last_name} - {contact.email}</li>
           ))}
         </ul>
       </div>

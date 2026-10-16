@@ -26,7 +26,7 @@ export async function createAiWorkflow(req: Request, res: Response, next: NextFu
   try {
     const data = await createAiWorkflowService(req.body);
     return ApiResponse(res, 201, "AI Workflow created", data);
-  } catch (e) { next(e); }
+  } catch (error) { next(error); }
 }
 
 export async function getAiWorkflows(req: Request, res: Response, next: NextFunction) {
@@ -35,28 +35,28 @@ export async function getAiWorkflows(req: Request, res: Response, next: NextFunc
     if (!userId) return res.status(400).json({ message: "userId required" });
     const data = await getAiWorkflowsService(userId);
     return ApiResponse(res, 200, "AI Workflows retrieved", data);
-  } catch (e) { next(e); }
+  } catch (error) { next(error); }
 }
 
 export async function getAiWorkflowById(req: Request, res: Response, next: NextFunction) {
   try {
     const data = await getAiWorkflowByIdService(getParam(req.params.id, "Workflow ID"));
     return ApiResponse(res, 200, "AI Workflow retrieved", data);
-  } catch (e) { next(e); }
+  } catch (error) { next(error); }
 }
 
 export async function updateAiWorkflow(req: Request, res: Response, next: NextFunction) {
   try {
     const data = await updateAiWorkflowService(getParam(req.params.id, "Workflow ID"), req.body);
     return ApiResponse(res, 200, "AI Workflow updated", data);
-  } catch (e) { next(e); }
+  } catch (error) { next(error); }
 }
 
 export async function deleteAiWorkflow(req: Request, res: Response, next: NextFunction) {
   try {
     const data = await deleteAiWorkflowService(getParam(req.params.id, "Workflow ID"));
     return ApiResponse(res, 200, "AI Workflow deleted", data);
-  } catch (e) { next(e); }
+  } catch (error) { next(error); }
 }
 
 // ── Executions ────────────────────────────────────────────────────────────────
@@ -69,19 +69,19 @@ export async function runAiWorkflow(req: Request, res: Response, next: NextFunct
     });
     // TODO: queue actual node execution — for now returns the pending execution record
     return ApiResponse(res, 201, "Execution started", execution);
-  } catch (e) { next(e); }
+  } catch (error) { next(error); }
 }
 
 export async function getAiWorkflowExecutions(req: Request, res: Response, next: NextFunction) {
   try {
     const data = await getExecutionsService(getParam(req.params.id, "Workflow ID"));
     return ApiResponse(res, 200, "Executions retrieved", data);
-  } catch (e) { next(e); }
+  } catch (error) { next(error); }
 }
 
 export async function updateExecution(req: Request, res: Response, next: NextFunction) {
   try {
     const data = await updateExecutionService(getParam(req.params.execId, "Execution ID"), req.body);
     return ApiResponse(res, 200, "Execution updated", data);
-  } catch (e) { next(e); }
+  } catch (error) { next(error); }
 }

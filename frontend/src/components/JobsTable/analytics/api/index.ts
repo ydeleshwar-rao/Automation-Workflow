@@ -12,18 +12,18 @@ function isExcludedActiveStatus(status: string): boolean {
 
 export function getAnalyticsStats(jobs: JobRow[]) {
   const total = jobs.length;
-  const completed = jobs.filter((j) => isCompletedStatus(j.status)).length;
-  const active = jobs.filter((j) => !isCompletedStatus(j.status) && !isExcludedActiveStatus(j.status)).length;
-  const revenue = jobs.reduce((acc, j) => {
-    const amount = parseFloat(String(j.total_invoice_amount ?? j.revenue ?? "0"));
+  const completed = jobs.filter((job) => isCompletedStatus(job.status)).length;
+  const active = jobs.filter((job) => !isCompletedStatus(job.status) && !isExcludedActiveStatus(job.status)).length;
+  const revenue = jobs.reduce((acc, job) => {
+    const amount = parseFloat(String(job.total_invoice_amount ?? job.revenue ?? "0"));
     return acc + (Number.isNaN(amount) ? 0 : amount);
   }, 0);
 
   const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const newThisWeek = jobs.filter((j) => {
-    if (!j.date) return false;
-    const t = new Date(j.date).getTime();
-    return !isNaN(t) && t >= weekAgo;
+  const newThisWeek = jobs.filter((job) => {
+    if (!job.date) return false;
+    const timestamp = new Date(job.date).getTime();
+    return !isNaN(timestamp) && timestamp >= weekAgo;
   }).length;
 
   return { total, completed, active, revenue, newThisWeek };
@@ -31,8 +31,8 @@ export function getAnalyticsStats(jobs: JobRow[]) {
 
 export function getStatusChartData(jobs: JobRow[]) {
   const counts: Record<string, number> = {};
-  jobs.forEach((j) => {
-    const raw = (j.status || "Unknown").trim();
+  jobs.forEach((job) => {
+    const raw = (job.status || "Unknown").trim();
     const normalizedLower = raw.toLowerCase();
     let status = raw || "Unknown";
     if (normalizedLower === "yes") status = "Completed";

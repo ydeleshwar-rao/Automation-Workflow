@@ -17,8 +17,8 @@ export function useLeadConnectorData() {
     if (!res.ok) return null;
     try {
       return await res.json();
-    } catch (e) {
-      console.error("Failed to parse JSON:", e);
+    } catch (error) {
+      console.error("Failed to parse JSON:", error);
       return null;
     }
   };
@@ -30,25 +30,25 @@ export function useLeadConnectorData() {
       try {
         const { contact, action } = await getCustomFileds();
         if (Array.isArray(contact)) {
-          setContactFields(contact.map((f: any) => ({
-            name: f.key || f.id,
-            label: f.name,
+          setContactFields(contact.map((field: any) => ({
+            name: field.key || field.id,
+            label: field.name,
             type: "text" as const,
           })));
         }
         if (Array.isArray(action)) {
-          setActionFields(action.map((f: any) => ({
-            name: f.name,
-            label: f.label,
-            type: f.type as any,
-            required: f.required,
-            placeholder: f.placeholder,
-            options: f.options,
-            optionsSource: f.optionsSource,
+          setActionFields(action.map((field: any) => ({
+            name: field.name,
+            label: field.label,
+            type: field.type as any,
+            required: field.required,
+            placeholder: field.placeholder,
+            options: field.options,
+            optionsSource: field.optionsSource,
           })));
         }
-      } catch (err) {
-        console.error("Failed to load Custom Fields:", err);
+      } catch (error) {
+        console.error("Failed to load Custom Fields:", error);
       }
 
       // 2. Fetch Pipelines (includes stages from the backend)
@@ -56,24 +56,24 @@ export function useLeadConnectorData() {
         const pipeData = await getPipelines();
         if (!Array.isArray(pipeData)) {
         } else {
-          setPipelineOptions(pipeData.map((p: any) => ({ label: p.name, value: p.id })));
+          setPipelineOptions(pipeData.map((pipeline: any) => ({ label: pipeline.name, value: pipeline.id })));
 
           const stages: any[] = [];
-          pipeData.forEach((p: any) => {
-            if (p.stages && Array.isArray(p.stages)) {
-              p.stages.forEach((s: any) => {
-                stages.push({ ...s, pipeline_id: s.pipeline_id || p.id });
+          pipeData.forEach((pipeline: any) => {
+            if (pipeline.stages && Array.isArray(pipeline.stages)) {
+              pipeline.stages.forEach((stage: any) => {
+                stages.push({ ...stage, pipeline_id: stage.pipeline_id || pipeline.id });
               });
             }
           });
           setAllStages(stages);
         }
-      } catch (err) {
-        console.error("[Pipelines] Fetch failed:", err);
+      } catch (error) {
+        console.error("[Pipelines] Fetch failed:", error);
       }
 
-    } catch (err) {
-      console.error("Failed to load Lead Connector data:", err);
+    } catch (error) {
+      console.error("Failed to load Lead Connector data:", error);
     } finally {
       setIsLoading(false);
     }

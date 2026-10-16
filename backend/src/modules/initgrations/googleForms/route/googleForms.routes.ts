@@ -10,7 +10,7 @@ router.get("/callback",      catchAsync(GoogleFormsController.handleCallback));
 router.get("/status",        catchAsync(GoogleFormsController.connectionStatus));
 router.delete("/disconnect", catchAsync(GoogleFormsController.disconnect));
 
-// ─── Forms (live from Google Drive + syncs to DB) ─────────────────────────────
+// ─── Forms (live from Google Drive) ───────────────────────────────────────────
 router.get("/forms",          catchAsync(GoogleFormsController.listForms));
 router.get("/forms/db",       catchAsync(GoogleFormsController.getFormsFromDb));
 router.get("/forms/:formId",  catchAsync(GoogleFormsController.getFormDetails));

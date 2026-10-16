@@ -107,15 +107,15 @@ export function WorkflowCanvas({
   );
 
   const handleEdgeDelete = useCallback(
-    (edgeId: string) => setEdges((eds) => eds.filter((e) => e.id !== edgeId)),
+    (edgeId: string) => setEdges((currentEdges) => currentEdges.filter((edge) => edge.id !== edgeId)),
     [setEdges]
   );
 
   // ── Drop from palette ──────────────────────────────────────
   const onDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      const raw = e.dataTransfer.getData("application/ai-workflow-node");
+    (event: React.DragEvent) => {
+      event.preventDefault();
+      const raw = event.dataTransfer.getData("application/ai-workflow-node");
       if (!raw || !reactFlowInstance) return;
 
       const def: NodeDefinition = JSON.parse(raw);
@@ -123,8 +123,8 @@ export function WorkflowCanvas({
       if (!bounds) return;
 
       const position = reactFlowInstance.screenToFlowPosition({
-        x: e.clientX - bounds.left,
-        y: e.clientY - bounds.top,
+        x: event.clientX - bounds.left,
+        y: event.clientY - bounds.top,
       });
 
       const newNode: Node<AiNodeData> = {
@@ -142,14 +142,14 @@ export function WorkflowCanvas({
           runStatus:   "idle",
         },
       };
-      setNodes((nds) => [...nds, newNode]);
+      setNodes((currentNodes) => [...currentNodes, newNode]);
     },
     [reactFlowInstance, setNodes]
   );
 
-  const onDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
+  const onDragOver = (event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
   };
 
   // ── Node click → open config ───────────────────────────────
@@ -163,9 +163,9 @@ export function WorkflowCanvas({
 
   // ── Config panel update ────────────────────────────────────
   const handleNodeUpdate = (nodeId: string, patch: Partial<AiNodeData>) => {
-    setNodes((nds) =>
-      nds.map((n) =>
-        n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n
+    setNodes((currentNodes) =>
+      currentNodes.map((node) =>
+        node.id === nodeId ? { ...node, data: { ...node.data, ...patch } } : node
       )
     );
     setSelectedNode((prev) =>
@@ -174,8 +174,8 @@ export function WorkflowCanvas({
   };
 
   const handleNodeDelete = (nodeId: string) => {
-    setNodes((nds) => nds.filter((n) => n.id !== nodeId));
-    setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
+    setNodes((currentNodes) => currentNodes.filter((node) => node.id !== nodeId));
+    setEdges((currentEdges) => currentEdges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
     setSelectedNode(null);
   };
 
@@ -251,10 +251,10 @@ export function WorkflowCanvas({
             {/* Minimap */}
             <MiniMap
               className="!rounded-lg !border !border-foreground/15 !bg-card !shadow-sm"
-              nodeColor={(n) => {
-                const nd = n as Node<AiNodeData>;
-                return nd.data?.category
-                  ? `${CATEGORY_COLOR_MAP[nd.data.category]}80`
+              nodeColor={(minimapNode) => {
+                const aiNode = minimapNode as Node<AiNodeData>;
+                return aiNode.data?.category
+                  ? `${CATEGORY_COLOR_MAP[aiNode.data.category]}80`
                   : "#8b5cf680";
               }}
             />

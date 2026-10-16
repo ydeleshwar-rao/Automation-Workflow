@@ -62,9 +62,9 @@ export function CanvasToolbar({
         <input
           autoFocus
           value={nameVal}
-          onChange={(e) => setNameVal(e.target.value)}
+          onChange={(event) => setNameVal(event.target.value)}
           onBlur={commitName}
-          onKeyDown={(e) => e.key === "Enter" && commitName()}
+          onKeyDown={(event) => event.key === "Enter" && commitName()}
           className="nm-inset rounded-lg px-2 h-8 text-[14px] font-semibold text-foreground focus:outline-none w-[220px]"
         />
       ) : (

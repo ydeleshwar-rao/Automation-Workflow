@@ -30,7 +30,7 @@ export function EventSelectorPopup({
       onClose={onClose}
       onSelect={(item) => onSelect(item.label)}
       items={events}
-      selectedId={events.find(e => e.label === selectedEvent)?.id}
+      selectedId={events.find(event => event.label === selectedEvent)?.id}
       placeholder="Search events"
       title="Create"
       position={{ top: 240, right: 445 }}

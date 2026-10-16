@@ -46,8 +46,8 @@ export function LeadConnectorConfigureStep({
   const TOKEN_RE = /\{\{map:/;
   const SELECT_FIELDS = new Set(["pipelineId", "pipelineStageId", "markAsLead", "_formIsValid", "_pollingSubscriptionId"]);
   const filteredData = useMemo(() => Object.fromEntries(
-    Object.entries(data).filter(([k, v]) =>
-      SELECT_FIELDS.has(k) || typeof v !== "string" || TOKEN_RE.test(v)
+    Object.entries(data).filter(([key, value]) =>
+      SELECT_FIELDS.has(key) || typeof value !== "string" || TOKEN_RE.test(value)
     )
   ), [data]);
 
@@ -66,9 +66,9 @@ export function LeadConnectorConfigureStep({
   const pipelineStageOptions = useMemo(() => {
     if (!formValues.pipelineId) return [];
     return allStages
-      .filter((s: any) => s.pipeline_id === formValues.pipelineId)
-      .sort((a: any, b: any) => a.position - b.position)
-      .map((s: any) => ({ label: s.name, value: s.id }));
+      .filter((stage: any) => stage.pipeline_id === formValues.pipelineId)
+      .sort((firstStage: any, secondStage: any) => firstStage.position - secondStage.position)
+      .map((stage: any) => ({ label: stage.name, value: stage.id }));
   }, [allStages, formValues.pipelineId]);
 
   const resolvedActionFields = useMemo(() => {
@@ -115,12 +115,12 @@ export function LeadConnectorConfigureStep({
 
   useEffect(() => {
     // Simple validity check (required fields present)
-    const requiredFields = fields.filter(f => f.required);
-    const isValid = requiredFields.every(f => !!formValues[f.name]);
+    const requiredFields = fields.filter(field => field.required);
+    const isValid = requiredFields.every(requiredField => !!formValues[requiredField.name]);
 
-    const filledFields = fields.reduce<Record<string, any>>((acc, f) => {
-      const val = formValues[f.name];
-      if (val !== undefined && val !== "" && val !== null) acc[f.name] = val;
+    const filledFields = fields.reduce<Record<string, any>>((acc, field) => {
+      const value = formValues[field.name];
+      if (value !== undefined && value !== "" && value !== null) acc[field.name] = value;
       return acc;
     }, {});
 
@@ -137,8 +137,8 @@ export function LeadConnectorConfigureStep({
     position: { top: number; right: number };
   }>({ isOpen: false, position: { top: 0, right: 0 } });
 
-  const handleFilterSelectOpen = (e: React.MouseEvent) => {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  const handleFilterSelectOpen = (event: React.MouseEvent) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     setFilterPopup({ isOpen: true, position: { top: rect.bottom + 8, right: window.innerWidth - rect.right + 10 } });
   };
 
@@ -152,8 +152,8 @@ export function LeadConnectorConfigureStep({
 
   const activeFieldNameRef = useRef<string | null>(null);
 
-  const handlePlusClick = useCallback((e: React.MouseEvent, fieldName: string) => {
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
+  const handlePlusClick = useCallback((event: React.MouseEvent, fieldName: string) => {
+    const rect = (event.target as HTMLElement).getBoundingClientRect();
     activeFieldNameRef.current = fieldName;
     setPopupState({
       isOpen: true,
@@ -183,7 +183,7 @@ export function LeadConnectorConfigureStep({
   );
 
   const fieldLabel = popupState.fieldName
-    ? popupState.fieldName.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase())
+    ? popupState.fieldName.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase())
     : "";
 
   return (
@@ -200,7 +200,7 @@ export function LeadConnectorConfigureStep({
               type="text"
               placeholder="Search fields"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(event) => setSearchQuery(event.target.value)}
               className="flex-1 bg-transparent text-sm font-medium text-foreground placeholder:text-muted-foreground focus:outline-none"
             />
           </div>
@@ -253,7 +253,7 @@ export function LeadConnectorConfigureStep({
             <DynamicConfigForm
               fields={fields}
               values={formValues}
-              onChange={(name, val) => setValue(name, val, { shouldValidate: true, shouldDirty: true })}
+              onChange={(name, value) => setValue(name, value, { shouldValidate: true, shouldDirty: true })}
               onPlusClick={handlePlusClick}
               onRefresh={refresh}
               isLoading={isLoading}

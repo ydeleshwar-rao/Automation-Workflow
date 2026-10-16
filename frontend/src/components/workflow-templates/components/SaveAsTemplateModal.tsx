@@ -88,7 +88,7 @@ export function SaveAsTemplateModal({
     >
       <div
         className="w-full max-w-[480px] overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div className="flex items-center gap-2">
@@ -113,7 +113,7 @@ export function SaveAsTemplateModal({
             <Input
               autoFocus
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(event) => setName(event.target.value)}
               placeholder="e.g. Lead → Welcome Email"
               disabled={isLoading}
             />
@@ -125,7 +125,7 @@ export function SaveAsTemplateModal({
             </label>
             <textarea
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(event) => setDescription(event.target.value)}
               placeholder="What does this template do?"
               rows={3}
               disabled={isLoading}
@@ -140,7 +140,7 @@ export function SaveAsTemplateModal({
               </label>
               <Input
                 value={category}
-                onChange={(e) => setCategory(e.target.value)}
+                onChange={(event) => setCategory(event.target.value)}
                 placeholder="e.g. Sales"
                 disabled={isLoading}
               />
@@ -151,7 +151,7 @@ export function SaveAsTemplateModal({
               </label>
               <Input
                 value={tag}
-                onChange={(e) => setTag(e.target.value)}
+                onChange={(event) => setTag(event.target.value)}
                 placeholder="Optional"
                 disabled={isLoading}
               />
@@ -162,7 +162,7 @@ export function SaveAsTemplateModal({
             <input
               type="checkbox"
               checked={isPublic}
-              onChange={(e) => setIsPublic(e.target.checked)}
+              onChange={(event) => setIsPublic(event.target.checked)}
               disabled={isLoading}
               className="h-4 w-4 rounded border-input accent-primary"
             />

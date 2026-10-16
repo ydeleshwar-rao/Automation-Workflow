@@ -77,8 +77,8 @@ function useWhatsAppStepProps(step: ConfigStep, context: StepContext) {
       }
       setSampleData((result as Record<string, unknown>) ?? previewPayload);
       setTestStatus("success");
-    } catch (err) {
-      console.error("WhatsApp test failed:", err);
+    } catch (error) {
+      console.error("WhatsApp test failed:", error);
       setTestStatus("failed");
     }
   }, [context]);

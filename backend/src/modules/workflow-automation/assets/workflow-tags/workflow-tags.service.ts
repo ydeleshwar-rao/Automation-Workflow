@@ -1,105 +1,52 @@
-import { supabase } from "../../../../config/db.config.js";
 import { CreateWorkflowTagDTO, UpdateWorkflowTagDTO } from "./workflow-tags.dto.js";
+import { workflowTagRepository } from "./workflow-tags.repository.js";
+
+const ADMIN_ROLE = "admin";
 
 // ─── Tag CRUD ───
 
-export async function createTagService(payload: CreateWorkflowTagDTO) {
-  const { data, error } = await supabase
-    .from("workflow_tags")
-    .insert({
-      name: payload.name,
-      color: payload.color || null,
-      user_id: payload.user_id,
-    })
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data;
+export function createTagService(payload: CreateWorkflowTagDTO) {
+  return workflowTagRepository.create({
+    name: payload.name,
+    color: payload.color || null,
+    user_id: payload.user_id,
+  });
 }
 
-export async function getTagsByUserService(userId: string, role?: string) {
-  let query = supabase
-    .from("workflow_tags")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (role !== "admin") {
-    query = query.eq("user_id", userId);
-  }
-
-  const { data, error } = await query;
-
-  if (error) throw new Error(error.message);
-  return data;
+/** Admins see every tag; everyone else sees only their own. */
+export function getTagsByUserService(userId: string, role?: string) {
+  const ownerUserId = role === ADMIN_ROLE ? undefined : userId;
+  return workflowTagRepository.findMany(ownerUserId);
 }
 
-export async function updateTagService(id: string, payload: UpdateWorkflowTagDTO) {
-  const { data, error } = await supabase
-    .from("workflow_tags")
-    .update({
-      ...payload,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data;
+export function updateTagService(tagId: string, payload: UpdateWorkflowTagDTO) {
+  return workflowTagRepository.update(tagId, payload);
 }
 
-export async function deleteTagService(id: string) {
-  // junction rows deleted automatically via ON DELETE CASCADE
-  const { error } = await supabase
-    .from("workflow_tags")
-    .delete()
-    .eq("id", id);
-
-  if (error) throw new Error(error.message);
+export async function deleteTagService(tagId: string) {
+  await workflowTagRepository.delete(tagId);
   return { message: "Tag deleted successfully" };
 }
 
 // ─── Workflow ↔ Tag linking ───
 
-export async function addTagToWorkflowService(workflowId: string, tagId: string) {
-  const { data, error } = await supabase
-    .from("workflow_tag_links")
-    .insert({ workflow_id: workflowId, tag_id: tagId })
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data;
+export function addTagToWorkflowService(workflowId: string, tagId: string) {
+  return workflowTagRepository.linkToWorkflow(workflowId, tagId);
 }
 
 export async function removeTagFromWorkflowService(workflowId: string, tagId: string) {
-  const { error } = await supabase
-    .from("workflow_tag_links")
-    .delete()
-    .eq("workflow_id", workflowId)
-    .eq("tag_id", tagId);
-
-  if (error) throw new Error(error.message);
+  await workflowTagRepository.unlinkFromWorkflow(workflowId, tagId);
   return { message: "Tag removed from workflow" };
 }
 
+/** Response keeps the original API shape: [{ tag_id, workflow_tags: {...} }]. */
 export async function getTagsByWorkflowService(workflowId: string) {
-  const { data, error } = await supabase
-    .from("workflow_tag_links")
-    .select("tag_id, workflow_tags(*)")
-    .eq("workflow_id", workflowId);
-
-  if (error) throw new Error(error.message);
-  return data;
+  const tagLinks = await workflowTagRepository.findTagsForWorkflow(workflowId);
+  return tagLinks.map((tagLink) => ({ tag_id: tagLink.tag_id, workflow_tags: tagLink.tag }));
 }
 
+/** Response keeps the original API shape: [{ workflow_id, workflows: {...} }]. */
 export async function getWorkflowsByTagService(tagId: string) {
-  const { data, error } = await supabase
-    .from("workflow_tag_links")
-    .select("workflow_id, workflows(*)")
-    .eq("tag_id", tagId);
-
-  if (error) throw new Error(error.message);
-  return data;
+  const tagLinks = await workflowTagRepository.findWorkflowsForTag(tagId);
+  return tagLinks.map((tagLink) => ({ workflow_id: tagLink.workflow_id, workflows: tagLink.workflow }));
 }

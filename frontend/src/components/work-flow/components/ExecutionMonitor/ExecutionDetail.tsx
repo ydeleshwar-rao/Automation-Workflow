@@ -35,11 +35,11 @@ const STATUS_META: Record<
 };
 
 function formatDuration(start: string, end?: string) {
-    const s = new Date(start).getTime();
-    const e = end ? new Date(end).getTime() : Date.now();
-    const ms = e - s;
-    if (ms < 1000) return `${ms}ms`;
-    return `${(ms / 1000).toFixed(1)}s`;
+    const startTime = new Date(start).getTime();
+    const endTime = end ? new Date(end).getTime() : Date.now();
+    const durationMs = endTime - startTime;
+    if (durationMs < 1000) return `${durationMs}ms`;
+    return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
 export function ExecutionDetail({ executionId, onClose }: Props) {
@@ -159,8 +159,8 @@ export function ExecutionDetail({ executionId, onClose }: Props) {
                                         No steps recorded
                                     </div>
                                 ) : (
-                                    data.steps.map((step, i) => (
-                                        <ExecutionStepRow key={step.id} step={step} index={i} />
+                                    data.steps.map((step, index) => (
+                                        <ExecutionStepRow key={step.id} step={step} index={index} />
                                     ))
                                 )}
                             </div>

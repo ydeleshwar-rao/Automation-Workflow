@@ -29,16 +29,16 @@ function Sm8SelectField({
 }: {
   field: Sm8FieldDef;
   value: string;
-  onChange: (val: string) => void;
-  onPlusClick: (e: React.MouseEvent) => void;
+  onChange: (value: string) => void;
+  onPlusClick: (event: React.MouseEvent) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [popupPos, setPopupPos] = useState({ top: 0, right: 0 });
 
-  const selectedOption = field.options?.find((o) => o.value === value);
+  const selectedOption = field.options?.find((option) => option.value === value);
 
-  const handleOpen = (e: React.MouseEvent) => {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  const handleOpen = (event: React.MouseEvent) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     setPopupPos({ top: rect.top, right: window.innerWidth - rect.left + 10 });
     setIsOpen(true);
   };
@@ -65,7 +65,7 @@ function Sm8SelectField({
             <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); onPlusClick(e); }}
+              onClick={(event) => { event.stopPropagation(); onPlusClick(event); }}
               className="w-7 h-7 flex items-center justify-center rounded-md border border-border bg-muted text-muted-foreground hover:text-primary hover:border-primary hover:bg-background transition-all shadow-sm"
             >
               <Plus className="w-4 h-4" />
@@ -82,7 +82,7 @@ function Sm8SelectField({
           sections={[{
             id: "options",
             title: field.label,
-            items: (field.options || []).map((o) => ({ id: o.value, label: o.label })),
+            items: (field.options || []).map((option) => ({ id: option.value, label: option.label })),
             defaultOpen: true,
           }]}
           title={`Select ${field.label}`}
@@ -130,47 +130,47 @@ export function ServiceM8ConfigureStep({
     if (needsQueues) {
       axiosInstance
         .get(API_ROUTES.SERVICEM8.QUEUES)
-        .then((res) => {
-          const queues = res.data?.data ?? res.data ?? [];
+        .then((response) => {
+          const queues = response.data?.data ?? response.data ?? [];
           setQueueOptions(
             queues
-              .filter((q: any) => q?.uuid)
-              .map((q: any) => ({ label: q.name, value: q.uuid }))
+              .filter((queue: any) => queue?.uuid)
+              .map((queue: any) => ({ label: queue.name, value: queue.uuid }))
           );
         })
-        .catch((err) => console.error("Failed to fetch queues:", err));
+        .catch((error) => console.error("Failed to fetch queues:", error));
     }
 
     if (needsCategories) {
       axiosInstance
         .get(API_ROUTES.SERVICEM8.CATEGORIES)
-        .then((res) => {
-          const categories = res.data?.data ?? res.data ?? [];
+        .then((response) => {
+          const categories = response.data?.data ?? response.data ?? [];
           setCategoryOptions(
             categories
-              .filter((c: any) => c?.uuid)
-              .map((c: any) => ({ label: c.name, value: c.uuid }))
+              .filter((category: any) => category?.uuid)
+              .map((category: any) => ({ label: category.name, value: category.uuid }))
           );
         })
-        .catch((err) => console.error("Failed to fetch categories:", err));
+        .catch((error) => console.error("Failed to fetch categories:", error));
     }
   }, [selectedEvent]);
 
   const fields: Sm8FieldDef[] = useMemo(() => {
     if (!selectedEvent) return [];
     const base = SM8_EVENT_FIELDS[selectedEvent] ?? [];
-    return base.map((f) => {
-      if (f.name === "queue_uuid" && queueOptions.length > 0) {
-        return { ...f, options: queueOptions };
+    return base.map((field) => {
+      if (field.name === "queue_uuid" && queueOptions.length > 0) {
+        return { ...field, options: queueOptions };
       }
-      if (f.name === "category_uuid" && categoryOptions.length > 0) {
-        return { ...f, options: categoryOptions };
+      if (field.name === "category_uuid" && categoryOptions.length > 0) {
+        return { ...field, options: categoryOptions };
       }
-      return f;
+      return field;
     });
   }, [selectedEvent, queueOptions, categoryOptions]);
 
-  const fieldKeys = useMemo(() => fields.map((f) => f.name), [fields]);
+  const fieldKeys = useMemo(() => fields.map((field) => field.name), [fields]);
 
   const webhookFlat = useMemo(() => {
     const raw = triggerTestPayload;
@@ -179,9 +179,9 @@ export function ServiceM8ConfigureStep({
   }, [triggerTestPayload]);
 
   const cleanedFlat = Object.fromEntries(
-    Object.entries(webhookFlat).map(([k, v]) => [
-      k.replace(/^[\w-]+?__/, ""),
-      v,
+    Object.entries(webhookFlat).map(([key, value]) => [
+      key.replace(/^[\w-]+?__/, ""),
+      value,
     ]),
   );
 
@@ -194,9 +194,9 @@ export function ServiceM8ConfigureStep({
     defaultValues: useMemo(() => {
       const defaults: Record<string, any> = { ...data };
       // Ensure select fields default to "" so placeholder shows (not null)
-      fields.forEach((f) => {
-        if (f.type === "select" && (defaults[f.name] == null || defaults[f.name] === "null")) {
-          defaults[f.name] = "";
+      fields.forEach((field) => {
+        if (field.type === "select" && (defaults[field.name] == null || defaults[field.name] === "null")) {
+          defaults[field.name] = "";
         }
       });
       return defaults;
@@ -212,12 +212,12 @@ export function ServiceM8ConfigureStep({
     if (appliedPayloadRef.current === webhookPayloadKey) return;
     appliedPayloadRef.current = webhookPayloadKey;
 
-    fields.forEach((f) => {
+    fields.forEach((field) => {
       // Dropdowns must stay empty until the user actively picks a value —
       // auto-mapping a free-text suggestion into a select would pre-select
       // a UUID the user never chose.
-      if (f.type === "select") return;
-      const key = f.name;
+      if (field.type === "select") return;
+      const key = field.name;
       const suggested = auto.formValues[key];
       if (suggested === undefined || suggested === null || String(suggested) === "") return;
       const current = getValues(key);
@@ -237,8 +237,8 @@ export function ServiceM8ConfigureStep({
 
   // Notify parent on every change
   useEffect(() => {
-    const requiredFields = fields.filter((f) => f.required);
-    const isValid = requiredFields.every((f) => !!formValues[f.name]);
+    const requiredFields = fields.filter((field) => field.required);
+    const isValid = requiredFields.every((requiredField) => !!formValues[requiredField.name]);
     onChange(formValues, isValid);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(formValues), fields]);
@@ -252,8 +252,8 @@ export function ServiceM8ConfigureStep({
 
   const activeFieldRef = useRef<string | null>(null);
 
-  const handlePlusClick = useCallback((e: React.MouseEvent, fieldName: string) => {
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
+  const handlePlusClick = useCallback((event: React.MouseEvent, fieldName: string) => {
+    const rect = (event.target as HTMLElement).getBoundingClientRect();
     activeFieldRef.current = fieldName;
     setPopupState({
       isOpen: true,
@@ -279,7 +279,7 @@ export function ServiceM8ConfigureStep({
   );
 
   const popupFieldLabel = popupState.fieldName
-    ? popupState.fieldName.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    ? popupState.fieldName.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
     : "";
 
   // ── No event selected ────────────────────────────────────────────────────
@@ -312,8 +312,8 @@ export function ServiceM8ConfigureStep({
                 <Sm8SelectField
                   field={field}
                   value={formValues[field.name] || ""}
-                  onChange={(val) => setValue(field.name, val, { shouldValidate: true, shouldDirty: true })}
-                  onPlusClick={(e) => handlePlusClick(e, field.name)}
+                  onChange={(value) => setValue(field.name, value, { shouldValidate: true, shouldDirty: true })}
+                  onPlusClick={(event) => handlePlusClick(event, field.name)}
                 />
               </div>
             );
@@ -326,8 +326,8 @@ export function ServiceM8ConfigureStep({
                   label={field.label}
                   required={field.required}
                   value={String(formValues[field.name] ?? "")}
-                  onChange={(val) => setValue(field.name, val, { shouldValidate: true, shouldDirty: true })}
-                  onPlusClick={(e) => handlePlusClick(e, field.name)}
+                  onChange={(value) => setValue(field.name, value, { shouldValidate: true, shouldDirty: true })}
+                  onPlusClick={(event) => handlePlusClick(event, field.name)}
                   placeholder={field.placeholder || "Enter text or insert data..."}
                 />
               </div>
@@ -341,8 +341,8 @@ export function ServiceM8ConfigureStep({
                 label={field.label}
                 required={field.required}
                 value={String(formValues[field.name] ?? "")}
-                onChange={(val) => setValue(field.name, val, { shouldValidate: true, shouldDirty: true })}
-                onPlusClick={(e) => handlePlusClick(e, field.name)}
+                onChange={(value) => setValue(field.name, value, { shouldValidate: true, shouldDirty: true })}
+                onPlusClick={(event) => handlePlusClick(event, field.name)}
                 placeholder={field.placeholder || "Enter text or insert data..."}
               />
             </div>

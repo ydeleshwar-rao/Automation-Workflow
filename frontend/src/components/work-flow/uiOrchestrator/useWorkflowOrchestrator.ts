@@ -63,8 +63,8 @@ import { getIntegration } from "./registry";
 import { resolveIcon } from "@/src/lib/icon-registry";
 import { toast } from "sonner";
 
-const apps: IntegrationApp[] = WORKFLOW_APPS.map(a => ({ ...a, icon: resolveIcon(a.iconName) }));
-const tools: IntegrationApp[] = BUILT_IN_TOOLS.map(t => ({ ...t, icon: resolveIcon(t.iconName) }));
+const apps: IntegrationApp[] = WORKFLOW_APPS.map(app => ({ ...app, icon: resolveIcon(app.iconName) }));
+const tools: IntegrationApp[] = BUILT_IN_TOOLS.map(tool => ({ ...tool, icon: resolveIcon(tool.iconName) }));
 import { ConfigStep } from "../components/event-sidebar/eventSidebar";
 import { webhookEngine, getCachedWebhookData } from "@/src/components/work-flow/appEvents/webhook/apiIntegrations/webhook.engine";
 import {
@@ -108,22 +108,22 @@ const defaultNodes = (): WorkflowNodeData[] => [
  *      { id:"address.city", label:"Address › City", description:"NY" }]
  */
 function flattenPayload(
-  obj: Record<string, any>,
+  payload: Record<string, any>,
   prefix = "",
   result: Array<{ id: string; label: string; description: string }> = []
 ): Array<{ id: string; label: string; description: string }> {
-  if (!obj || typeof obj !== "object") return result;
-  for (const [k, v] of Object.entries(obj)) {
-    const path = prefix ? `${prefix}.${k}` : k;
+  if (!payload || typeof payload !== "object") return result;
+  for (const [key, value] of Object.entries(payload)) {
+    const path = prefix ? `${prefix}.${key}` : key;
     const readableLabel = path
       .split(".")
-      .map((s) => s.replace(/_/g, " ").replace(/([A-Z])/g, " $1").trim())
-      .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+      .map((labelPart) => labelPart.replace(/_/g, " ").replace(/([A-Z])/g, " $1").trim())
+      .map((labelPart) => labelPart.charAt(0).toUpperCase() + labelPart.slice(1))
       .join(" › ");
-    if (v !== null && typeof v === "object" && !Array.isArray(v)) {
-      flattenPayload(v, path, result);
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      flattenPayload(value, path, result);
     } else {
-      result.push({ id: path, label: readableLabel, description: String(v ?? "") });
+      result.push({ id: path, label: readableLabel, description: String(value ?? "") });
     }
   }
   return result;
@@ -133,17 +133,17 @@ function flattenPayload(
 function resolveConfigForSave(config: Record<string, any>): Record<string, any> {
   const resolved: Record<string, any> = {};
 
-  const walk = (obj: Record<string, any>) => {
-    for (const [key, val] of Object.entries(obj)) {
-      if (typeof val === "string") {
-        const clean = val
-          .replace(/\{\{map:[^|]*\|[^|]*\|([^}]*)\}\}/g, (_, v) => v)
+  const walk = (currentObject: Record<string, any>) => {
+    for (const [key, value] of Object.entries(currentObject)) {
+      if (typeof value === "string") {
+        const clean = value
+          .replace(/\{\{map:[^|]*\|[^|]*\|([^}]*)\}\}/g, (_, fallback) => fallback)
           .trim();
         if (clean !== "") resolved[key] = clean;
-      } else if (val && typeof val === "object" && !Array.isArray(val)) {
-        walk(val);
-      } else if (val !== null && val !== undefined && val !== "") {
-        resolved[key] = val;
+      } else if (value && typeof value === "object" && !Array.isArray(value)) {
+        walk(value);
+      } else if (value !== null && value !== undefined && value !== "") {
+        resolved[key] = value;
       }
     }
   };
@@ -156,12 +156,12 @@ function resolveConfigForSave(config: Record<string, any>): Record<string, any> 
 function extractOutputSchema(config: Record<string, any>): Record<string, null> {
   const schema: Record<string, null> = {};
 
-  const walk = (obj: Record<string, any>) => {
-    for (const [key, val] of Object.entries(obj)) {
-      if (typeof val === "string" && /\{\{map:[^|]*\|[^|]*\|[^}]*\}\}/.test(val)) {
+  const walk = (currentObject: Record<string, any>) => {
+    for (const [key, value] of Object.entries(currentObject)) {
+      if (typeof value === "string" && /\{\{map:[^|]*\|[^|]*\|[^}]*\}\}/.test(value)) {
         schema[key] = null;
-      } else if (val && typeof val === "object" && !Array.isArray(val)) {
-        walk(val);
+      } else if (value && typeof value === "object" && !Array.isArray(value)) {
+        walk(value);
       }
     }
   };
@@ -171,12 +171,12 @@ function extractOutputSchema(config: Record<string, any>): Record<string, null> 
 }
 
 /** Convert A-Z, AA, AB … index to a letter label */
-const indexToLabel = (n: number): string => {
+const indexToLabel = (index: number): string => {
   let label = "";
-  let idx = n;
-  while (idx >= 0) {
-    label = String.fromCharCode(65 + (idx % 26)) + label;
-    idx = Math.floor(idx / 26) - 1;
+  let remaining = index;
+  while (remaining >= 0) {
+    label = String.fromCharCode(65 + (remaining % 26)) + label;
+    remaining = Math.floor(remaining / 26) - 1;
   }
   return label;
 };
@@ -189,11 +189,11 @@ export function useWorkflowOrchestrator() {
   }, []);
 
   // ── Redux slice state ──────────────────────────────────────────────────────
-  const sliceWorkflow = useAppSelector((s) => s.workflowBuilder.workflow);
-  const sliceNodes = useAppSelector((s) => s.workflowBuilder.nodes);
-  const activeView = useAppSelector((s) => s.workflowBuilder.activeView);
+  const sliceWorkflow = useAppSelector((state) => state.workflowBuilder.workflow);
+  const sliceNodes = useAppSelector((state) => state.workflowBuilder.nodes);
+  const activeView = useAppSelector((state) => state.workflowBuilder.activeView);
   const activeExecutionId = useAppSelector(
-    (s) => s.workflowBuilder.activeExecutionId
+    (state) => state.workflowBuilder.activeExecutionId
   );
 
   // ── Local UI state (not Redux — fast-path canvas interactions) ─────────────
@@ -235,10 +235,10 @@ export function useWorkflowOrchestrator() {
   // Derive the list the sidebar shows; fall back to empty array
   const workflows = useMemo(
     () =>
-      (workflowsData?.data ?? []).map((w) => ({
-        id: w.id,
-        name: w.name,
-        status: w.status,
+      (workflowsData?.data ?? []).map((workflow) => ({
+        id: workflow.id,
+        name: workflow.name,
+        status: workflow.status,
       })),
     [workflowsData]
   );
@@ -248,7 +248,7 @@ export function useWorkflowOrchestrator() {
   // another tab) won't reach the navbar — which reads from the slice.
   useEffect(() => {
     if (!selectedWorkflowId) return;
-    const fresh = workflowsData?.data?.find((w) => w.id === selectedWorkflowId);
+    const fresh = workflowsData?.data?.find((workflow) => workflow.id === selectedWorkflowId);
     if (!fresh) return;
     if (
       fresh.status !== sliceWorkflow.status ||
@@ -278,7 +278,7 @@ export function useWorkflowOrchestrator() {
   const [deleteFolderMutation] = useDeleteFolderMutation();
 
   const folders = useMemo(
-    () => (foldersData?.data ?? []).map((f) => ({ id: f.id, name: f.name })),
+    () => (foldersData?.data ?? []).map((folder) => ({ id: folder.id, name: folder.name })),
     [foldersData]
   );
 
@@ -295,10 +295,10 @@ export function useWorkflowOrchestrator() {
 
   const tags = useMemo(
     () =>
-      (tagsData?.data ?? []).map((t) => ({
-        id: t.id,
-        name: t.name,
-        color: t.color,
+      (tagsData?.data ?? []).map((tag) => ({
+        id: tag.id,
+        name: tag.name,
+        color: tag.color,
       })),
     [tagsData]
   );
@@ -315,31 +315,31 @@ export function useWorkflowOrchestrator() {
 
     if (workflowNodesData.data.length > 0) {
       // Map backend records to canvas-friendly WorkflowNodeData
-      const mapped: WorkflowNodeData[] = workflowNodesData.data.map((n, idx) => {
-        let config = n.config ?? {};
+      const mapped: WorkflowNodeData[] = workflowNodesData.data.map((backendNode, index) => {
+        let config = backendNode.config ?? {};
         // Restore full webhook object from localStorage if backend only stored webhook_id
-        if (n.type === "trigger" && config.webhook_id && !config.webhook) {
-          const cached = getCachedWebhookData(n.id);
+        if (backendNode.type === "trigger" && config.webhook_id && !config.webhook) {
+          const cached = getCachedWebhookData(backendNode.id);
 
           if (cached) config = { ...config, webhook: cached };
         }
         return {
-          id: n.id,
-          type: n.type,
-          nodeType: n.type,
-          integrationType: n.integration_key,
-          index: n.position ?? idx + 1,
-          label: n.integration_key || (n.type === "trigger" ? "Trigger" : "Action"),
-          appLabel: n.integration_key || undefined,
-          eventLabel: n.action_key || undefined,
+          id: backendNode.id,
+          type: backendNode.type,
+          nodeType: backendNode.type,
+          integrationType: backendNode.integration_key,
+          index: backendNode.position ?? index + 1,
+          label: backendNode.integration_key || (backendNode.type === "trigger" ? "Trigger" : "Action"),
+          appLabel: backendNode.integration_key || undefined,
+          eventLabel: backendNode.action_key || undefined,
           description:
-            n.type === "trigger"
-              ? `Starts when something happens in ${n.integration_key}`
-              : `Does something in ${n.integration_key}`,
+            backendNode.type === "trigger"
+              ? `Starts when something happens in ${backendNode.integration_key}`
+              : `Does something in ${backendNode.integration_key}`,
           config,
           status: "draft",
-          output_schema: n.output_schema,
-          sample_payload: n.sample_payload,
+          output_schema: backendNode.output_schema,
+          sample_payload: backendNode.sample_payload,
         };
       });
 
@@ -349,7 +349,7 @@ export function useWorkflowOrchestrator() {
       // every time the nodes query re-runs (e.g. after subscription creation).
       setLocalNodes((prev) =>
         mapped.map((newNode) => {
-          const prevNode = prev.find((p) => p.id === newNode.id);
+          const prevNode = prev.find((existingNode) => existingNode.id === newNode.id);
           if (!prevNode) return newNode;
           const mergedConfig: Record<string, any> = { ...newNode.config };
           if (prevNode.config?.testSamples !== undefined) {
@@ -387,13 +387,13 @@ export function useWorkflowOrchestrator() {
   const [testWorkflowMutation, { isLoading: isTesting }] =
     useTestWorkflowMutation();
 
-  const activeNode = nodes.find((n) => n.id === activeNodeId);
+  const activeNode = nodes.find((node) => node.id === activeNodeId);
   const activeDescriptor = getIntegration(activeNode?.appLabel);
 
   // Flatten the trigger node's caught webhook payload so action nodes can
   // populate their variable-picker dropdowns with real field names.
   const triggerFields = useMemo(() => {
-    const triggerNode = nodes.find((n) => n.type === "trigger");
+    const triggerNode = nodes.find((node) => node.type === "trigger");
     const cfg = triggerNode?.config;
     const payload =
       cfg?.testPayload ?? cfg?.test_payload ?? triggerNode?.sample_payload;
@@ -407,7 +407,7 @@ export function useWorkflowOrchestrator() {
     const all = [...apps, ...tools];
     const normalizedLabel = activeNode.appLabel.toLowerCase();
     const found = all.find(
-      (a: IntegrationApp) => a.label.toLowerCase() === normalizedLabel
+      (app: IntegrationApp) => app.label.toLowerCase() === normalizedLabel
     );
     return found?.events || [];
   }, [activeNode?.appLabel, apps, tools]);
@@ -467,7 +467,7 @@ export function useWorkflowOrchestrator() {
       setSelectedWorkflowId(id);
 
       // Update Redux with workflow meta
-      const found = workflowsData?.data?.find((w) => w.id === id);
+      const found = workflowsData?.data?.find((workflow) => workflow.id === id);
       if (found) {
         dispatch(
           setWorkflow({ id: found.id, name: found.name, status: found.status })
@@ -499,7 +499,7 @@ export function useWorkflowOrchestrator() {
       dispatch(setWorkflowStatus("active"));
 
       // Switch the trigger webhook to live mode so every incoming hit runs the workflow
-      const triggerNode = nodes.find((n) => n.type === "trigger");
+      const triggerNode = nodes.find((node) => node.type === "trigger");
       const webhookId = triggerNode?.config?.webhook?.id;
       if (webhookId) {
         try {
@@ -515,43 +515,43 @@ export function useWorkflowOrchestrator() {
 
       console.log(
         `[publishWorkflow] scanning ${nodes.length} node(s) for auto-subscribe`,
-        nodes.map((n) => ({
-          id: n.id,
-          type: n.type,
-          integrationType: n.integrationType,
-          eventLabel: n.eventLabel,
+        nodes.map((node) => ({
+          id: node.id,
+          type: node.type,
+          integrationType: node.integrationType,
+          eventLabel: node.eventLabel,
         }))
       );
 
       const triggerNodesWithEvent = nodes.filter(
-        (n) =>
-          n.type === "trigger" &&
-          POLLING_INTEGRATIONS.has(n.integrationType ?? "") &&
-          n.eventLabel
+        (node) =>
+          node.type === "trigger" &&
+          POLLING_INTEGRATIONS.has(node.integrationType ?? "") &&
+          node.eventLabel
       );
 
       console.log(
         `[publishWorkflow] ${triggerNodesWithEvent.length} trigger node(s) eligible for auto-subscribe`
       );
 
-      for (const n of triggerNodesWithEvent) {
-        const eventKey = n.eventLabel!.toLowerCase().replace(/\s+/g, "_");
+      for (const eligibleNode of triggerNodesWithEvent) {
+        const eventKey = eligibleNode.eventLabel!.toLowerCase().replace(/\s+/g, "_");
         const payload = {
           workflow_id: selectedWorkflowId,
-          node_id: n.id,
-          integration_key: n.integrationType!,
+          node_id: eligibleNode.id,
+          integration_key: eligibleNode.integrationType!,
           event_key: eventKey,
-          config: n.config ?? {},
+          config: eligibleNode.config ?? {},
         };
         console.log(`[publishWorkflow] → POST /polling/subscriptions`, payload);
         try {
-          const res = await createPollingSubscription(payload).unwrap();
-          console.log(`[publishWorkflow] ✓ subscribed`, res);
-        } catch (err) {
+          const response = await createPollingSubscription(payload).unwrap();
+          console.log(`[publishWorkflow] ✓ subscribed`, response);
+        } catch (error) {
           // Surface but don't block publish — user can still click Test to retry
           console.warn(
-            `[publishWorkflow] ✖ auto-subscribe failed for node=${n.id} integration=${n.integrationType} event=${eventKey}`,
-            err
+            `[publishWorkflow] ✖ auto-subscribe failed for node=${eligibleNode.id} integration=${eligibleNode.integrationType} event=${eventKey}`,
+            error
           );
         }
       }
@@ -577,7 +577,7 @@ export function useWorkflowOrchestrator() {
       dispatch(setWorkflowStatus("paused"));
 
       // Switch the trigger webhook back to test mode so live hits don't execute the workflow
-      const triggerNode = nodes.find((n) => n.type === "trigger");
+      const triggerNode = nodes.find((node) => node.type === "trigger");
       const webhookId = triggerNode?.config?.webhook?.id;
       if (webhookId) {
         try {
@@ -751,7 +751,7 @@ export function useWorkflowOrchestrator() {
   const handleNodeClick = useCallback(
     (id: string) => {
       setActiveNodeId(id);
-      const node = nodes.find((n) => n.id === id);
+      const node = nodes.find((candidateNode) => candidateNode.id === id);
       if (!node?.appLabel) {
         setIsSelectorOpen(true);
       } else {
@@ -767,7 +767,7 @@ export function useWorkflowOrchestrator() {
       nodeId: string,
       app: { label: string; icon: any; color: string }
     ) => {
-      const existingNode = nodes.find((n) => n.id === nodeId);
+      const existingNode = nodes.find((node) => node.id === nodeId);
       const isChangingApp = !!existingNode?.appLabel;
 
       const updatedNodes = nodes.map((node) => {
@@ -791,7 +791,7 @@ export function useWorkflowOrchestrator() {
 
       if (selectedWorkflowId) {
         try {
-          const node = updatedNodes.find((n) => n.id === nodeId);
+          const node = updatedNodes.find((updatedNode) => updatedNode.id === nodeId);
           if (node) {
             if (isChangingApp) {
               // Node already exists on backend — update it instead of creating a new one
@@ -818,7 +818,7 @@ export function useWorkflowOrchestrator() {
 
               const backendId = result.data.id;
               setLocalNodes((prev) =>
-                prev.map((n) => (n.id === nodeId ? { ...n, id: backendId } : n))
+                prev.map((localNode) => (localNode.id === nodeId ? { ...localNode, id: backendId } : localNode))
               );
               setActiveNodeId(backendId);
             }
@@ -848,9 +848,9 @@ export function useWorkflowOrchestrator() {
 
       const newNodes = [...nodes];
       newNodes.splice(afterIndex, 0, newNode);
-      const reindexed = newNodes.map((node, idx) => ({
+      const reindexed = newNodes.map((node, index) => ({
         ...node,
-        index: idx + 1,
+        index: index + 1,
       }));
 
       setLocalNodes(reindexed);
@@ -862,12 +862,12 @@ export function useWorkflowOrchestrator() {
 
   const handleDeleteNode = useCallback(
     async (id: string) => {
-      const node = nodes.find((n) => n.id === id);
+      const node = nodes.find((candidateNode) => candidateNode.id === id);
       if (node?.type === "trigger") return;
 
       const filtered = nodes
-        .filter((n) => n.id !== id)
-        .map((n, idx) => ({ ...n, index: idx + 1 }));
+        .filter((remainingNode) => remainingNode.id !== id)
+        .map((remainingNode, index) => ({ ...remainingNode, index: index + 1 }));
       setLocalNodes(filtered);
 
       if (activeNodeId === id) {
@@ -886,7 +886,7 @@ export function useWorkflowOrchestrator() {
 
   const handleDuplicateNode = useCallback(
     (id: string) => {
-      const nodeIndex = nodes.findIndex((n) => n.id === id);
+      const nodeIndex = nodes.findIndex((node) => node.id === id);
       if (nodeIndex === -1) return;
 
       const orig = nodes[nodeIndex];
@@ -898,7 +898,7 @@ export function useWorkflowOrchestrator() {
 
       const newNodes = [...nodes];
       newNodes.splice(nodeIndex + 1, 0, newNode);
-      setLocalNodes(newNodes.map((n, idx) => ({ ...n, index: idx + 1 })));
+      setLocalNodes(newNodes.map((reorderedNode, index) => ({ ...reorderedNode, index: index + 1 })));
     },
     [nodes]
   );
@@ -924,8 +924,8 @@ export function useWorkflowOrchestrator() {
       const MAP_TOKEN = /\{\{map:([^|]*)\|[^|]*\|[^}]*\}\}/g;
       const mappings: CreateMappingPayload[] = [];
 
-      const walk = (obj: Record<string, any>) => {
-        for (const [key, value] of Object.entries(obj)) {
+      const walk = (currentObject: Record<string, any>) => {
+        for (const [key, value] of Object.entries(currentObject)) {
           if (key.startsWith("_") || INTERNAL_KEYS.has(key)) continue;
 
           if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -1081,7 +1081,7 @@ export function useWorkflowOrchestrator() {
 
       // Save field mappings for action nodes
       if (activeNode.type === "action" && activeNode.config) {
-        const triggerNodeId = nodes.find((n) => n.type === "trigger")?.id ?? "";
+        const triggerNodeId = nodes.find((node) => node.type === "trigger")?.id ?? "";
         const mappings = extractMappings(activeNode.config, triggerNodeId);
         if (mappings.length > 0) {
           try {
@@ -1095,7 +1095,7 @@ export function useWorkflowOrchestrator() {
     } else if (activeStep === "test") {
 
       // Advance to the next node
-      const currentIndex = nodes.findIndex((n) => n.id === activeNode.id);
+      const currentIndex = nodes.findIndex((node) => node.id === activeNode.id);
       let nextNode = nodes[currentIndex + 1];
 
       if (!nextNode) {
@@ -1200,9 +1200,9 @@ export function useWorkflowOrchestrator() {
 
     // UI view
     activeView,
-    setActiveView: (v: "builder" | "monitor") => {
-      setStoredActiveView(v);
-      dispatch(setActiveView(v));
+    setActiveView: (view: "builder" | "monitor") => {
+      setStoredActiveView(view);
+      dispatch(setActiveView(view));
     },
 
     // Executions

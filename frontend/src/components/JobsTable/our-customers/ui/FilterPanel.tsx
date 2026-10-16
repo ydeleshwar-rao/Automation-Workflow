@@ -23,11 +23,11 @@ const PERIOD_OPTIONS: { value: NonNullable<JobsFilters["period"]> | ""; label: s
 
 const distinct = (rows: JobRow[], key: "status" | "category"): string[] => {
   const set = new Set<string>();
-  for (const r of rows) {
-    const v = (r[key] ?? "").toString().trim();
-    if (v) set.add(v);
+  for (const row of rows) {
+    const value = (row[key] ?? "").toString().trim();
+    if (value) set.add(value);
   }
-  return [...set].sort((a, b) => a.localeCompare(b));
+  return [...set].sort((firstValue, secondValue) => firstValue.localeCompare(secondValue));
 };
 
 /**
@@ -46,11 +46,11 @@ export function FilterPanel({ filters, onApply, onClose, jobs }: FilterPanelProp
 
   // Close on outside click / Escape — keeps the panel feeling like a popover.
   useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) onClose();
+    const onClick = (event: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(event.target as Node)) onClose();
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
     };
     document.addEventListener("mousedown", onClick);
     document.addEventListener("keydown", onKey);
@@ -64,7 +64,7 @@ export function FilterPanel({ filters, onApply, onClose, jobs }: FilterPanelProp
   const categories = useMemo(() => distinct(jobs, "category"), [jobs]);
 
   const setField = <K extends keyof JobsFilters>(key: K, value: JobsFilters[K]) =>
-    setDraft((d) => ({ ...d, [key]: value || undefined }));
+    setDraft((prev) => ({ ...prev, [key]: value || undefined }));
 
   const handleReset = () => {
     setDraft({});
@@ -106,12 +106,12 @@ export function FilterPanel({ filters, onApply, onClose, jobs }: FilterPanelProp
           <span className="text-xs font-semibold text-muted-foreground">Period</span>
           <select
             value={draft.period ?? ""}
-            onChange={(e) => setField("period", (e.target.value || undefined) as JobsFilters["period"])}
+            onChange={(event) => setField("period", (event.target.value || undefined) as JobsFilters["period"])}
             className="rounded-lg border border-border bg-background text-foreground px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           >
-            {PERIOD_OPTIONS.map((o) => (
-              <option key={o.value || "all"} value={o.value}>
-                {o.label}
+            {PERIOD_OPTIONS.map((option) => (
+              <option key={option.value || "all"} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
@@ -125,7 +125,7 @@ export function FilterPanel({ filters, onApply, onClose, jobs }: FilterPanelProp
               type="date"
               value={draft.date_from ?? ""}
               max={draft.date_to || undefined}
-              onChange={(e) => setField("date_from", e.target.value)}
+              onChange={(event) => setField("date_from", event.target.value)}
               className="rounded-lg border border-border bg-background text-foreground px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring [color-scheme:light] dark:[color-scheme:dark]"
             />
           </label>
@@ -135,7 +135,7 @@ export function FilterPanel({ filters, onApply, onClose, jobs }: FilterPanelProp
               type="date"
               value={draft.date_to ?? ""}
               min={draft.date_from || undefined}
-              onChange={(e) => setField("date_to", e.target.value)}
+              onChange={(event) => setField("date_to", event.target.value)}
               className="rounded-lg border border-border bg-background text-foreground px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring [color-scheme:light] dark:[color-scheme:dark]"
             />
           </label>
@@ -146,12 +146,12 @@ export function FilterPanel({ filters, onApply, onClose, jobs }: FilterPanelProp
           <span className="text-xs font-semibold text-muted-foreground">Status</span>
           <select
             value={draft.status ?? ""}
-            onChange={(e) => setField("status", e.target.value)}
+            onChange={(event) => setField("status", event.target.value)}
             className="rounded-lg border border-border bg-background text-foreground px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           >
             <option value="">All statuses</option>
-            {statuses.map((s) => (
-              <option key={s} value={s}>{s}</option>
+            {statuses.map((status) => (
+              <option key={status} value={status}>{status}</option>
             ))}
           </select>
         </label>
@@ -161,12 +161,12 @@ export function FilterPanel({ filters, onApply, onClose, jobs }: FilterPanelProp
           <span className="text-xs font-semibold text-muted-foreground">Category</span>
           <select
             value={draft.category_name ?? ""}
-            onChange={(e) => setField("category_name", e.target.value)}
+            onChange={(event) => setField("category_name", event.target.value)}
             className="rounded-lg border border-border bg-background text-foreground px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           >
             <option value="">All categories</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>{c}</option>
+            {categories.map((category) => (
+              <option key={category} value={category}>{category}</option>
             ))}
           </select>
         </label>

@@ -8,7 +8,6 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import crypto from "node:crypto";
 
 const url = process.env.TEST_DATABASE_URL;
-process.env.DB_PROVIDER = "postgres";
 process.env.DATABASE_URL = url ?? "postgresql://unused";
 process.env.GOOGLE_CLIENT_ID = "google-client";
 process.env.MICROSOFT_CLIENT_ID = "microsoft-client";
@@ -19,11 +18,11 @@ const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLen
 const jwk = { ...(publicKey.export({ format: "jwk" }) as object), kid: "test-key", alg: "RS256", use: "sig" };
 
 function sign(claims: Record<string, unknown>, key = privateKey) {
-  const enc = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
-  const head = enc({ alg: "RS256", kid: "test-key", typ: "JWT" });
-  const body = enc({ iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 600, ...claims });
-  const sig = crypto.sign("RSA-SHA256", Buffer.from(`${head}.${body}`), key).toString("base64url");
-  return `${head}.${body}.${sig}`;
+  const encodeSegment = (segment: object) => Buffer.from(JSON.stringify(segment)).toString("base64url");
+  const head = encodeSegment({ alg: "RS256", kid: "test-key", typ: "JWT" });
+  const body = encodeSegment({ iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 600, ...claims });
+  const signature = crypto.sign("RSA-SHA256", Buffer.from(`${head}.${body}`), key).toString("base64url");
+  return `${head}.${body}.${signature}`;
 }
 
 const google = (sub: string, email: string, extra: Record<string, unknown> = {}) => sign({
@@ -38,22 +37,22 @@ describe.skipIf(!url)("company SSO", async () => {
   const oidc = await import("../../lib/auth/oidc.js");
   const { SsoService } = await import("./sso.service.js");
   const { AuthService } = await import("../auth/service/auth.service.js");
-  const { supabase: db } = await import("../../config/db.config.js");
+  const { default: prisma } = await import("../../lib/prisma.js");
   oidc.setJwksFetcher(async () => [jwk as any]);
 
-  const verify = (p: "google" | "microsoft", t: string, nonce = "n") => oidc.verifyIdToken(p, t, nonce);
-  const signIn = async (p: "google" | "microsoft", t: string, intent?: "signin" | "company-setup", name?: string) =>
-    (await SsoService.signIn(await verify(p, t), intent, name)) as { user: { id: string; role: string; organization_id: string; permissions: string[] } };
-  const orgOf = async (id: string) => (await db.from("organizations").select("*").eq("id", id).single()).data;
-  const fails = async (p: Promise<unknown>) => {
-    try { await p; } catch (e: any) { return { status: e.statusCode ?? e.status, message: String(e.message) }; }
+  const verify = (provider: "google" | "microsoft", idToken: string, nonce = "n") => oidc.verifyIdToken(provider, idToken, nonce);
+  const signIn = async (provider: "google" | "microsoft", idToken: string, intent?: "signin" | "company-setup", name?: string) =>
+    (await SsoService.signIn(await verify(provider, idToken), intent, name)) as { user: { id: string; role: string; organization_id: string; permissions: string[] } };
+  const orgOf = async (organizationId: string) => prisma.organization.findUniqueOrThrow({ where: { id: organizationId } });
+  const fails = async (pending: Promise<unknown>) => {
+    try { await pending; } catch (error: any) { return { status: error.statusCode ?? error.status, message: String(error.message) }; }
     throw new Error("expected failure");
   };
 
   beforeAll(async () => {
-    await (db as any).pool.query(`TRUNCATE organizations, auth_users, profiles, organization_sso_connections, auth_identities CASCADE`);
+    await prisma.$executeRaw`TRUNCATE organizations, auth_users, profiles, organization_sso_connections, auth_identities CASCADE`;
   });
-  afterAll(async () => { await (db as any).pool.end(); });
+  afterAll(async () => { await prisma.$disconnect(); });
 
   // ── Token verification ──
   it("rejects bad tokens", async () => {
@@ -150,8 +149,8 @@ describe.skipIf(!url)("company SSO", async () => {
   });
 
   it("email sign-up creates an individual workspace with the user as admin", async () => {
-    const res = await AuthService.register("hank@example.org", "password123", "Hank");
-    expect((await orgOf(res.organization_id)).type).toBe("individual");
+    const registration = await AuthService.register("hank@example.org", "password123", "Hank");
+    expect((await orgOf(registration.organization_id)).type).toBe("individual");
     expect((await AuthService.login("hank@example.org", "password123")).user.role).toBe("admin");
   });
 });

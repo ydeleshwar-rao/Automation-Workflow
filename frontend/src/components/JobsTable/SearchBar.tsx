@@ -22,7 +22,7 @@ export function SearchBar({
       <input
         type="text"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         className="w-full pl-9 pr-4 py-2 text-sm border border-border
                    rounded-lg bg-background text-foreground

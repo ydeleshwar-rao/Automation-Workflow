@@ -44,13 +44,13 @@ export class SimproPollingAdapter implements PollingAdapter {
 
     // Sort ascending by DateModified so the cursor walks forward.
     const sorted = records
-      .filter((r) => this.cursorOf(r))
-      .sort((a, b) => this.cursorOf(a)!.localeCompare(this.cursorOf(b)!));
+      .filter((record) => this.cursorOf(record))
+      .sort((firstRecord, secondRecord) => this.cursorOf(firstRecord)!.localeCompare(this.cursorOf(secondRecord)!));
 
-    return sorted.map((r) => ({
-      externalId:  String(r.ID ?? r.id ?? ""),
-      data:        r,
-      cursorValue: this.cursorOf(r)!,
+    return sorted.map((record) => ({
+      externalId:  String(record.ID ?? record.id ?? ""),
+      data:        record,
+      cursorValue: this.cursorOf(record)!,
     }));
   }
 

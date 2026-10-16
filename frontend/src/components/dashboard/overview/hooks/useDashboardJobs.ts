@@ -75,18 +75,18 @@ export function useDashboardJobs(filters: JobsFilters): UseDashboardJobsResult {
         setJobs(rows);
         setIsLoading(false);
       })
-      .catch((err) => {
+      .catch((fetchError) => {
         if (requestId !== requestIdRef.current) return;
-        const res = (err as { response?: { status?: number; data?: { message?: string } } })?.response;
-        let msg = "Failed to load jobs";
-        if (res?.status === 401) {
-          msg = res.data?.message === "invalid_token"
+        const errorResponse = (fetchError as { response?: { status?: number; data?: { message?: string } } })?.response;
+        let errorMessage = "Failed to load jobs";
+        if (errorResponse?.status === 401) {
+          errorMessage = errorResponse.data?.message === "invalid_token"
             ? "Your ServiceM8 connection has expired. Please reconnect from the Connections page."
             : "Your session has expired. Please log in again.";
-        } else if (err instanceof Error) {
-          msg = err.message;
+        } else if (fetchError instanceof Error) {
+          errorMessage = fetchError.message;
         }
-        setError(msg);
+        setError(errorMessage);
         setJobs([]);
         setIsLoading(false);
       });
@@ -107,6 +107,6 @@ export function useDashboardJobs(filters: JobsFilters): UseDashboardJobsResult {
     error,
     appId: provider?.appId ?? null,
     appLabel: provider?.label ?? null,
-    refetch: () => setRefetchTick((n) => n + 1),
+    refetch: () => setRefetchTick((tick) => tick + 1),
   };
 }

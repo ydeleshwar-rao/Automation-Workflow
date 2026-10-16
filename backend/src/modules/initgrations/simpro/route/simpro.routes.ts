@@ -14,13 +14,10 @@ router.post("/connect/apikey",  catchAsync(SimproController.connectWithApiKey));
 router.get("/status",           catchAsync(SimproController.connectionStatus));
 router.delete("/disconnect",    catchAsync(SimproController.disconnect));
 
-// ─── Sync (simPRO API → DB via POST /sync only) ───────────────────────────
-router.post("/sync", catchAsync(SimproController.syncAll));
-
 // ─── UI dashboard feed ────────────────────────────────────────────────────
 router.get("/getalljobs", catchAsync(SimproController.getAllJobs));
 
-// ─── DB reads (run POST /sync first) ──────────────────────────────────────
+// ─── Live simPRO reads ─────────────────────────────────────────────────────
 router.get("/customers",  catchAsync(SimproController.getCustomers));
 router.get("/jobs",       catchAsync(SimproController.getJobs));
 router.get("/sites",      catchAsync(SimproController.getSites));

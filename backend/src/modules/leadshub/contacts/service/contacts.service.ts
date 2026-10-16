@@ -1,5 +1,4 @@
 import axios from "axios";
-import { supabase } from "../../../../config/db.config.js";
 import { getValidAccessToken } from "../../../../common/function.js";
 
 function normalizePhoneForCompare(raw: unknown): string {
@@ -111,114 +110,70 @@ async function findExistingContactId(
   return null;
 }
 
-export async function syncContacts(locationId: string) {
-// Token Fetch - get valid token (refreshes if expired)
-const accessToken = await getValidAccessToken(locationId);
+const GHL_CONTACTS_URL = "https://services.leadconnectorhq.com/contacts/";
+const GHL_API_VERSION = "2021-07-28";
 
-    if (!accessToken) {
-        throw new Error("Access token not found for location:");
-    }
+/** Maps a GHL contact to the snake_case shape the frontend already consumes. */
+function formatGhlContact(contact: any) {
+  return {
+    ghl_contact_id: contact.id,
+    location_id: contact.locationId,
 
-      const response = await axios.get(
-        "https://services.leadconnectorhq.com/contacts/",
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            Version: "2021-07-28",
-            Accept: "application/json"
-          },
-          params: {
-            locationId: locationId
-          }
-        }
-      );
+    first_name: contact.firstName,
+    last_name: contact.lastName,
+    first_name_raw: contact.firstNameRaw,
+    last_name_raw: contact.lastNameRaw,
+    contact_name: contact.contactName,
 
+    email: contact.email,
+    additional_emails: contact.additionalEmails,
+    phone: contact.phone,
+    dnd: contact.dnd,
+    dnd_settings: contact.dndSettings,
 
+    address1: contact.address1,
+    city: contact.city,
+    state: contact.state,
+    postal_code: contact.postalCode,
+    country: contact.country,
 
-    const contacts = response.data.contacts;
+    company_name: contact.companyName,
+    business_id: contact.businessId,
+    website: contact.website,
+    type: contact.type,
+    source: contact.source,
+    assigned_to: contact.assignedTo,
 
-    if(!contacts || contacts.length === 0) {
-        console.log("No contacts found for location:", locationId);
-        return;
-    }
-    console.log("contacts :", contacts);
-    // 3️⃣ Store in Supabase
-const formattedContacts = contacts.map((contact: any) => ({
-  ghl_contact_id: contact.id,
-  location_id: contact.locationId,
+    tags: contact.tags,
+    followers: contact.followers,
+    profile_photo: contact.profilePhoto,
+    timezone: contact.timezone,
+    attributions: contact.attributions,
 
-  // Basic Info
-  first_name: contact.firstName,
-  last_name: contact.lastName,
-  first_name_raw: contact.firstNameRaw,
-  last_name_raw: contact.lastNameRaw,
-  contact_name: contact.contactName,
+    custom_fields: contact.customFields,
+    date_of_birth: contact.dateOfBirth,
 
-  // Contact Details
-  email: contact.email,
-  additional_emails: contact.additionalEmails,
-  phone: contact.phone,
-  dnd: contact.dnd,
-  dnd_settings: contact.dndSettings,
+    date_added: contact.dateAdded,
+    date_updated: contact.dateUpdated,
+    start_after: contact.startAfter,
+  };
+}
 
-  // Address
-  address1: contact.address1,
-  city: contact.city,
-  state: contact.state,
-  postal_code: contact.postalCode,
-  country: contact.country,
+/** Contacts are read live from GHL — we do not keep a local copy. */
+export async function getContacts(locationId: string) {
+  const accessToken = await getValidAccessToken(locationId);
 
-  // Business Info
-  company_name: contact.companyName,
-  business_id: contact.businessId,
-  website: contact.website,
-  type: contact.type,
-  source: contact.source,
-  assigned_to: contact.assignedTo,
+  const response = await axios.get(GHL_CONTACTS_URL, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Version: GHL_API_VERSION,
+      Accept: "application/json",
+    },
+    params: { locationId },
+  });
 
-  // Social / Extra
-  tags: contact.tags,
-  followers: contact.followers,
-  profile_photo: contact.profilePhoto,
-  timezone: contact.timezone,
-  attributions: contact.attributions,
-
-  // Custom Data
-  custom_fields: contact.customFields,
-  date_of_birth: contact.dateOfBirth,
-
-  // Meta
-  date_added: contact.dateAdded,
-  date_updated: contact.dateUpdated,
-  start_after: contact.startAfter,
-}));
-
-    const { error: insertError } = await supabase
-        .from("leadshub_contacts")
-        .upsert(formattedContacts);
-
-    if (insertError) {
-        throw new Error(insertError.message);
-    }
-
-    return formattedContacts;
-
-
-
-} 
-
-
-export async function getLocalContacts(locationId: string) {
-  const { data, error } = await supabase
-    .from("leadshub_contacts")
-    .select("*")
-    .eq("location_id", locationId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return data;
+  const contacts: any[] = response.data?.contacts ?? [];
+  return contacts.map(formatGhlContact);
 }
 
 
@@ -242,8 +197,8 @@ export async function createContact(
     //   2. Keys already in camelCase    → used as-is
     console.log("calling_the_service", rawData);
 
-    const hasPrefixedKeys = Object.keys(rawData).some((k) =>
-      k.startsWith("contact.")
+    const hasPrefixedKeys = Object.keys(rawData).some((key) =>
+      key.startsWith("contact.")
     );
 
     const cleanedData: any = {};
@@ -267,7 +222,7 @@ export async function createContact(
     if (contactPayload.tags && typeof contactPayload.tags === "string") {
       contactPayload.tags = contactPayload.tags
         .split(",")
-        .map((t: string) => t.trim());
+        .map((tag: string) => tag.trim());
     }
 
     // ================= CHECK IF CONTACT EXISTS =================

@@ -94,8 +94,8 @@ function useLeadConnectorStepProps(step: ConfigStep, context: StepContext) {
         } else {
           setTestStatus("failed");
         }
-      } catch (err) {
-        console.error("LeadsHub trigger test failed:", err);
+      } catch (error) {
+        console.error("LeadsHub trigger test failed:", error);
         setTestStatus("failed");
       }
       return;
@@ -111,8 +111,8 @@ function useLeadConnectorStepProps(step: ConfigStep, context: StepContext) {
 
     setTestStatus("testing");
     try {
-      const res = await axiosInstance.post(endpoint, payload);
-      const result = res.data?.data ?? res.data;
+      const response = await axiosInstance.post(endpoint, payload);
+      const result = response.data?.data ?? response.data;
       setSampleData(result ? [result] : null);
       setTestStatus("success");
     } catch (error) {

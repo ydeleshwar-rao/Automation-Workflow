@@ -1,5 +1,8 @@
-import { supabase } from "../../../config/db.config.js";
+import type { Prisma } from "@prisma/client";
 import { CreateMappingDTO } from "./mapping.dto.js";
+import { workflowFieldMappingRepository } from "./mapping.repository.js";
+import { asJsonArray } from "../shared/json-object.js";
+import { ApiError } from "../../../utils/ApiError.js";
 
 type MappingEntry = {
   mapping_type: "dynamic" | "static" | "template";
@@ -10,47 +13,51 @@ type MappingEntry = {
   template: string | null;
 };
 
-function validate(m: CreateMappingDTO) {
+function validate(mapping: CreateMappingDTO) {
   // Treat whitespace-only strings as empty — otherwise a UI bug can persist
   // source_field=" " which silently resolves to undefined at execution time.
-  const nonEmpty = (v: unknown): v is string =>
-    typeof v === "string" && v.trim().length > 0;
+  const isNonEmpty = (value: unknown): value is string =>
+    typeof value === "string" && value.trim().length > 0;
 
-  if (!nonEmpty(m.destination_field)) {
+  if (!isNonEmpty(mapping.destination_field)) {
     throw new Error(`destination_field is required and must be a non-empty string`);
   }
-  if (m.mapping_type === "dynamic") {
-    if (!nonEmpty(m.source_node_id) || !nonEmpty(m.source_field)) {
+  if (mapping.mapping_type === "dynamic") {
+    if (!isNonEmpty(mapping.source_node_id) || !isNonEmpty(mapping.source_field)) {
       throw new Error(
-        `Dynamic mapping for destination="${m.destination_field}" requires non-empty source_node_id and source_field`
+        `Dynamic mapping for destination="${mapping.destination_field}" requires non-empty source_node_id and source_field`
       );
     }
   }
-  if (m.mapping_type === "static") {
-    if (m.static_value === undefined || m.static_value === null) {
+  if (mapping.mapping_type === "static") {
+    if (mapping.static_value === undefined || mapping.static_value === null) {
       throw new Error(
-        `Static mapping for destination="${m.destination_field}" requires static_value`
+        `Static mapping for destination="${mapping.destination_field}" requires static_value`
       );
     }
   }
-  if (m.mapping_type === "template") {
-    if (!nonEmpty(m.source_node_id) || !nonEmpty(m.template)) {
+  if (mapping.mapping_type === "template") {
+    if (!isNonEmpty(mapping.source_node_id) || !isNonEmpty(mapping.template)) {
       throw new Error(
-        `Template mapping for destination="${m.destination_field}" requires non-empty source_node_id and template`
+        `Template mapping for destination="${mapping.destination_field}" requires non-empty source_node_id and template`
       );
     }
   }
 }
 
-function toEntry(m: CreateMappingDTO): MappingEntry {
+function toEntry(mapping: CreateMappingDTO): MappingEntry {
   return {
-    mapping_type: m.mapping_type,
-    destination_field: m.destination_field,
-    source_node_id: m.source_node_id ?? null,
-    source_field: m.source_field ?? null,
-    static_value: m.static_value ?? null,
-    template: m.template ?? null,
+    mapping_type: mapping.mapping_type,
+    destination_field: mapping.destination_field,
+    source_node_id: mapping.source_node_id ?? null,
+    source_field: mapping.source_field ?? null,
+    static_value: mapping.static_value ?? null,
+    template: mapping.template ?? null,
   };
+}
+
+function toJson(entries: MappingEntry[]): Prisma.InputJsonValue {
+  return entries as unknown as Prisma.InputJsonValue;
 }
 
 export async function createMappingService(nodeId: string, payload: CreateMappingDTO) {
@@ -58,43 +65,23 @@ export async function createMappingService(nodeId: string, payload: CreateMappin
   validate(payload);
 
   // Read current row, append (or replace) the entry, then upsert
-  const { data: existing, error: fetchError } = await supabase
-    .from("workflow_field_mappings")
-    .select("id, mappings")
-    .eq("workflow_node_id", nodeId)
-    .maybeSingle();
-
-  if (fetchError) throw new Error(fetchError.message);
-
-  const current: MappingEntry[] = existing?.mappings ?? [];
+  const existing = await workflowFieldMappingRepository.findByNode(nodeId);
+  const current = asJsonArray<MappingEntry>(existing?.mappings);
   const updated = [
-    ...current.filter((m) => m.destination_field !== payload.destination_field),
+    ...current.filter((entry) => entry.destination_field !== payload.destination_field),
     toEntry(payload),
   ];
 
-  const { data, error } = await supabase
-    .from("workflow_field_mappings")
-    .upsert({ workflow_node_id: nodeId, mappings: updated }, { onConflict: "workflow_node_id" })
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
+  const saved = await workflowFieldMappingRepository.saveForNode(nodeId, toJson(updated));
   console.log(`[MappingService] Mapping saved | node=${nodeId} total=${updated.length}`);
-  return data;
+  return saved;
 }
 
 export async function getMappingsByNodeService(nodeId: string) {
   console.log(`[MappingService] Fetching mappings | workflow_node_id=${nodeId}`);
 
-  const { data, error } = await supabase
-    .from("workflow_field_mappings")
-    .select("*")
-    .eq("workflow_node_id", nodeId)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
-
-  const mappings: MappingEntry[] = data?.mappings ?? [];
+  const row = await workflowFieldMappingRepository.findByNode(nodeId);
+  const mappings = asJsonArray<MappingEntry>(row?.mappings);
   console.log(`[MappingService] Found ${mappings.length} mapping(s) for node ${nodeId}`);
   return mappings;
 }
@@ -107,48 +94,29 @@ export async function getMappingsByNodeService(nodeId: string) {
 export async function createMappingsBulkService(nodeId: string, mappings: CreateMappingDTO[]) {
   console.log(`[MappingService] Bulk upsert | node=${nodeId} count=${mappings.length}`);
 
-  for (const m of mappings) validate(m);
+  for (const mapping of mappings) validate(mapping);
 
   const entries = mappings.map(toEntry);
-
-  const { data, error } = await supabase
-    .from("workflow_field_mappings")
-    .upsert({ workflow_node_id: nodeId, mappings: entries }, { onConflict: "workflow_node_id" })
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
+  const saved = await workflowFieldMappingRepository.saveForNode(nodeId, toJson(entries));
 
   console.log(`[MappingService] Bulk upsert complete | node=${nodeId} saved=${entries.length}`);
-  entries.forEach((m) =>
-    console.log(`  ✓ [${m.mapping_type}] ${m.source_field ?? m.static_value} → ${m.destination_field}`)
+  entries.forEach((entry) =>
+    console.log(`  ✓ [${entry.mapping_type}] ${entry.source_field ?? entry.static_value} → ${entry.destination_field}`)
   );
 
-  return data;
+  return saved;
 }
 
 export async function deleteMappingService(nodeId: string, destinationField: string) {
   console.log(`[MappingService] Deleting mapping | node=${nodeId} destination=${destinationField}`);
 
-  const { data: existing, error: fetchError } = await supabase
-    .from("workflow_field_mappings")
-    .select("id, mappings")
-    .eq("workflow_node_id", nodeId)
-    .maybeSingle();
+  const existing = await workflowFieldMappingRepository.findByNode(nodeId);
+  if (!existing) throw new ApiError(404, "No mappings found for this node");
 
-  if (fetchError) throw new Error(fetchError.message);
-  if (!existing) throw new Error("No mappings found for this node");
-
-  const updated = (existing.mappings as MappingEntry[]).filter(
-    (m) => m.destination_field !== destinationField
+  const updated = asJsonArray<MappingEntry>(existing.mappings).filter(
+    (entry) => entry.destination_field !== destinationField
   );
-
-  const { error } = await supabase
-    .from("workflow_field_mappings")
-    .update({ mappings: updated })
-    .eq("id", existing.id);
-
-  if (error) throw new Error(error.message);
+  await workflowFieldMappingRepository.saveForNode(nodeId, toJson(updated));
 
   console.log(`[MappingService] Mapping deleted | node=${nodeId} destination=${destinationField}`);
   return { message: "Mapping deleted successfully" };

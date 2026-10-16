@@ -40,8 +40,8 @@ const ACCENT: Accent = {
   iconBg: "bg-primary",
 };
 
-function prettyLabel(k: string): string {
-  return k
+function prettyLabel(key: string): string {
+  return key
     .replace(/_/g, " ")
     .replace(/([A-Z])/g, " $1")
     .replace(/^./, (str) => str.toUpperCase())
@@ -75,13 +75,13 @@ function renderLeafValue(value: any): React.ReactNode {
 function collectExpandablePaths(value: any, basePath: string, out: Set<string>) {
   if (Array.isArray(value)) {
     out.add(basePath);
-    value.forEach((item, idx) =>
-      collectExpandablePaths(item, `${basePath}.${idx}`, out)
+    value.forEach((item, index) =>
+      collectExpandablePaths(item, `${basePath}.${index}`, out)
     );
   } else if (typeof value === "object" && value !== null) {
     out.add(basePath);
-    Object.entries(value).forEach(([k, v]) =>
-      collectExpandablePaths(v, `${basePath}.${k}`, out)
+    Object.entries(value).forEach(([childKey, childValue]) =>
+      collectExpandablePaths(childValue, `${basePath}.${childKey}`, out)
     );
   }
 }
@@ -176,27 +176,27 @@ function TreeRow({
       {isExpandable && isOpen && childCount > 0 && (
         <div className="ml-3 pl-3 border-l border-border">
           {isArray
-            ? value.map((item: any, idx: number) => (
+            ? value.map((item: any, index: number) => (
                 <TreeRow
-                  key={idx}
-                  label={`[${idx}]`}
-                  rawKey={String(idx)}
+                  key={index}
+                  label={`[${index}]`}
+                  rawKey={String(index)}
                   value={item}
                   depth={depth + 1}
-                  path={`${path}.${idx}`}
+                  path={`${path}.${index}`}
                   expanded={expanded}
                   onToggle={onToggle}
                   accent={accent}
                 />
               ))
-            : Object.entries(value).map(([k, v]) => (
+            : Object.entries(value).map(([childKey, childValue]) => (
                 <TreeRow
-                  key={k}
-                  label={prettyLabel(k)}
-                  rawKey={k}
-                  value={v}
+                  key={childKey}
+                  label={prettyLabel(childKey)}
+                  rawKey={childKey}
+                  value={childValue}
                   depth={depth + 1}
-                  path={`${path}.${k}`}
+                  path={`${path}.${childKey}`}
                   expanded={expanded}
                   onToggle={onToggle}
                   accent={accent}
@@ -223,18 +223,18 @@ function RecordTree({ record, recordKey, search, accent }: RecordTreeProps) {
       key.toLowerCase().includes(search.toLowerCase()) && key !== "_formIsValid"
   );
 
-  const toggle = (p: string) => {
+  const toggle = (path: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
-      if (next.has(p)) next.delete(p);
-      else next.add(p);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
       return next;
     });
   };
 
   const expandAll = () => {
     const all = new Set<string>();
-    entries.forEach(([k, v]) => collectExpandablePaths(v, `${recordKey}.${k}`, all));
+    entries.forEach(([key, value]) => collectExpandablePaths(value, `${recordKey}.${key}`, all));
     setExpanded(all);
   };
   const collapseAll = () => setExpanded(new Set());
@@ -268,14 +268,14 @@ function RecordTree({ record, recordKey, search, accent }: RecordTreeProps) {
         </button>
       </div>
       <div className="space-y-0.5">
-        {entries.map(([k, v]) => (
+        {entries.map(([key, value]) => (
           <TreeRow
-            key={k}
-            label={prettyLabel(k)}
-            rawKey={k}
-            value={v}
+            key={key}
+            label={prettyLabel(key)}
+            rawKey={key}
+            value={value}
             depth={0}
-            path={`${recordKey}.${k}`}
+            path={`${recordKey}.${key}`}
             expanded={expanded}
             onToggle={toggle}
             accent={accent}
@@ -293,7 +293,7 @@ function getRecordSummary(record: Record<string, any>): string {
     if (record[key]) return `${key}: ${String(record[key]).slice(0, 50)}`;
   }
   const firstLeaf = Object.entries(record).find(
-    ([, v]) => v !== null && v !== undefined && typeof v !== "object"
+    ([, value]) => value !== null && value !== undefined && typeof value !== "object"
   );
   return firstLeaf ? `${firstLeaf[0]}: ${String(firstLeaf[1]).slice(0, 50)}` : "";
 }
@@ -547,7 +547,7 @@ export function LeadConnectorTestStep({
               <input
                 placeholder="Search field names..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(event) => setSearch(event.target.value)}
                 className="flex-1 bg-transparent text-foreground text-sm placeholder:text-muted-foreground focus:outline-none font-medium"
               />
             </div>
@@ -556,12 +556,12 @@ export function LeadConnectorTestStep({
 
         <div className="flex-1 overflow-y-auto no-scrollbar p-6 pt-3 space-y-3">
           {hasRecords ? (
-            records.map((record, idx) => (
+            records.map((record, index) => (
               <RecordDrawer
-                key={idx}
-                index={idx}
+                key={index}
+                index={index}
                 record={record}
-                defaultOpen={idx === 0}
+                defaultOpen={index === 0}
                 viewMode={viewMode}
                 search={search}
                 accent={ACCENT}

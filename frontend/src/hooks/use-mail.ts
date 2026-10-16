@@ -41,12 +41,12 @@ export function useMail() {
       setAccounts(connections);
       // Auto-select first active connection if none selected
       if (!selectedAccount && connections.length > 0) {
-        const active = connections.find(c => c.status === 'active') ?? connections[0];
+        const active = connections.find(connection => connection.status === 'active') ?? connections[0];
         setSelectedAccount(active);
       }
-    } catch (err: any) {
-      console.error('[useMail] fetchAccounts error:', err.message);
-      setError(err.message);
+    } catch (error: any) {
+      console.error('[useMail] fetchAccounts error:', error.message);
+      setError(error.message);
     } finally {
       setIsLoading(false);
     }
@@ -84,7 +84,7 @@ export function useMail() {
 
   const removeAccount = useCallback((id: string) => {
     // Local-only remove (backend delete endpoint can be added later)
-    setAccounts((prev) => prev.filter((a) => a.id !== id));
+    setAccounts((prev) => prev.filter((account) => account.id !== id));
     setSelectedAccount((prev) => (prev?.id === id ? null : prev));
   }, []);
 

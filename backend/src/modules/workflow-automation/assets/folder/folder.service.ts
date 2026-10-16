@@ -1,102 +1,59 @@
-import { supabase } from "../../../../config/db.config.js";
 import {
   CreateFolderDTO,
   UpdateFolderDTO,
   ReorderFoldersDTO,
 } from "./folder.dto.js";
+import { workflowFolderRepository, type UpdateWorkflowFolderInput } from "./folder.repository.js";
+import { ApiError } from "../../../../utils/ApiError.js";
 
-export async function createFolderService(payload: CreateFolderDTO) {
-  const insertRow: Record<string, unknown> = {
+const ADMIN_ROLE = "admin";
+
+export function createFolderService(payload: CreateFolderDTO) {
+  return workflowFolderRepository.create({
     name: payload.name,
     user_id: payload.user_id,
     parent_id: payload.parent_id ?? null,
-  };
-  if (typeof payload.position === "number") {
-    insertRow.position = payload.position;
-  }
-
-  const { data, error } = await supabase
-    .from("workflow_folders")
-    .insert(insertRow)
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data;
+    ...(typeof payload.position === "number" ? { position: payload.position } : {}),
+  });
 }
 
-export async function getFoldersByUserService(userId: string, role?: string) {
-  let query = supabase
-    .from("workflow_folders")
-    .select("*")
-    .order("position", { ascending: true })
-    .order("created_at", { ascending: false });
-
-  if (role !== "admin") {
-    query = query.eq("user_id", userId);
-  }
-
-  const { data, error } = await query;
-
-  if (error) throw new Error(error.message);
-  return data;
+/** Admins see every folder; everyone else sees only their own. */
+export function getFoldersByUserService(userId: string, role?: string) {
+  const ownerUserId = role === ADMIN_ROLE ? undefined : userId;
+  return workflowFolderRepository.findMany(ownerUserId);
 }
 
 export async function updateFolderService(id: string, payload: UpdateFolderDTO) {
-  const patch: Record<string, unknown> = {
-    updated_at: new Date().toISOString(),
-  };
+  const patch: UpdateWorkflowFolderInput = {};
   if (typeof payload.name === "string") patch.name = payload.name;
   if (payload.parent_id !== undefined) patch.parent_id = payload.parent_id;
   if (typeof payload.position === "number") patch.position = payload.position;
 
   if (payload.parent_id !== undefined && payload.parent_id !== null) {
-    if (payload.parent_id === id) {
-      throw new Error("A folder cannot be its own parent");
-    }
-    const descendantIds = await collectDescendantIds(id);
-    if (descendantIds.has(payload.parent_id)) {
-      throw new Error("Cannot move a folder into one of its own descendants");
-    }
+    await assertValidParent(id, payload.parent_id);
   }
 
-  const { data, error } = await supabase
-    .from("workflow_folders")
-    .update(patch)
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data;
+  return workflowFolderRepository.update(id, patch);
 }
 
 export async function deleteFolderService(id: string) {
-  const { error } = await supabase
-    .from("workflow_folders")
-    .delete()
-    .eq("id", id);
-
-  if (error) throw new Error(error.message);
+  await workflowFolderRepository.delete(id);
   return { message: "Folder deleted successfully" };
 }
 
 export async function reorderFoldersService(payload: ReorderFoldersDTO) {
-  const updates = payload.items.map((item) =>
-    supabase
-      .from("workflow_folders")
-      .update({
-        parent_id: item.parent_id,
-        position: item.position,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", item.id)
-  );
-
-  const results = await Promise.all(updates);
-  const failed = results.find((r) => r.error);
-  if (failed?.error) throw new Error(failed.error.message);
+  await workflowFolderRepository.reorder(payload.items);
   return { message: "Folders reordered successfully" };
+}
+
+async function assertValidParent(folderId: string, parentId: string): Promise<void> {
+  if (parentId === folderId) {
+    throw new ApiError(400, "A folder cannot be its own parent");
+  }
+  const descendantIds = await collectDescendantIds(folderId);
+  if (descendantIds.has(parentId)) {
+    throw new ApiError(400, "Cannot move a folder into one of its own descendants");
+  }
 }
 
 async function collectDescendantIds(rootId: string): Promise<Set<string>> {
@@ -104,17 +61,12 @@ async function collectDescendantIds(rootId: string): Promise<Set<string>> {
   const queue: string[] = [rootId];
 
   while (queue.length > 0) {
-    const current = queue.shift()!;
-    const { data, error } = await supabase
-      .from("workflow_folders")
-      .select("id")
-      .eq("parent_id", current);
-
-    if (error) throw new Error(error.message);
-    for (const row of data ?? []) {
-      if (!descendants.has(row.id)) {
-        descendants.add(row.id);
-        queue.push(row.id);
+    const currentId = queue.shift()!;
+    const childIds = await workflowFolderRepository.findChildIds(currentId);
+    for (const childId of childIds) {
+      if (!descendants.has(childId)) {
+        descendants.add(childId);
+        queue.push(childId);
       }
     }
   }

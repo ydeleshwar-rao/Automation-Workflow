@@ -61,7 +61,7 @@ export function DeployFolderWizard({
   useEffect(() => setMounted(true), []);
 
   // Current user — templates are always deployed to the logged-in user's account
-  const currentUser = useSelector((s: RootState) => s.access.user);
+  const currentUser = useSelector((state: RootState) => state.access.user);
 
   const [step, setStep] = useState<Step>("configure");
   const [namePrefix, setNamePrefix] = useState("");
@@ -109,11 +109,11 @@ export function DeployFolderWizard({
     }
   }, [isOpen]);
 
-  const activeTemplates = folderTemplates.filter((t) => t.status === "active");
+  const activeTemplates = folderTemplates.filter((template) => template.status === "active");
 
   const toggleIntegration = (key: string) => {
     setCheckedIntegrations((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+      prev.includes(key) ? prev.filter((integrationKey) => integrationKey !== key) : [...prev, key]
     );
   };
 
@@ -121,9 +121,9 @@ export function DeployFolderWizard({
   const handleDeploy = async () => {
     if (!currentUser?.id || activeTemplates.length === 0) return;
 
-    const initial: DeployResult[] = activeTemplates.map((t) => ({
-      template_id: t.id,
-      template_name: t.name,
+    const initial: DeployResult[] = activeTemplates.map((template) => ({
+      template_id: template.id,
+      template_name: template.name,
       status: "pending",
     }));
     setResults(initial);
@@ -139,29 +139,29 @@ export function DeployFolderWizard({
         : template.name;
 
       setResults((prev) =>
-        prev.map((r) => (r.template_id === template.id ? { ...r, status: "running" } : r))
+        prev.map((deployResult) => (deployResult.template_id === template.id ? { ...deployResult, status: "running" } : deployResult))
       );
 
       try {
-        const res = await applyTemplate({
+        const applyResponse = await applyTemplate({
           id: template.id,
           body: { name: workflowName, user_id: currentUser!.id },
         }).unwrap();
 
         succeeded++;
         setResults((prev) =>
-          prev.map((r) =>
-            r.template_id === template.id
-              ? { ...r, status: "success", workflow_name: res.data?.workflow?.name ?? workflowName }
-              : r
+          prev.map((deployResult) =>
+            deployResult.template_id === template.id
+              ? { ...deployResult, status: "success", workflow_name: applyResponse.data?.workflow?.name ?? workflowName }
+              : deployResult
           )
         );
-      } catch (err: unknown) {
+      } catch (error: unknown) {
         failed++;
-        const msg = err instanceof Error ? err.message : "Could not create workflow";
+        const errorMessage = error instanceof Error ? error.message : "Could not create workflow";
         setResults((prev) =>
-          prev.map((r) =>
-            r.template_id === template.id ? { ...r, status: "error", error: msg } : r
+          prev.map((deployResult) =>
+            deployResult.template_id === template.id ? { ...deployResult, status: "error", error: errorMessage } : deployResult
           )
         );
       }
@@ -193,7 +193,7 @@ export function DeployFolderWizard({
     >
       <div
         className="flex max-h-[90vh] w-full max-w-[640px] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
@@ -232,24 +232,24 @@ export function DeployFolderWizard({
                   {folderTemplates.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No templates.</p>
                   ) : (
-                    folderTemplates.map((tpl) => (
-                      <div key={tpl.id} className="flex items-center justify-between gap-2">
-                        <span className="truncate text-sm text-foreground">{tpl.name}</span>
+                    folderTemplates.map((folderTemplate) => (
+                      <div key={folderTemplate.id} className="flex items-center justify-between gap-2">
+                        <span className="truncate text-sm text-foreground">{folderTemplate.name}</span>
                         <span
                           className={cn(
                             "shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
-                            tpl.status === "active"
+                            folderTemplate.status === "active"
                               ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                               : "bg-muted text-muted-foreground"
                           )}
                         >
-                          {tpl.status}
+                          {folderTemplate.status}
                         </span>
                       </div>
                     ))
                   )}
                 </div>
-                {folderTemplates.some((t) => t.status !== "active") && (
+                {folderTemplates.some((template) => template.status !== "active") && (
                   <p className="mt-1.5 text-xs text-muted-foreground">
                     Only active templates will be deployed.
                   </p>
@@ -349,13 +349,13 @@ export function DeployFolderWizard({
                           <div className="text-xs text-amber-700 dark:text-amber-300">
                             <p className="font-semibold">
                               {missingIntegrations.length === 1
-                                ? `${ALL_INTEGRATIONS.find((a) => a.key === missingIntegrations[0])?.label ?? missingIntegrations[0]} is not connected`
+                                ? `${ALL_INTEGRATIONS.find((integration) => integration.key === missingIntegrations[0])?.label ?? missingIntegrations[0]} is not connected`
                                 : `${missingIntegrations.length} integrations not connected`}
                             </p>
                             <p className="mt-0.5">
                               Workflows will be created as <strong>drafts</strong>. Connect{" "}
                               {missingIntegrations
-                                .map((k) => ALL_INTEGRATIONS.find((a) => a.key === k)?.label ?? k)
+                                .map((integrationKey) => ALL_INTEGRATIONS.find((integration) => integration.key === integrationKey)?.label ?? integrationKey)
                                 .join(", ")}{" "}
                               from the Connections page before activating.
                             </p>
@@ -380,7 +380,7 @@ export function DeployFolderWizard({
                 </label>
                 <Input
                   value={namePrefix}
-                  onChange={(e) => setNamePrefix(e.target.value)}
+                  onChange={(event) => setNamePrefix(event.target.value)}
                   placeholder='e.g. "Acme" → "Acme — Welcome Email"'
                 />
               </div>
@@ -428,42 +428,42 @@ export function DeployFolderWizard({
               )}
 
               <div className="space-y-1.5">
-                {results.map((r) => (
+                {results.map((deployResult) => (
                   <div
-                    key={r.template_id}
+                    key={deployResult.template_id}
                     className={cn(
                       "flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors",
-                      r.status === "error"
+                      deployResult.status === "error"
                         ? "border-destructive/30 bg-destructive/5"
-                        : r.status === "success"
+                        : deployResult.status === "success"
                         ? "border-emerald-500/30 bg-emerald-500/5"
-                        : r.status === "running"
+                        : deployResult.status === "running"
                         ? "border-primary/30 bg-primary/5"
                         : "border-border/40 bg-muted/20"
                     )}
                   >
                     <div className="mt-0.5 h-4 w-4 shrink-0">
-                      {r.status === "running" && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
-                      {r.status === "success" && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-                      {r.status === "error" && <AlertCircle className="h-4 w-4 text-destructive" />}
-                      {r.status === "pending" && (
+                      {deployResult.status === "running" && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+                      {deployResult.status === "success" && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+                      {deployResult.status === "error" && <AlertCircle className="h-4 w-4 text-destructive" />}
+                      {deployResult.status === "pending" && (
                         <div className="h-4 w-4 rounded-full border-2 border-border/60" />
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-foreground">
-                        {r.template_name}
+                        {deployResult.template_name}
                       </p>
-                      {r.status === "success" && r.workflow_name && (
+                      {deployResult.status === "success" && deployResult.workflow_name && (
                         <p className="truncate text-xs text-muted-foreground">
-                          → {r.workflow_name}{" "}
+                          → {deployResult.workflow_name}{" "}
                           <span className="rounded-sm bg-muted px-1 py-px text-[10px]">draft</span>
                         </p>
                       )}
-                      {r.status === "error" && r.error && (
-                        <p className="text-xs text-destructive">{r.error}</p>
+                      {deployResult.status === "error" && deployResult.error && (
+                        <p className="text-xs text-destructive">{deployResult.error}</p>
                       )}
-                      {r.status === "pending" && (
+                      {deployResult.status === "pending" && (
                         <p className="text-xs text-muted-foreground/60">Waiting…</p>
                       )}
                     </div>
@@ -481,7 +481,7 @@ export function DeployFolderWizard({
                         Client connects{" "}
                         <span className="font-medium text-foreground">
                           {missingIntegrations
-                            .map((k) => ALL_INTEGRATIONS.find((a) => a.key === k)?.label ?? k)
+                            .map((integrationKey) => ALL_INTEGRATIONS.find((integration) => integration.key === integrationKey)?.label ?? integrationKey)
                             .join(", ")}
                         </span>
                       </li>

@@ -15,8 +15,8 @@ export const COMMUSOFT_OPPORTUNITY_ARRAY_KEYS = [
 /**
  * Extract first string value from query parameter (array or single value).
  */
-export function firstQueryValue(v: unknown): string | undefined {
-  const raw = Array.isArray(v) ? v[0] : v;
+export function firstQueryValue(value: unknown): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
   if (typeof raw !== "string") return undefined;
   const trimmed = raw.trim();
   return trimmed || undefined;
@@ -25,8 +25,8 @@ export function firstQueryValue(v: unknown): string | undefined {
 /**
  * Parse query parameter as integer.
  */
-export function toInt(v: unknown): number | undefined {
-  const raw = firstQueryValue(v);
+export function toInt(value: unknown): number | undefined {
+  const raw = firstQueryValue(value);
   if (!raw) return undefined;
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) ? parsed : undefined;

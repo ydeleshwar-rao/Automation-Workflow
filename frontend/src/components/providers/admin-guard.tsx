@@ -8,13 +8,13 @@ import type { RootState } from "@/src/store/store"
 /**
  * Client-side gate for /admin/* routes.
  * Reads role from the Redux access slice (already populated by AccessBootstrap)
- * instead of doing a server-side Supabase call, which previously caused
+ * instead of doing a server-side auth call, which previously caused
  * blank _rsc=xxx responses on soft-navigation because redirect() ran inside
  * an async Suspense layout.
  */
 export function AdminGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter()
-  const { user, status } = useSelector((s: RootState) => s.access)
+  const { user, status } = useSelector((state: RootState) => state.access)
 
   useEffect(() => {
     if (status !== "ready") return

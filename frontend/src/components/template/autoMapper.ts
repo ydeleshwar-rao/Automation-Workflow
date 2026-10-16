@@ -86,7 +86,7 @@ export function autoMapFields(
   }
 
   const fuse = new Fuse(
-    payloadKeys.map((k) => ({ original: k, normalized: toSnakeCase(k) })),
+    payloadKeys.map((key) => ({ original: key, normalized: toSnakeCase(key) })),
     {
       keys: ["normalized"],
       threshold: FUZZY_MATCH_THRESHOLD,

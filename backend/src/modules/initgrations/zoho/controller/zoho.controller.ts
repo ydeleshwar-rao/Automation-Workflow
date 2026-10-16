@@ -51,51 +51,7 @@ export class ZohoController {
     return ApiResponse(res, 200, "Zoho Inventory disconnected successfully", data);
   };
 
-  // ─── Sync ─────────────────────────────────────────────────────────────
-
-  static syncAll = async (req: Request, res: Response) => {
-    try {
-      const userId = await getUserId(req);
-      const result = await ZohoService.syncAll(userId);
-      const statusCode = result.overall === "failed" ? 500 : 200;
-      const message =
-        result.overall === "success"
-          ? "Full sync completed successfully"
-          : result.overall === "partial"
-          ? `Partial sync — failed: ${result.failedEntities.join(", ")}`
-          : "Sync failed for all resources";
-
-      return res.status(statusCode).json({ success: result.overall !== "failed", message, data: result });
-    } catch (err: any) {
-      return res.status(500).json({ success: false, message: err.message ?? "Sync failed" });
-    }
-  };
-
-  static syncContacts = async (req: Request, res: Response) => {
-    const userId = await getUserId(req);
-    const data = await ZohoService.syncContacts(userId);
-    return ApiResponse(res, 200, "Contacts synced", data);
-  };
-
-  static syncItems = async (req: Request, res: Response) => {
-    const userId = await getUserId(req);
-    const data = await ZohoService.syncItems(userId);
-    return ApiResponse(res, 200, "Items synced", data);
-  };
-
-  static syncInvoices = async (req: Request, res: Response) => {
-    const userId = await getUserId(req);
-    const data = await ZohoService.syncInvoices(userId);
-    return ApiResponse(res, 200, "Invoices synced", data);
-  };
-
-  static syncSalesorders = async (req: Request, res: Response) => {
-    const userId = await getUserId(req);
-    const data = await ZohoService.syncSalesorders(userId);
-    return ApiResponse(res, 200, "Sales orders synced", data);
-  };
-
-  // ─── Triggers: Get from DB ────────────────────────────────────────────
+  // ─── Triggers: live reads from Zoho ───────────────────────────────────
 
   static getContacts = async (req: Request, res: Response) => {
     const userId = await getUserId(req);

@@ -7,14 +7,14 @@ import { API_ROUTES } from "@/src/constants/api.constants";
 import { persistLoginResponse } from "@/src/services/auth.service";
 
 // ── Password strength ─────────────────────────────────────────────────────────
-function getStrength(p: string): { score: number; label: string; color: string } {
-  if (!p) return { score: 0, label: "", color: "" };
+function getStrength(password: string): { score: number; label: string; color: string } {
+  if (!password) return { score: 0, label: "", color: "" };
   let score = 0;
-  if (p.length >= 8)            score++;
-  if (p.length >= 12)           score++;
-  if (/[A-Z]/.test(p))         score++;
-  if (/[0-9]/.test(p))         score++;
-  if (/[^A-Za-z0-9]/.test(p)) score++;
+  if (password.length >= 8)            score++;
+  if (password.length >= 12)           score++;
+  if (/[A-Z]/.test(password))         score++;
+  if (/[0-9]/.test(password))         score++;
+  if (/[^A-Za-z0-9]/.test(password)) score++;
   if (score <= 1) return { score, label: "Weak",        color: "bg-red-500"     };
   if (score <= 2) return { score, label: "Fair",        color: "bg-amber-400"   };
   if (score <= 3) return { score, label: "Good",        color: "bg-yellow-400"  };
@@ -35,8 +35,8 @@ export function SetupAdminForm() {
 
   const strength = getStrength(password);
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     if (isLoading) return;
 
     if (password.length < 8) {
@@ -112,7 +112,7 @@ export function SetupAdminForm() {
               required
               autoComplete="name"
               value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
+              onChange={(event) => setFullName(event.target.value)}
               className="w-full bg-background border border-border/70 rounded-xl pl-10 pr-4 py-3 text-foreground placeholder:text-muted-foreground text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
             />
           </div>
@@ -132,7 +132,7 @@ export function SetupAdminForm() {
               required
               autoComplete="organization"
               value={organizationName}
-              onChange={(e) => setOrganizationName(e.target.value)}
+              onChange={(event) => setOrganizationName(event.target.value)}
               className="w-full bg-background border border-border/70 rounded-xl pl-10 pr-4 py-3 text-foreground placeholder:text-muted-foreground text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
             />
           </div>
@@ -152,7 +152,7 @@ export function SetupAdminForm() {
               required
               autoComplete="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(event) => setEmail(event.target.value)}
               className="w-full bg-background border border-border/70 rounded-xl pl-10 pr-4 py-3 text-foreground placeholder:text-muted-foreground text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
             />
           </div>
@@ -172,12 +172,12 @@ export function SetupAdminForm() {
               required
               autoComplete="new-password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(event) => setPassword(event.target.value)}
               className="w-full bg-background border border-border/70 rounded-xl pl-10 pr-11 py-3 text-foreground placeholder:text-muted-foreground text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
             />
             <button
               type="button"
-              onClick={() => setShowPassword((v) => !v)}
+              onClick={() => setShowPassword((prev) => !prev)}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1"
               tabIndex={-1}
             >
@@ -189,11 +189,11 @@ export function SetupAdminForm() {
           {password && (
             <div className="space-y-1.5 mt-0.5 animate-in fade-in duration-200">
               <div className="flex gap-1">
-                {[1, 2, 3, 4, 5].map((n) => (
+                {[1, 2, 3, 4, 5].map((segment) => (
                   <div
-                    key={n}
+                    key={segment}
                     className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-                      n <= strength.score ? strength.color : "bg-border"
+                      segment <= strength.score ? strength.color : "bg-border"
                     }`}
                   />
                 ))}
@@ -224,7 +224,7 @@ export function SetupAdminForm() {
               required
               autoComplete="new-password"
               value={confirmPassword}
-              onChange={(e) => setConfirm(e.target.value)}
+              onChange={(event) => setConfirm(event.target.value)}
               className={`w-full bg-background border rounded-xl pl-10 pr-11 py-3 text-foreground placeholder:text-muted-foreground text-sm outline-none focus:ring-2 transition-all ${
                 confirmPassword && confirmPassword !== password
                   ? "border-red-400 focus:border-red-400 focus:ring-red-400/20"
@@ -233,7 +233,7 @@ export function SetupAdminForm() {
             />
             <button
               type="button"
-              onClick={() => setShowConfirm((v) => !v)}
+              onClick={() => setShowConfirm((prev) => !prev)}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1"
               tabIndex={-1}
             >

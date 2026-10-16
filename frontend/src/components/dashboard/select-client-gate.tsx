@@ -17,7 +17,7 @@ import { useSelector } from "react-redux";
 import type { RootState } from "@/src/store/store";
 
 export function SelectClientGate({ children }: { children: React.ReactNode }) {
-  const { status } = useSelector((s: RootState) => s.access);
+  const { status } = useSelector((state: RootState) => state.access);
 
   // Once ready at least once, never block children again for a transient
   // re-bootstrap (prevents sidebar clicks from looking like they don't route).

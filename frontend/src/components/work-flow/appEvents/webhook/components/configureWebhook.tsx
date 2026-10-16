@@ -10,7 +10,7 @@ const CHILD_KEY_FIELD = "childKey";
 
 interface WebhookConfigureStepProps {
   childKey: string;
-  setChildKey: (val: string) => void;
+  setChildKey: (value: string) => void;
   triggerTestPayload?: unknown;
 }
 
@@ -28,9 +28,9 @@ export function WebhookConfigureStep({
   }, [triggerTestPayload]);
 
   const cleanedFlat = Object.fromEntries(
-    Object.entries(webhookFlat).map(([k, v]) => [
-      k.replace(/^[\w-]+?__/, ""),
-      v,
+    Object.entries(webhookFlat).map(([key, value]) => [
+      key.replace(/^[\w-]+?__/, ""),
+      value,
     ]),
   );
 
@@ -63,7 +63,7 @@ export function WebhookConfigureStep({
         <div className="nm-inset rounded-xl px-3 h-12 flex items-center">
           <input
             value={childKey}
-            onChange={(e) => setChildKey(e.target.value)}
+            onChange={(event) => setChildKey(event.target.value)}
             placeholder="Enter text"
             className="flex-1 bg-transparent text-foreground placeholder:text-muted-foreground text-sm font-medium focus:outline-none"
           />

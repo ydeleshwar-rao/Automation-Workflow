@@ -29,7 +29,7 @@ export function ProfileDropdown({
   const { profile, initials, logout, navigateToAdmin, navigateToProfile } = useUser();
   const isDark = theme === "dark";
 
-  const { user } = useSelector((s: RootState) => s.access);
+  const { user } = useSelector((state: RootState) => state.access);
 
   // Still loading
   if (profile === undefined) {

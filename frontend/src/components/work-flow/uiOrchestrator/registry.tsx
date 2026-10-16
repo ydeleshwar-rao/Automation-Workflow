@@ -81,13 +81,13 @@ export function getIntegration(label: string | undefined): IntegrationDescriptor
 
   // 1. Try exact key match (case-insensitive)
   const exactKey = Object.keys(integrationRegistry).find(
-    (k) => k.toLowerCase() === normalized
+    (registryKey) => registryKey.toLowerCase() === normalized
   );
   if (exactKey) return integrationRegistry[exactKey];
 
   // 2. Try match against the .label property inside descriptors
   const labelMatch = Object.values(integrationRegistry).find(
-    (d) => d.label.toLowerCase() === normalized
+    (descriptor) => descriptor.label.toLowerCase() === normalized
   );
   if (labelMatch) return labelMatch;
 
@@ -95,7 +95,7 @@ export function getIntegration(label: string | undefined): IntegrationDescriptor
   if (normalized.endsWith("s")) {
     const singular = normalized.slice(0, -1);
     const singularMatch = Object.values(integrationRegistry).find(
-      (d) => d.label.toLowerCase() === singular
+      (descriptor) => descriptor.label.toLowerCase() === singular
     );
     if (singularMatch) return singularMatch;
   }

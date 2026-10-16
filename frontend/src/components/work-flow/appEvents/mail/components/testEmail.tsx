@@ -11,7 +11,7 @@ interface MailTestStepProps {
 
 function resolveToken(value: string): string {
   if (typeof value !== "string") return value;
-  return value.replace(/\{\{map:[^|]*\|[^|]*\|([^}]*)\}\}/g, (_, val) => val);
+  return value.replace(/\{\{map:[^|]*\|[^|]*\|([^}]*)\}\}/g, (_, fallback) => fallback);
 }
 
 function stripHtml(html: string): string {
@@ -47,10 +47,10 @@ export function MailTestStep({ data, testStatus }: MailTestStepProps) {
   const [search, setSearch] = useState("");
 
   const entries = Object.entries(data)
-    .map(([key, val]) => ({
+    .map(([key, value]) => ({
       key,
       label: FIELD_LABELS[key] ?? key,
-      value: typeof val === "string" ? resolveToken(val) : String(val ?? ""),
+      value: typeof value === "string" ? resolveToken(value) : String(value ?? ""),
     }))
     .filter(({ value }) => value !== "")
     .filter(({ label }) =>
@@ -104,7 +104,7 @@ export function MailTestStep({ data, testStatus }: MailTestStepProps) {
           <input
             placeholder="Search fields…"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(event) => setSearch(event.target.value)}
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none font-medium"
           />
         </div>

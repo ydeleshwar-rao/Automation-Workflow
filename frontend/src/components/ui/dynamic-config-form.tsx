@@ -105,7 +105,7 @@ function ConfigSelectField({
   required?: boolean; 
   value: any; 
   onChange: (val: any) => void;
-  onPlusClick?: (e: React.MouseEvent) => void;
+  onPlusClick?: (event: React.MouseEvent) => void;
   onRefresh?: () => void;
   isLoading?: boolean;
   options: FieldOption[];
@@ -115,10 +115,10 @@ function ConfigSelectField({
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const [popupPos, setPopupPos] = useState({ top: 0, right: 0 });
 
-  const selectedOption = options.find(o => String(o.value) === String(value));
+  const selectedOption = options.find(option => String(option.value) === String(value));
 
-  const handleOpenPopup = (e: React.MouseEvent) => {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  const handleOpenPopup = (event: React.MouseEvent) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     setPopupPos({ top: rect.top, right: window.innerWidth - rect.left + 10 });
     setIsPopupOpen(true);
   };
@@ -144,9 +144,9 @@ function ConfigSelectField({
             <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-[#4f46e5]" />
             {onPlusClick && (
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onPlusClick(e);
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onPlusClick(event);
                 }}
                 className="w-7 h-7 flex items-center justify-center rounded-md border border-slate-100 bg-slate-50 text-slate-400 hover:text-[#4f46e5] hover:border-[#4f46e5] hover:bg-white transition-all shadow-sm"
                 type="button"
@@ -170,7 +170,7 @@ function ConfigSelectField({
             {
               id: "options",
               title: "Options",
-              items: options.map(o => ({ id: String(o.value), label: o.label })),
+              items: options.map(option => ({ id: String(option.value), label: option.label })),
               defaultOpen: true
             }
           ]}
@@ -228,8 +228,8 @@ export function DynamicConfigForm({
     });
   }, [searchQuery, filterType, fields, values]);
 
-  const handlePlusClick = (e: React.MouseEvent, fieldName: string) => {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  const handlePlusClick = (event: React.MouseEvent, fieldName: string) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     setPopupState({
       isOpen: true,
       fieldName,
@@ -268,8 +268,8 @@ export function DynamicConfigForm({
     { id: "Empty", label: "Empty" },
   ], []);
 
-  const handleFilterSelectOpen = (e: React.MouseEvent) => {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  const handleFilterSelectOpen = (event: React.MouseEvent) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     setPopupState({
       isOpen: true,
       fieldName: "filterType",
@@ -294,7 +294,7 @@ export function DynamicConfigForm({
               type="text"
               placeholder="Search fields"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(event) => setSearchQuery(event.target.value)}
               className="w-full h-11 pl-10 pr-4 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#4f46e5]/20 focus:border-[#4f46e5] transition-all text-sm font-medium text-slate-900 shadow-sm"
             />
           </div>
@@ -350,7 +350,7 @@ export function DynamicConfigForm({
                 required={field.required}
                 value={values[field.name]}
                 onChange={(val) => onChange(field.name, val)}
-                onPlusClick={(e) => handlePlusClick(e, field.name)}
+                onPlusClick={(event) => handlePlusClick(event, field.name)}
                 onRefresh={onRefresh}
                 isLoading={isLoading}
                 options={field.options || []}
@@ -366,7 +366,7 @@ export function DynamicConfigForm({
               required={field.required}
               value={String(values[field.name] ?? "")}
               onChange={(val) => onChange(field.name, val)}
-              onPlusClick={(e) => handlePlusClick(e, field.name)}
+              onPlusClick={(event) => handlePlusClick(event, field.name)}
               placeholder={field.placeholder || "Enter text or insert data..."}
             />
           );

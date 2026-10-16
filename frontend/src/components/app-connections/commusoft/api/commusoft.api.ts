@@ -33,8 +33,4 @@ export const commusoftApi = {
     const { data } = await axiosInstance.get<unknown[]>(API_ROUTES.COMMUSOFT.GET_ALL_JOBS);
     return data;
   },
-
-  sync: async (): Promise<void> => {
-    await axiosInstance.post(API_ROUTES.COMMUSOFT.SYNC, {});
-  },
 };

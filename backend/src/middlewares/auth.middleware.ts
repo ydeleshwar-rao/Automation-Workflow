@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { ApiError } from "../utils/ApiError.js";
-import { supabase } from "../config/db.config.js";
-import { verifyAccessToken, verifyRefreshToken } from "../modules/auth/jwt.js";
+import { verifyAccessToken, verifyRefreshToken, type UserRole } from "../modules/auth/jwt.js";
+import { profileRepository } from "../modules/auth/repositories/profile.repository.js";
 
 function readCookie(cookieHeader: string | undefined, name: string): string | null {
   if (!cookieHeader) return null;
@@ -13,31 +13,18 @@ function readCookie(cookieHeader: string | undefined, name: string): string | nu
 async function userFromRefreshToken(refreshToken: string) {
   const { sub: userId } = verifyRefreshToken(refreshToken);
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("id,email,role,organization_id,is_active")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (profileError) throw new ApiError(500, profileError.message);
+  const profile = await profileRepository.findSessionProfile(userId);
   if (!profile || profile.is_active === false) {
     throw new ApiError(401, "User is inactive or not found");
   }
 
-  const { data: permissions, error: permissionsError } = await supabase
-    .from("page_permissions")
-    .select("page_key,can_view")
-    .eq("user_id", userId)
-    .eq("can_view", true);
-
-  if (permissionsError) throw new ApiError(500, permissionsError.message);
-
+  const permissions = profile.role === "admin" ? ["*"] : await profileRepository.findViewablePageKeys(userId);
   return {
     id: profile.id,
     email: profile.email,
-    role: profile.role,
+    role: profile.role as UserRole,
     organizationId: profile.organization_id,
-    permissions: profile.role === "admin" ? ["*"] : (permissions ?? []).map((permission) => permission.page_key),
+    permissions,
   };
 }
 
@@ -78,13 +65,13 @@ export async function authMiddleware(
       };
       next();
       return;
-    } catch (err) {
-      if (!refreshToken) throw err;
+    } catch (error) {
+      if (!refreshToken) throw error;
       req.user = await userFromRefreshToken(refreshToken);
       next();
       return;
     }
-  } catch (err) {
-    next(err);
+  } catch (error) {
+    next(error);
   }
 }

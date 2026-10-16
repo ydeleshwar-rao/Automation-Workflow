@@ -92,7 +92,7 @@ function WorkflowCard({
           Open Editor
         </button>
         <button
-          onClick={(e) => { e.stopPropagation(); onDelete(wf.id); }}
+          onClick={(event) => { event.stopPropagation(); onDelete(wf.id); }}
           className="nm-btn h-9 w-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive transition-all"
         >
           <Trash2 className="w-3.5 h-3.5" />
@@ -117,8 +117,8 @@ export function AiWorkflowList() {
 
   const workflows: AiWorkflowListItem[] = (data?.data ?? []) as AiWorkflowListItem[];
 
-  const filtered = workflows.filter((w) =>
-    w.name.toLowerCase().includes(search.toLowerCase())
+  const filtered = workflows.filter((workflow) =>
+    workflow.name.toLowerCase().includes(search.toLowerCase())
   );
 
   const handleCreate = async () => {
@@ -184,7 +184,7 @@ export function AiWorkflowList() {
           <input
             placeholder="Search workflows…"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(event) => setSearch(event.target.value)}
             className="flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none font-medium"
           />
         </div>

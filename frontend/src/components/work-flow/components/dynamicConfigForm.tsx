@@ -30,11 +30,11 @@ interface DynamicConfigFormProps {
   onRefresh?: () => void;
   isLoading?: boolean;
   /** When provided, overrides the internal variable popup — called instead of opening SelectionPopup */
-  onPlusClick?: (e: React.MouseEvent, fieldName: string) => void;
+  onPlusClick?: (event: React.MouseEvent, fieldName: string) => void;
   searchQuery?: string;
-  onSearchChange?: (val: string) => void;
+  onSearchChange?: (value: string) => void;
   filterType?: string;
-  onFilterChange?: (val: string) => void;
+  onFilterChange?: (value: string) => void;
 }
 
 function getFieldValue(values: Record<string, any>, name: string): any {
@@ -86,7 +86,7 @@ function ConfigRadioField({
   label: string; 
   required?: boolean; 
   value: any; 
-  onChange: (val: any) => void;
+  onChange: (nextValue: any) => void;
   options: FieldOption[];
   error?: string;
 }) {
@@ -125,8 +125,8 @@ function ConfigSelectField({
   label: string; 
   required?: boolean; 
   value: any; 
-  onChange: (val: any) => void;
-  onPlusClick?: (e: React.MouseEvent) => void;
+  onChange: (nextValue: any) => void;
+  onPlusClick?: (event: React.MouseEvent) => void;
   onRefresh?: () => void;
   isLoading?: boolean;
   options: FieldOption[];
@@ -136,10 +136,10 @@ function ConfigSelectField({
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const [popupPos, setPopupPos] = useState({ top: 0, right: 0 });
 
-  const selectedOption = options.find(o => String(o.value) === String(value));
+  const selectedOption = options.find(option => String(option.value) === String(value));
 
-  const handleOpenPopup = (e: React.MouseEvent) => {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  const handleOpenPopup = (event: React.MouseEvent) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     setPopupPos({ top: rect.top, right: window.innerWidth - rect.left + 10 });
     setIsPopupOpen(true);
   };
@@ -165,9 +165,9 @@ function ConfigSelectField({
             <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
             {onPlusClick && (
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onPlusClick(e);
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onPlusClick(event);
                 }}
                 className="nm-btn w-7 h-7 flex items-center justify-center rounded-xl text-muted-foreground hover:text-primary transition-all"
                 type="button"
@@ -191,7 +191,7 @@ function ConfigSelectField({
             {
               id: "options",
               title: "Options",
-              items: options.map(o => ({ id: String(o.value), label: o.label })),
+              items: options.map(option => ({ id: String(option.value), label: option.label })),
               defaultOpen: true
             }
           ]}
@@ -252,12 +252,12 @@ export function DynamicConfigForm({
     });
   }, [searchQuery, filterType, fields, values]);
 
-  const handlePlusClick = (e: React.MouseEvent, fieldName: string) => {
+  const handlePlusClick = (event: React.MouseEvent, fieldName: string) => {
     if (onPlusClick) {
-      onPlusClick(e, fieldName);
+      onPlusClick(event, fieldName);
       return;
     }
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     setPopupState({
       isOpen: true,
       fieldName,
@@ -287,8 +287,8 @@ export function DynamicConfigForm({
     }
   };
 
-  const handleFilterSelectOpen = (e: React.MouseEvent) => {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  const handleFilterSelectOpen = (event: React.MouseEvent) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     setPopupState({
       isOpen: true,
       fieldName: "filterType",
@@ -312,7 +312,7 @@ export function DynamicConfigForm({
                 label={field.label}
                 required={field.required}
                 value={getFieldValue(values, field.name)}
-                onChange={(val) => onChange(field.name, val)}
+                onChange={(value) => onChange(field.name, value)}
                 options={field.options || []}
               />
             );
@@ -325,8 +325,8 @@ export function DynamicConfigForm({
                 label={field.label}
                 required={field.required}
                 value={getFieldValue(values, field.name)}
-                onChange={(val) => onChange(field.name, val)}
-                onPlusClick={(e) => handlePlusClick(e, field.name)}
+                onChange={(value) => onChange(field.name, value)}
+                onPlusClick={(event) => handlePlusClick(event, field.name)}
                 onRefresh={onRefresh}
                 isLoading={isLoading}
                 options={field.options || []}
@@ -342,8 +342,8 @@ export function DynamicConfigForm({
                 label={field.label}
                 required={field.required}
                 value={String(getFieldValue(values, field.name) ?? "")}
-                onChange={(val) => onChange(field.name, val)}
-                onPlusClick={(e) => handlePlusClick(e, field.name)}
+                onChange={(value) => onChange(field.name, value)}
+                onPlusClick={(event) => handlePlusClick(event, field.name)}
                 placeholder={field.placeholder || "Enter text or insert data..."}
               />
             );
@@ -355,8 +355,8 @@ export function DynamicConfigForm({
               label={field.label}
               required={field.required}
               value={String(getFieldValue(values, field.name) ?? "")}
-              onChange={(val) => onChange(field.name, val)}
-              onPlusClick={(e) => handlePlusClick(e, field.name)}
+              onChange={(value) => onChange(field.name, value)}
+              onPlusClick={(event) => handlePlusClick(event, field.name)}
               placeholder={field.placeholder || "Enter text or insert data..."}
             />
           );

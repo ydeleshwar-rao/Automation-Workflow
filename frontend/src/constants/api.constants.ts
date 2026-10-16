@@ -1,6 +1,6 @@
 /**
  * API route constants — all calls go to the backend Express server.
- * No direct Supabase calls from frontend.
+ * The frontend never talks to the database directly.
  */
 
 /** Backend origin, e.g. http://localhost:5000 (no path). */
@@ -46,6 +46,7 @@ export const API_ROUTES = {
     DEVELOPER_STATUS: (id: string) => `${B}/access/developers/${id}/status`,
     PERMISSIONS:      (id: string) => `${B}/access/developers/${id}/permissions`,
     PERMISSION:       (id: string, pageKey: string) => `${B}/access/developers/${id}/permissions/${pageKey}`,
+    // Not implemented in the backend yet: create a user with a chosen role and client profile (CreateUserForm).
     ADMINS:           `${B}/access/admins`,
     ADMIN:            (id: string) => `${B}/access/admins/${id}`,
   },
@@ -57,7 +58,6 @@ export const API_ROUTES = {
     STATUS:     "/servicem8/status",
     GET_ALL_JOBS: "/servicem8/getalljobs",
     JOBS:         "/servicem8/listjobs",
-    SYNC:         "/servicem8/sync",
     QUEUES:       "/servicem8/listqueues",
     CATEGORIES:   "/servicem8/listcategories",
     // Workflow action event types (for workflow builder)
@@ -72,7 +72,6 @@ export const API_ROUTES = {
     DISCONNECT:      "/commusoft/disconnect",
     STATUS:          "/commusoft/status",
     GET_ALL_JOBS:    "/commusoft/getalljobs",
-    SYNC:            "/commusoft/sync",
     CUSTOMER_TYPES:  "/commusoft/customertypes",
     CREATE_CUSTOMER: "/commusoft/customers/create",
     ACTION_EVENT_TYPES:    "/automation/action-event-types/commusoft",
@@ -87,7 +86,6 @@ export const API_ROUTES = {
     STATUS:       "/simpro/status",
     GET_ALL_JOBS: "/simpro/getalljobs",
     JOBS:         "/simpro/jobs",
-    SYNC:         "/simpro/sync",
     ACTION_EVENT_TYPES:    "/automation/action-event-types/simpro",
     ACTION_EVENT_TRIGGERS: "/automation/action-event-types/simpro/triggers",
     ACTION_EVENT_ACTIONS:  "/automation/action-event-types/simpro/actions",
@@ -98,7 +96,6 @@ export const API_ROUTES = {
     CONNECT:    "/leadshub/auth/connect",
     DISCONNECT: "/leadshub/auth/disconnect",
     STATUS:     "/leadshub/auth/status",
-    SYNC:       "/leadshub/contacts/sync",
     TEST_ADD_UPDATE_OPPORTUNITY: "/leadshub/opportunities/test/add-update",
     ACTION_EVENT_TYPES:    "/automation/action-event-types/leadshub",
     ACTION_EVENT_TRIGGERS: "/automation/action-event-types/leadshub/triggers",

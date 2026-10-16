@@ -83,7 +83,7 @@ export function EditTemplateModal({ template, isOpen, onClose }: Props) {
     >
       <div
         className="w-full max-w-[480px] overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <h2 className="text-lg font-semibold text-foreground">Edit Template</h2>
@@ -100,14 +100,14 @@ export function EditTemplateModal({ template, isOpen, onClose }: Props) {
             <label className="mb-1.5 block text-sm font-medium text-foreground">
               Name <span className="text-destructive">*</span>
             </label>
-            <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} disabled={isLoading} />
+            <Input autoFocus value={name} onChange={(event) => setName(event.target.value)} disabled={isLoading} />
           </div>
 
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">Description</label>
             <textarea
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(event) => setDescription(event.target.value)}
               rows={3}
               disabled={isLoading}
               className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-transparent focus:ring-2 focus:ring-primary"
@@ -117,11 +117,11 @@ export function EditTemplateModal({ template, isOpen, onClose }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-foreground">Category</label>
-              <Input value={category} onChange={(e) => setCategory(e.target.value)} disabled={isLoading} />
+              <Input value={category} onChange={(event) => setCategory(event.target.value)} disabled={isLoading} />
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-foreground">Tag</label>
-              <Input value={tag} onChange={(e) => setTag(e.target.value)} disabled={isLoading} />
+              <Input value={tag} onChange={(event) => setTag(event.target.value)} disabled={isLoading} />
             </div>
           </div>
 
@@ -130,14 +130,14 @@ export function EditTemplateModal({ template, isOpen, onClose }: Props) {
             <label className="mb-1.5 block text-sm font-medium text-foreground">Folder</label>
             <select
               value={folderId}
-              onChange={(e) => setFolderId(e.target.value)}
+              onChange={(event) => setFolderId(event.target.value)}
               disabled={isLoading}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-transparent focus:ring-2 focus:ring-primary"
             >
               <option value="">— Unfiled —</option>
-              {folders.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
+              {folders.map((folder) => (
+                <option key={folder.id} value={folder.id}>
+                  {folder.name}
                 </option>
               ))}
             </select>
@@ -147,7 +147,7 @@ export function EditTemplateModal({ template, isOpen, onClose }: Props) {
             <label className="mb-1.5 block text-sm font-medium text-foreground">Status</label>
             <select
               value={status}
-              onChange={(e) => setStatus(e.target.value as TemplateStatus)}
+              onChange={(event) => setStatus(event.target.value as TemplateStatus)}
               disabled={isLoading}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-transparent focus:ring-2 focus:ring-primary"
             >
@@ -160,7 +160,7 @@ export function EditTemplateModal({ template, isOpen, onClose }: Props) {
             <input
               type="checkbox"
               checked={isPublic}
-              onChange={(e) => setIsPublic(e.target.checked)}
+              onChange={(event) => setIsPublic(event.target.checked)}
               disabled={isLoading}
               className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
             />

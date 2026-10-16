@@ -1,7 +1,9 @@
-import { supabase } from "../../../../config/db.config.js";
-import { normalizeDatabaseError } from "../../../../lib/errors/normalize-database-error.js";
-import { toApiError } from "../../../../lib/errors/to-api-error.js";
-import { CommusoftService } from "./commusoft.service.js";
+import { CommusoftService, type CommusoftJobFilters } from "./commusoft.service.js";
+
+const DEFAULT_PAGE_LIMIT = 50;
+/** Commusoft "starting record" is 1-based. */
+const FIRST_STARTING_RECORD = 1;
+const PHONE_MATCH_DIGITS = 9;
 
 export type JobDetailDataBlock = {
   contact: {
@@ -127,8 +129,8 @@ export class CommusoftSummaryService {
    */
   private static buildAddress(...parts: (string | null | undefined)[]): string | null {
     const result = parts
-      .map(p => p?.trim())
-      .filter(p => p && p !== "")
+      .map(part => part?.trim())
+      .filter(part => part && part !== "")
       .join(", ");
     return result || null;
   }
@@ -266,7 +268,7 @@ export class CommusoftSummaryService {
   }
 
   /**
-   * Map raw commusoft_jobs table response to JobDetailDataBlock
+   * Map a raw Commusoft /jobs record to JobDetailDataBlock
    */
   static mapToJobDetailBlock(job: Record<string, any>): JobDetailDataBlock {
     return {
@@ -368,77 +370,20 @@ export class CommusoftSummaryService {
   }
 
   /**
-   * Build job detail block from supabase
-   */
-  static async buildJobDetailBlock(userId: string): Promise<JobDetailDataBlock[]>;
-  static async buildJobDetailBlock(userId: string, jobId: number): Promise<JobDetailDataBlock>;
-  static async buildJobDetailBlock(
-    userId: string,
-    jobId?: number
-  ): Promise<JobDetailDataBlock | JobDetailDataBlock[]> {
-
-    if (jobId !== undefined) {
-      const { data: job, error } = await supabase
-        .from("commusoft_jobs")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("commusoft_id", jobId)
-        .maybeSingle();
-
-
-      if (!job) {
-        throw new Error(`Job ${jobId} not found`);
-      }
-
-      return CommusoftSummaryService.mapToJobDetailBlock(job);
-    }
-
-    const { data: jobs, error } = await supabase
-      .from("commusoft_jobs")
-      .select("*")
-      .eq("user_id", userId)
-      .order("Job Date", { ascending: false });
-
-    return (jobs ?? []).map(job => CommusoftSummaryService.mapToJobDetailBlock(job));
-  }
-
-  /**
-   * Get single job details
-   */
-  static async getJobDetails(userId: string, jobId: number) {
-
-    const data = await CommusoftSummaryService.buildJobDetailBlock(userId, jobId);
-
-    return {
-      success: true,
-      data
-    };
-  }
-
-   static async getAllJobDetails(
-    userId: string,
-  ){
-      const data = await CommusoftSummaryService.buildJobDetailBlock(userId);
-       return {
-      success: true,
-      data
-    };
-  }
-
-  /**
-   * Fetch jobs with full detail blocks, optionally filtered.
+   * Fetch one page of jobs live from Commusoft and group them by customer.
    *
    * Filter keys are kept identical to ServiceM8's getJobs so the UI sends
    * the same query params for both integrations.
    *
    * Commusoft API mappings:
-   *   status      → status  (ongoing|reserved|on_hold|waiting_for_customer|completed)
-   *   dateFrom    → jobCreatedStartDate
-   *   dateTo      → jobCreatedEndDate
-   *   companyUuid → customerID  (numeric id looked up from commusoft_customers)
+   *   status   → status (only ongoing|reserved|on_hold|waiting_for_customer|completed)
+   *   dateFrom → jobCreatedStartDate
+   *   dateTo   → jobCreatedEndDate
    *
-   * staffUuid / categoryUuid / queueUuid are accepted but have no Commusoft
-   * jobs-API equivalent — they are silently ignored.
+   * staffUuid / categoryUuid / queueUuid / companyUuid have no Commusoft
+   * jobs-API equivalent — they are ignored.
+   *
+   * The cursor is the Commusoft "starting record" of the next page.
    */
   static async getJobs(
     userId: string,
@@ -457,55 +402,59 @@ export class CommusoftSummaryService {
     data: CustomerJobGroup[];
     meta: { has_more: boolean; next_cursor: string | null; total_returned: number };
   }> {
-    const pageLimit = options?.limit ?? 50;
-    const cursor    = options?.cursor;
+    const pageLimit = options?.limit ?? DEFAULT_PAGE_LIMIT;
+    const startingRecord = CommusoftSummaryService.parseCursor(options?.cursor);
 
-    let query = supabase
-      .from("commusoft_jobs")
-      .select("*")
-      .eq("user_id", userId);
+    // One extra record tells us whether another page exists.
+    const jobs = await CommusoftService.fetchJobsPage(
+      userId,
+      { startingRecord, pageSize: pageLimit + 1 },
+      CommusoftSummaryService.toCommusoftJobFilters(filters)
+    );
 
-    // Apply filters directly on local DB — no live Commusoft API call needed
-    if (filters?.dateFrom) query = query.gte("Job Date", filters.dateFrom);
-    if (filters?.dateTo)   query = query.lte("Job Date", filters.dateTo);
-    if (filters?.status) {
-      // Commusoft stores completion as "Is Job Complete" = "Yes" / "No"
-      query = query.eq("Is Job Complete", filters.status.toLowerCase() === "completed" ? "Yes" : "No");
-    }
-    // staffUuid / queueUuid / categoryUuid: no matching Commusoft DB column — ignored
-    // companyUuid: no direct UUID column in commusoft_jobs — ignored
-
-    if (cursor) query = query.lt("Job Date", cursor);
-
-    query = query
-      .order("Job Date", { ascending: false, nullsFirst: false })
-      .limit(pageLimit + 1);
-
-    const { data: rows, error } = await query;
-
-    if (error) {
-      const apiErr = normalizeDatabaseError(error);
-      throw apiErr ?? toApiError(error);
-    }
-
-    const jobs = rows ?? [];
-
-    if (jobs.length === 0) {
-      return { success: true, data: [], meta: { has_more: false, next_cursor: null, total_returned: 0 } };
-    }
-
-    const hasMore    = jobs.length > pageLimit;
+    const hasMore = jobs.length > pageLimit;
     if (hasMore) jobs.pop();
-    const nextCursor = hasMore ? (String(jobs[jobs.length - 1]?.["Job Date"] ?? "") || null) : null;
+    const nextCursor = hasMore ? String(startingRecord + pageLimit) : null;
 
     const blocks = jobs.map((job) => CommusoftSummaryService.mapToJobDetailBlock(job));
-    const data = await CommusoftSummaryService.groupBlocksAndCustomersByCustomer(userId, blocks);
+    const isFirstPage = startingRecord === FIRST_STARTING_RECORD;
+    // Customers without jobs are added once, on the first page, so they are not repeated per page.
+    const data = isFirstPage
+      ? await CommusoftSummaryService.groupBlocksAndCustomersByCustomer(userId, blocks)
+      : CommusoftSummaryService.sortGroups(CommusoftSummaryService.groupBlocksByCustomer(blocks));
 
     return {
       success: true,
       data,
       meta: { has_more: hasMore, next_cursor: nextCursor, total_returned: jobs.length },
     };
+  }
+
+  private static parseCursor(cursor: string | undefined): number {
+    const startingRecord = Number.parseInt(cursor ?? "", 10);
+    return Number.isFinite(startingRecord) && startingRecord >= FIRST_STARTING_RECORD
+      ? startingRecord
+      : FIRST_STARTING_RECORD;
+  }
+
+  private static toCommusoftJobFilters(filters?: {
+    status?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }): CommusoftJobFilters {
+    const jobFilters: CommusoftJobFilters = {};
+    const workflowStatus = CommusoftSummaryService.normalizeStatus(filters?.status);
+    if (workflowStatus && CommusoftSummaryService.WORKFLOW_STATUSES.has(workflowStatus)) {
+      jobFilters.status = workflowStatus;
+    }
+    if (filters?.dateFrom) jobFilters.dateFrom = filters.dateFrom;
+    if (filters?.dateTo) jobFilters.dateTo = filters.dateTo;
+    return jobFilters;
+  }
+
+  private static normalizeStatus(status: string | undefined): string | null {
+    if (!status?.trim()) return null;
+    return status.trim().toLowerCase().replace(/[\s-]+/g, "_");
   }
 
   static groupBlocksByCustomer(blocks: JobDetailDataBlock[]): CustomerJobGroup[] {
@@ -538,6 +487,7 @@ export class CommusoftSummaryService {
     return Array.from(groups.values());
   }
 
+  /** Groups the job blocks by customer and adds the customers (fetched live) that have no jobs. */
   static async groupBlocksAndCustomersByCustomer(
     userId: string,
     blocks: JobDetailDataBlock[]
@@ -555,70 +505,51 @@ export class CommusoftSummaryService {
       groups.set(key, group);
     }
 
-    const { data: customers, error } = await supabase
-      .from("commusoft_customers")
-      .select("*")
-      .eq("user_id", userId);
+    const customers = await CommusoftService.getCustomers(userId);
 
-    if (error) {
-      const apiErr = normalizeDatabaseError(error);
-      throw apiErr ?? toApiError(error);
-    }
-
-    for (const customer of customers ?? []) {
+    for (const customer of customers) {
       const key = CommusoftSummaryService.customerKeyFromRow(customer);
       if (!key || groups.has(key)) continue;
       groups.set(key, CommusoftSummaryService.mapCustomerRowToGroup(customer));
     }
 
-    return Array.from(groups.values()).sort((a, b) => {
-      const aHasJobs = a.jobs.length > 0 ? 0 : 1;
-      const bHasJobs = b.jobs.length > 0 ? 0 : 1;
-      if (aHasJobs !== bHasJobs) return aHasJobs - bHasJobs;
-      return String(a.contact?.name ?? "").localeCompare(String(b.contact?.name ?? ""));
+    return CommusoftSummaryService.sortGroups(Array.from(groups.values()));
+  }
+
+  /** Customers with jobs first, then alphabetically by contact name. */
+  private static sortGroups(groups: CustomerJobGroup[]): CustomerJobGroup[] {
+    return groups.sort((first, second) => {
+      const firstHasJobs = first.jobs.length > 0 ? 0 : 1;
+      const secondHasJobs = second.jobs.length > 0 ? 0 : 1;
+      if (firstHasJobs !== secondHasJobs) return firstHasJobs - secondHasJobs;
+      return String(first.contact?.name ?? "").localeCompare(String(second.contact?.name ?? ""));
     });
   }
 
   /**
-   * Get all job details by customer email or phone
+   * Get all job details by customer email or phone, searched live in Commusoft.
+   * Phones match on their last 9 digits, so "+44 7734328664" and "07734328664" are the same number.
    */
   static async getJobDetailsListByEmailOrPhone(
     userId: string,
     email?: string,
     phone?: string
   ) {
+    const normalizedEmail = email?.trim().toLowerCase() ?? "";
+    const phoneDigits = CommusoftSummaryService.lastPhoneDigits(phone);
 
-    const normalizedEmail = typeof email === "string" ? email.trim() : "";
-    // Strip all non-digit characters, then use last 9 digits for flexible matching
-    const digitsOnly = typeof phone === "string" ? phone.replace(/\D/g, "") : "";
-    const normalizedPhone = digitsOnly.length >= 9 ? `%${digitsOnly.slice(-9)}` : digitsOnly ? `%${digitsOnly}` : "";
-//     Input ' 44 7734328664' → digits only: 447734328664 → last 9: 734328664 → query pattern: %734328664
-// The ilike with % prefix will match any DB value ending in those digits — covers +44 7734328664, 07734328664, 447734328664, etc.
-      if (!normalizedEmail && !normalizedPhone) return { success: true, data: [] };
+    if (!normalizedEmail && !phoneDigits) return { success: true, data: [] };
 
-       let query = supabase
-      .from("commusoft_jobs")
-      .select("*")
-      .eq("user_id", userId)
-       if (normalizedEmail && normalizedPhone) {
-      query = query.or(
-        `Customer Email.ilike.${normalizedEmail},Customer Mobile.ilike.${normalizedPhone}`
-      );
-    } else if (normalizedEmail) {
-      query = query.ilike("Customer Email", normalizedEmail);
-    } else {
-      query = query.ilike("Customer Mobile", normalizedPhone);
-    }
-    query = query.order("Job Date", { ascending: false });
+    const allJobs = await CommusoftService.fetchAllJobs(userId);
+    const matchingJobs = allJobs.filter((job) => {
+      const jobEmail = String(job["Customer Email"] ?? "").trim().toLowerCase();
+      const jobPhoneDigits = CommusoftSummaryService.lastPhoneDigits(String(job["Customer Mobile"] ?? ""));
+      const isEmailMatch = Boolean(normalizedEmail) && jobEmail === normalizedEmail;
+      const isPhoneMatch = Boolean(phoneDigits) && jobPhoneDigits.endsWith(phoneDigits);
+      return isEmailMatch || isPhoneMatch;
+    });
 
-    const { data: jobs, error: jobsError } = await query;
-    if (jobsError) {
-      const apiError = normalizeDatabaseError(jobsError);
-      //throw apiError ?? toApiError(jobsError);
-      throw jobsError;
-    }
-
-    if (!jobs?.length) {
+    if (matchingJobs.length === 0) {
       return {
         success: false,
         message: "No job records found for the provided email or phone.",
@@ -626,7 +557,7 @@ export class CommusoftSummaryService {
       };
     }
 
-    const jobDetails: JobDetailDataBlock[] = jobs.map(job =>
+    const jobDetails: JobDetailDataBlock[] = matchingJobs.map((job) =>
       CommusoftSummaryService.mapToJobDetailBlock(job)
     );
 
@@ -636,5 +567,8 @@ export class CommusoftSummaryService {
     };
   }
 
- 
+  private static lastPhoneDigits(phone: string | undefined): string {
+    const digitsOnly = phone?.replace(/\D/g, "") ?? "";
+    return digitsOnly.slice(-PHONE_MATCH_DIGITS);
+  }
 }

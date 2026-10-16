@@ -25,8 +25,8 @@ export function CredentialsInlinePanel({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!clientId || !username || !password) {
       setError("Please fill in all fields.");
       return;
@@ -87,7 +87,7 @@ export function CredentialsInlinePanel({
                 placeholder="e.g. 20225"
                 className="pl-8 h-9 text-sm rounded-lg bg-white dark:bg-card border-border/60"
                 value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
+                onChange={(event) => setClientId(event.target.value)}
                 disabled={isLoading}
               />
               <Info className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -103,7 +103,7 @@ export function CredentialsInlinePanel({
                 placeholder="Your username"
                 className="pl-8 h-9 text-sm rounded-lg bg-white dark:bg-card border-border/60"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={(event) => setUsername(event.target.value)}
                 disabled={isLoading}
               />
               <User className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -119,7 +119,7 @@ export function CredentialsInlinePanel({
                 placeholder="••••••••"
                 className="pl-8 h-9 text-sm rounded-lg bg-white dark:bg-card border-border/60"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(event) => setPassword(event.target.value)}
                 disabled={isLoading}
               />
               <Lock className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />

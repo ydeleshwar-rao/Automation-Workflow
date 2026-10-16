@@ -40,8 +40,8 @@ function CommusoftConnectForm({ onSuccess }: { onSuccess: () => void }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error,     setError]     = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!clientId || !username || !password) {
       setError("Please fill in all fields.");
       return;
@@ -52,8 +52,8 @@ function CommusoftConnectForm({ onSuccess }: { onSuccess: () => void }) {
       await commusoftApi.connect({ clientId, username, password });
       toast.success("Commusoft connected successfully!");
       onSuccess();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to connect. Check your credentials.");
+    } catch (connectError) {
+      setError(connectError instanceof Error ? connectError.message : "Failed to connect. Check your credentials.");
     } finally {
       setIsLoading(false);
     }
@@ -75,7 +75,7 @@ function CommusoftConnectForm({ onSuccess }: { onSuccess: () => void }) {
             type="text"
             placeholder="Client ID"
             value={clientId}
-            onChange={(e) => setClientId(e.target.value)}
+            onChange={(event) => setClientId(event.target.value)}
             disabled={isLoading}
             className="pl-8 h-9 text-sm"
           />
@@ -86,7 +86,7 @@ function CommusoftConnectForm({ onSuccess }: { onSuccess: () => void }) {
             type="text"
             placeholder="Username"
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            onChange={(event) => setUsername(event.target.value)}
             disabled={isLoading}
             className="pl-8 h-9 text-sm"
           />
@@ -97,7 +97,7 @@ function CommusoftConnectForm({ onSuccess }: { onSuccess: () => void }) {
             type="password"
             placeholder="Password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(event) => setPassword(event.target.value)}
             disabled={isLoading}
             className="pl-8 h-9 text-sm"
           />
@@ -196,9 +196,9 @@ export function ConnectInlineSection({
       }
 
       setIsConnecting(false);
-    } catch (err) {
+    } catch (error) {
       setIsConnecting(false);
-      toast.error(err instanceof Error ? err.message : "Connection failed");
+      toast.error(error instanceof Error ? error.message : "Connection failed");
     }
   };
 

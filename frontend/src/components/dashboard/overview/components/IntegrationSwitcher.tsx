@@ -23,7 +23,7 @@ export function IntegrationSwitcher() {
 
   const options = useMemo(() => {
     const all = listAvailableProviders();
-    return all.filter((p) => status[p.appId]);
+    return all.filter((provider) => status[provider.appId]);
   }, [status]);
 
   if (options.length === 0) return null;
@@ -40,19 +40,19 @@ export function IntegrationSwitcher() {
 
   return (
     <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
-      {options.map((p) => {
-        const isActive = activeApp === p.appId;
+      {options.map((provider) => {
+        const isActive = activeApp === provider.appId;
         return (
           <button
-            key={p.appId}
-            onClick={() => dispatch(setActiveApp(p.appId as AppId))}
+            key={provider.appId}
+            onClick={() => dispatch(setActiveApp(provider.appId as AppId))}
             className={`px-3 py-1 rounded-md text-xs font-semibold transition-all duration-200 ${
               isActive
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {p.label}
+            {provider.label}
           </button>
         );
       })}

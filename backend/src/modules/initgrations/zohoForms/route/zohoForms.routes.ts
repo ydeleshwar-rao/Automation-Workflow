@@ -10,7 +10,7 @@ router.get("/callback",     catchAsync(ZohoFormsController.handleCallback));
 router.get("/status",       catchAsync(ZohoFormsController.connectionStatus));
 router.delete("/disconnect", catchAsync(ZohoFormsController.disconnect));
 
-// ─── Forms (live from Zoho API + syncs to DB) ─────────────────────────────────
+// ─── Forms (live from Zoho API) ───────────────────────────────────────────────
 router.get("/forms",                  catchAsync(ZohoFormsController.listForms));
 router.get("/forms/db",               catchAsync(ZohoFormsController.getFormsFromDb));
 router.get("/forms/:formId",          catchAsync(ZohoFormsController.getFormDetails));
@@ -18,7 +18,6 @@ router.get("/forms/:formId/fields",   catchAsync(ZohoFormsController.getFormFiel
 
 // ─── Submissions ──────────────────────────────────────────────────────────────
 router.get("/submissions",                      catchAsync(ZohoFormsController.getSubmissionsFromDb));
-router.get("/submissions/sync",                 catchAsync(ZohoFormsController.syncAllSubmissions));
 router.get("/forms/:formId/submissions",        catchAsync(ZohoFormsController.getSubmissions));
 
 // ─── Webhook Management ───────────────────────────────────────────────────────

@@ -59,7 +59,7 @@ function parseSegments(value: string): Segment[] {
 }
 
 function serializeSegments(segments: Segment[]): string {
-  return segments.map((s) => (s.kind === "text" ? s.text : s.parsed.raw)).join("");
+  return segments.map((segment) => (segment.kind === "text" ? segment.text : segment.parsed.raw)).join("");
 }
 
 // ---------------------------------------------------------------------------
@@ -73,8 +73,8 @@ interface ConfigFieldProps {
   value: string;
   placeholder?: string;
   required?: boolean;
-  onPlusClick: (e: React.MouseEvent) => void;
-  onChange: (val: string) => void;
+  onPlusClick: (event: React.MouseEvent) => void;
+  onChange: (value: string) => void;
   info?: string;
   error?: string;
 }
@@ -122,18 +122,18 @@ export function ConfigField({
     onChange(serializeSegments(next));
   };
 
-  const updateTextAt = (idx: number, nextText: string) => {
-    const next = segments.map((s, i) =>
-      i === idx && s.kind === "text" ? { kind: "text" as const, text: nextText } : s
+  const updateTextAt = (index: number, nextText: string) => {
+    const next = segments.map((segment, index) =>
+      index === index && segment.kind === "text" ? { kind: "text" as const, text: nextText } : segment
     );
     commit(next);
   };
 
   // Remove a token segment at `idx` and merge the adjacent text segments
   // (`idx-1` and `idx+1`) so typing continues seamlessly across the gap.
-  const removeTokenAt = (idx: number) => {
-    const before = segments[idx - 1];
-    const after = segments[idx + 1];
+  const removeTokenAt = (index: number) => {
+    const before = segments[index - 1];
+    const after = segments[index + 1];
     const merged: Segment = {
       kind: "text",
       text:
@@ -141,15 +141,15 @@ export function ConfigField({
         (after?.kind === "text" ? after.text : ""),
     };
     const next = [
-      ...segments.slice(0, idx - 1),
+      ...segments.slice(0, index - 1),
       merged,
-      ...segments.slice(idx + 2),
+      ...segments.slice(index + 2),
     ];
     commit(next);
   };
 
   const isEmpty = segments.every(
-    (s) => s.kind === "text" && s.text === ""
+    (segment) => segment.kind === "text" && segment.text === ""
   );
 
   return (
@@ -182,7 +182,7 @@ export function ConfigField({
                 key={`txt-${index}`}
                 type="text"
                 value={seg.text}
-                onChange={(e) => updateTextAt(index, e.target.value)}
+                onChange={(event) => updateTextAt(index, event.target.value)}
                 placeholder={isEmpty && index === 0 ? placeholder || "Enter text or insert data..." : ""}
                 // Middle inputs (between two chips) hug their content so the
                 // field looks tight; the trailing input flex-grows so there's
@@ -198,21 +198,21 @@ export function ConfigField({
                     ? "flex-1 min-w-[60px]"
                     : "shrink-0"
                 )}
-                onKeyDown={(e) => {
-                  if (e.key === "/") {
-                    e.preventDefault();
-                    onPlusClick(e as any);
+                onKeyDown={(event) => {
+                  if (event.key === "/") {
+                    event.preventDefault();
+                    onPlusClick(event as any);
                     return;
                   }
-                  const input = e.currentTarget;
+                  const input = event.currentTarget;
                   const atStart =
                     input.selectionStart === 0 && input.selectionEnd === 0;
                   // Backspace at start of a text input → delete the chip to
                   // its left (if any) and merge text segments.
-                  if (e.key === "Backspace" && atStart && index > 0) {
+                  if (event.key === "Backspace" && atStart && index > 0) {
                     const prevTokenIdx = index - 1;
                     if (segments[prevTokenIdx]?.kind === "token") {
-                      e.preventDefault();
+                      event.preventDefault();
                       removeTokenAt(prevTokenIdx);
                     }
                   }
@@ -247,7 +247,7 @@ export function ConfigField({
 // ---------------------------------------------------------------------------
 
 interface ConfigTextAreaProps extends Omit<ConfigFieldProps, "onChange"> {
-  onChange: (val: string) => void;
+  onChange: (value: string) => void;
   rows?: number; // kept for API compatibility, no longer used for rendering
 }
 
@@ -267,26 +267,26 @@ export function ConfigTextArea({
 
   const commit = (next: Segment[]) => onChange(serializeSegments(next));
 
-  const updateTextAt = (idx: number, nextText: string) => {
-    const next = segments.map((s, i) =>
-      i === idx && s.kind === "text" ? { kind: "text" as const, text: nextText } : s
+  const updateTextAt = (index: number, nextText: string) => {
+    const next = segments.map((segment, index) =>
+      index === index && segment.kind === "text" ? { kind: "text" as const, text: nextText } : segment
     );
     commit(next);
   };
 
-  const removeTokenAt = (idx: number) => {
-    const before = segments[idx - 1];
-    const after = segments[idx + 1];
+  const removeTokenAt = (index: number) => {
+    const before = segments[index - 1];
+    const after = segments[index + 1];
     const merged: Segment = {
       kind: "text",
       text:
         (before?.kind === "text" ? before.text : "") +
         (after?.kind === "text" ? after.text : ""),
     };
-    commit([...segments.slice(0, idx - 1), merged, ...segments.slice(idx + 2)]);
+    commit([...segments.slice(0, index - 1), merged, ...segments.slice(index + 2)]);
   };
 
-  const isEmpty = segments.every((s) => s.kind === "text" && s.text === "");
+  const isEmpty = segments.every((segment) => segment.kind === "text" && segment.text === "");
 
   return (
     <WorkflowSection label={label} required={required}>
@@ -318,7 +318,7 @@ export function ConfigTextArea({
                 key={`txt-${index}`}
                 type="text"
                 value={seg.text}
-                onChange={(e) => updateTextAt(index, e.target.value)}
+                onChange={(event) => updateTextAt(index, event.target.value)}
                 placeholder={isEmpty && index === 0 ? placeholder || "Enter text or insert data..." : ""}
                 style={
                   index === segments.length - 1
@@ -331,18 +331,18 @@ export function ConfigTextArea({
                     ? "flex-1 min-w-[60px]"
                     : "shrink-0"
                 )}
-                onKeyDown={(e) => {
-                  if (e.key === "/") {
-                    e.preventDefault();
-                    onPlusClick(e as any);
+                onKeyDown={(event) => {
+                  if (event.key === "/") {
+                    event.preventDefault();
+                    onPlusClick(event as any);
                     return;
                   }
-                  const input = e.currentTarget;
+                  const input = event.currentTarget;
                   const atStart = input.selectionStart === 0 && input.selectionEnd === 0;
-                  if (e.key === "Backspace" && atStart && index > 0) {
+                  if (event.key === "Backspace" && atStart && index > 0) {
                     const prevTokenIdx = index - 1;
                     if (segments[prevTokenIdx]?.kind === "token") {
-                      e.preventDefault();
+                      event.preventDefault();
                       removeTokenAt(prevTokenIdx);
                     }
                   }

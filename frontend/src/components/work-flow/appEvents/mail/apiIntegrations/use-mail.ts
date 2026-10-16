@@ -10,8 +10,8 @@ import { encryptWithPublicKey } from '@/src/lib/smtp-crypto.util';
 function resolveTemplateVars(html: string, payload: Record<string, unknown>): string {
   return html.replace(/\{\{[^}]+?__([^}]+)\}\}/g, (match, key) => {
     const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    const found = Object.entries(payload).find(([k]) =>
-      k.toLowerCase().replace(/[^a-z0-9]/g, '_') === normalized
+    const found = Object.entries(payload).find(([entryKey]) =>
+      entryKey.toLowerCase().replace(/[^a-z0-9]/g, '_') === normalized
     );
     return found ? String(found[1]) : match;
   });
@@ -22,7 +22,7 @@ function buildCleanedFlatFromTriggerPayload(triggerTestPayload: unknown): Record
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const webhookFlat = flattenWebhookPayload(raw as Record<string, unknown>);
   return Object.fromEntries(
-    Object.entries(webhookFlat).map(([k, v]) => [k.replace(/^[\w-]+?__/, ''), v]),
+    Object.entries(webhookFlat).map(([key, value]) => [key.replace(/^[\w-]+?__/, ''), value]),
   );
 }
 
@@ -65,12 +65,12 @@ export function useMail() {
       setAccounts(connections);
 
       if (!selectedAccount && connections.length > 0) {
-        const active = connections.find(c => c.status === 'active') ?? connections[0];
+        const active = connections.find(connection => connection.status === 'active') ?? connections[0];
         setSelectedAccount(active);
       }
-    } catch (err: any) {
-      console.error('[useMail] fetchAccounts error:', err.message);
-      setError(err.message);
+    } catch (fetchError: any) {
+      console.error('[useMail] fetchAccounts error:', fetchError.message);
+      setError(fetchError.message);
       setAccounts([]);
     } finally {
       setIsLoading(false);
@@ -104,7 +104,7 @@ export function useMail() {
   }, [fetchAccounts]);
 
   const removeAccount = useCallback((id: string) => {
-    setAccounts((prev) => prev.filter((a) => a.id !== id));
+    setAccounts((prev) => prev.filter((account) => account.id !== id));
     setSelectedAccount((prev) => (prev?.id === id ? null : prev));
   }, []);
 
@@ -115,13 +115,13 @@ export function useMail() {
     try {
       const { sendEmail } = await import('./mailApis/sendEmail.api');
 
-      const mapResolve = (val: any): string => {
-        if (typeof val !== "string") return val == null ? "" : String(val);
-        return val.replace(/\{\{map:[^|]*\|[^|]*\|([^}]*)\}\}/g, "$1").trim();
+      const mapResolve = (value: any): string => {
+        if (typeof value !== "string") return value == null ? "" : String(value);
+        return value.replace(/\{\{map:[^|]*\|[^|]*\|([^}]*)\}\}/g, "$1").trim();
       };
 
       const cleanedFlat = buildCleanedFlatFromTriggerPayload(triggerTestPayload);
-      const withNodeTokens = (val: any) => resolveTemplateVars(mapResolve(val), cleanedFlat);
+      const withNodeTokens = (value: any) => resolveTemplateVars(mapResolve(value), cleanedFlat);
 
       const payload = {
         smtp_id: config.accountId,
@@ -139,10 +139,10 @@ export function useMail() {
 
       await sendEmail(payload);
       setTestStatus('success');
-    } catch (err: any) {
-      console.error('[useMail] sendTest error:', err.message);
+    } catch (sendError: any) {
+      console.error('[useMail] sendTest error:', sendError.message);
       setTestStatus('failed');
-      throw err;
+      throw sendError;
     }
   }, []);
 

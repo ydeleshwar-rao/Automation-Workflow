@@ -179,13 +179,13 @@ export function AssetsPage() {
     if (selectedFolder === "all") {
       // no folder filter
     } else if (selectedFolder === "unfiled") {
-      list = list.filter((w) => !w.folder_id);
+      list = list.filter((workflow) => !workflow.folder_id);
     } else {
-      list = list.filter((w) => w.folder_id === selectedFolder);
+      list = list.filter((workflow) => workflow.folder_id === selectedFolder);
     }
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      list = list.filter((w) => w.name.toLowerCase().includes(q));
+      const normalizedQuery = searchQuery.toLowerCase();
+      list = list.filter((workflow) => workflow.name.toLowerCase().includes(normalizedQuery));
     }
     return list;
   }, [workflows, selectedFolder, searchQuery]);
@@ -195,11 +195,11 @@ export function AssetsPage() {
     if (selectedFolder === "all") return ["All workflows"];
     if (selectedFolder === "unfiled") return ["Unfiled"];
     const path: string[] = [];
-    let current = folders.find((f) => f.id === selectedFolder);
+    let current = folders.find((folder) => folder.id === selectedFolder);
     while (current) {
       path.unshift(current.name);
       current = current.parent_id
-        ? folders.find((f) => f.id === current!.parent_id)
+        ? folders.find((folder) => folder.id === current!.parent_id)
         : undefined;
     }
     return path.length ? path : ["All workflows"];
@@ -350,9 +350,9 @@ export function AssetsPage() {
       try {
         await updateFolderMut({ id, parent_id: parentId }).unwrap();
         toast.success("Folder moved");
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "Could not move folder";
-        toast.error(msg);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : "Could not move folder";
+        toast.error(errorMessage);
       }
     },
     [updateFolderMut]
@@ -384,8 +384,8 @@ export function AssetsPage() {
 
     if (activeData.type === "template" && overData.type === "tpl-folder-drop") {
       const targetFolderId = overData.target === "unfiled" ? null : overData.folderId;
-      const tpl = templates.find((t) => t.id === activeData.templateId);
-      if (tpl && (tpl.template_folder_id ?? null) !== targetFolderId) {
+      const draggedTemplate = templates.find((template) => template.id === activeData.templateId);
+      if (draggedTemplate && (draggedTemplate.template_folder_id ?? null) !== targetFolderId) {
         handleMoveTemplate(activeData.templateId, targetFolderId);
       }
       return;
@@ -393,8 +393,8 @@ export function AssetsPage() {
 
     if (activeData.type === "workflow" && overData.type === "folder-drop") {
       const targetFolderId = overData.target === "unfiled" ? null : overData.folderId;
-      const wf = workflows.find((w) => w.id === activeData.workflowId);
-      if (wf && wf.folder_id !== targetFolderId) {
+      const draggedWorkflow = workflows.find((workflow) => workflow.id === activeData.workflowId);
+      if (draggedWorkflow && draggedWorkflow.folder_id !== targetFolderId) {
         handleMoveWorkflow(activeData.workflowId, targetFolderId);
       }
     } else if (activeData.type === "folder" && overData.type === "folder-drop") {
@@ -402,7 +402,7 @@ export function AssetsPage() {
         overData.target === "folder" &&
         activeData.folderId !== overData.folderId
       ) {
-        const current = folders.find((f) => f.id === activeData.folderId);
+        const current = folders.find((folder) => folder.id === activeData.folderId);
         if ((current?.parent_id ?? null) !== overData.folderId) {
           handleMoveFolder(activeData.folderId, overData.folderId);
         }
@@ -457,25 +457,25 @@ export function AssetsPage() {
 
   const filteredTags = useMemo(() => {
     if (!searchQuery.trim()) return tags;
-    const q = searchQuery.toLowerCase();
-    return tags.filter((t) => t.name.toLowerCase().includes(q));
+    const normalizedQuery = searchQuery.toLowerCase();
+    return tags.filter((tag) => tag.name.toLowerCase().includes(normalizedQuery));
   }, [tags, searchQuery]);
 
   const filteredTemplates = useMemo(() => {
     let list = templates;
-    if (selectedTemplateFolder === "unfiled") list = list.filter((t) => !t.template_folder_id);
-    else if (selectedTemplateFolder !== "all") list = list.filter((t) => t.template_folder_id === selectedTemplateFolder);
+    if (selectedTemplateFolder === "unfiled") list = list.filter((template) => !template.template_folder_id);
+    else if (selectedTemplateFolder !== "all") list = list.filter((template) => template.template_folder_id === selectedTemplateFolder);
     if (!searchQuery.trim()) return list;
-    const q = searchQuery.toLowerCase();
+    const normalizedQuery = searchQuery.toLowerCase();
     return list.filter(
-      (t) =>
-        t.name.toLowerCase().includes(q) ||
-        (t.category ?? "").toLowerCase().includes(q)
+      (template) =>
+        template.name.toLowerCase().includes(normalizedQuery) ||
+        (template.category ?? "").toLowerCase().includes(normalizedQuery)
     );
   }, [templates, selectedTemplateFolder, searchQuery]);
 
   const folderDeployTemplates = useMemo(
-    () => (deployingFolder ? templates.filter((t) => t.template_folder_id === deployingFolder.id) : []),
+    () => (deployingFolder ? templates.filter((template) => template.template_folder_id === deployingFolder.id) : []),
     [templates, deployingFolder]
   );
 
@@ -662,7 +662,7 @@ export function AssetsPage() {
                     : "Search templates..."
                 }
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(event) => setSearchQuery(event.target.value)}
                 className="h-9 pl-9 text-sm"
               />
             </div>
@@ -812,7 +812,7 @@ export function AssetsPage() {
                 onArchive={handleArchiveTemplate}
                 onDelete={handleDeleteTemplate}
                 onMoveTo={handleMoveTemplate}
-                onApply={(tpl) => setApplyingTemplateId(tpl.id)}
+                onApply={(template) => setApplyingTemplateId(template.id)}
                 isDragActive={!!activeDragId}
               />
             )}
@@ -900,16 +900,16 @@ function dragLabel(
 ) {
   const [type, id] = activeId.split(":");
   if (type === "workflow") {
-    const wf = workflows.find((w) => w.id === id);
-    return wf ? `⚡ ${wf.name}` : "Workflow";
+    const workflow = workflows.find((candidateWorkflow) => candidateWorkflow.id === id);
+    return workflow ? `⚡ ${workflow.name}` : "Workflow";
   }
   if (type === "folder") {
-    const f = folders.find((f) => f.id === id);
-    return f ? `📁 ${f.name}` : "Folder";
+    const folder = folders.find((candidateFolder) => candidateFolder.id === id);
+    return folder ? `📁 ${folder.name}` : "Folder";
   }
   if (type === "template") {
-    const t = templates.find((t) => t.id === id);
-    return t ? `✦ ${t.name}` : "Template";
+    const template = templates.find((candidateTemplate) => candidateTemplate.id === id);
+    return template ? `✦ ${template.name}` : "Template";
   }
   return "";
 }
@@ -964,7 +964,7 @@ function DeleteConfirmModal({
     >
       <div
         className="w-full max-w-sm rounded-xl border border-border/60 bg-card text-card-foreground p-5 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
         <h3 className="text-base font-semibold text-foreground">{title}</h3>
         {description && (
@@ -1039,8 +1039,8 @@ function TagsView({
   newTagColor: string;
   editingTag: { id: string; name: string; color: string } | null;
   confirmDeleteId: string | null;
-  onNewTagNameChange: (v: string) => void;
-  onNewTagColorChange: (v: string) => void;
+  onNewTagNameChange: (value: string) => void;
+  onNewTagColorChange: (color: string) => void;
   onCreateTag: () => void;
   onCancelCreate: () => void;
   onStartEdit: (tag: TagRecord) => void;
@@ -1066,9 +1066,9 @@ function TagsView({
               <Input
                 placeholder="e.g., Urgent, Client A"
                 value={newTagName}
-                onChange={(e) => onNewTagNameChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") onCreateTag();
+                onChange={(event) => onNewTagNameChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") onCreateTag();
                 }}
                 autoFocus
                 className="h-9 text-sm"
@@ -1079,17 +1079,17 @@ function TagsView({
                 Color
               </label>
               <div className="flex gap-1">
-                {TAG_COLORS.map((c) => (
+                {TAG_COLORS.map((tagColor) => (
                   <button
-                    key={c}
-                    onClick={() => onNewTagColorChange(c)}
+                    key={tagColor}
+                    onClick={() => onNewTagColorChange(tagColor)}
                     className={cn(
                       "h-7 w-7 rounded-md border-2 transition-all",
-                      newTagColor === c
+                      newTagColor === tagColor
                         ? "scale-110 border-foreground"
                         : "border-transparent hover:scale-105"
                     )}
-                    style={{ backgroundColor: c }}
+                    style={{ backgroundColor: tagColor }}
                   />
                 ))}
               </div>
@@ -1170,26 +1170,26 @@ function TagsView({
                   <div className="flex flex-1 items-center gap-3">
                     <Input
                       value={editingTag.name}
-                      onChange={(e) => onEditChange("name", e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") onSaveEdit();
-                        if (e.key === "Escape") onCancelEdit();
+                      onChange={(event) => onEditChange("name", event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") onSaveEdit();
+                        if (event.key === "Escape") onCancelEdit();
                       }}
                       autoFocus
                       className="h-8 max-w-[200px] flex-1 text-sm"
                     />
                     <div className="flex gap-0.5">
-                      {TAG_COLORS.map((c) => (
+                      {TAG_COLORS.map((tagColor) => (
                         <button
-                          key={c}
-                          onClick={() => onEditChange("color", c)}
+                          key={tagColor}
+                          onClick={() => onEditChange("color", tagColor)}
                           className={cn(
                             "h-5 w-5 rounded border-2 transition-all",
-                            editingTag.color === c
+                            editingTag.color === tagColor
                               ? "scale-110 border-foreground"
                               : "border-transparent"
                           )}
-                          style={{ backgroundColor: c }}
+                          style={{ backgroundColor: tagColor }}
                         />
                       ))}
                     </div>

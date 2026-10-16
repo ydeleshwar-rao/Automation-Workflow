@@ -2,7 +2,7 @@
  * Frontend auth service — custom JWT based.
  *
  * All auth goes through the backend API.
- * No direct Supabase connection from the frontend.
+ * The frontend never talks to the database directly.
  * Permissions are read from the stored JWT session.
  */
 

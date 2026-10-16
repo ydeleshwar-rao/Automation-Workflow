@@ -110,7 +110,7 @@ export function ConfigPanel({ node, onClose, onUpdate, onDelete }: ConfigPanelPr
           <div className="rounded-lg border border-foreground/25 bg-card flex items-center px-3 h-9 shadow-sm">
             <input
               value={localLabel}
-              onChange={(e) => setLocalLabel(e.target.value)}
+              onChange={(event) => setLocalLabel(event.target.value)}
               placeholder="Node label…"
               className="flex-1 bg-transparent text-[13px] font-semibold text-foreground placeholder:text-muted-foreground focus:outline-none"
             />
@@ -130,37 +130,37 @@ export function ConfigPanel({ node, onClose, onUpdate, onDelete }: ConfigPanelPr
                 <p className="text-[11.5px] text-muted-foreground leading-snug">{node.data.hint}</p>
               </div>
             )}
-            {fields.map((f) => (
-              <NmField key={f.key} label={f.label}>
-                {f.type === "textarea" ? (
+            {fields.map((field) => (
+              <NmField key={field.key} label={field.label}>
+                {field.type === "textarea" ? (
                   <div className="rounded-lg border border-foreground/25 bg-card px-3 py-2 shadow-sm">
                     <textarea
                       rows={3}
-                      value={String(localConfig[f.key] ?? "")}
-                      onChange={(e) => setField(f.key, e.target.value)}
-                      placeholder={`Enter ${f.label.toLowerCase()}…`}
+                      value={String(localConfig[field.key] ?? "")}
+                      onChange={(event) => setField(field.key, event.target.value)}
+                      placeholder={`Enter ${field.label.toLowerCase()}…`}
                       className="w-full bg-transparent text-[12px] font-medium text-foreground placeholder:text-muted-foreground focus:outline-none resize-none"
                     />
-                    {f.hint && <p className="mt-1.5 text-[10.5px] text-muted-foreground leading-snug">{f.hint}</p>}
+                    {field.hint && <p className="mt-1.5 text-[10.5px] text-muted-foreground leading-snug">{field.hint}</p>}
                   </div>
-                ) : f.type === "select" ? (
+                ) : field.type === "select" ? (
                   <div className="rounded-lg border border-foreground/25 bg-card flex items-center px-3 h-9 shadow-sm">
                     <select
-                      value={String(localConfig[f.key] ?? "")}
-                      onChange={(e) => setField(f.key, e.target.value)}
+                      value={String(localConfig[field.key] ?? "")}
+                      onChange={(event) => setField(field.key, event.target.value)}
                       className="flex-1 bg-transparent text-[12px] font-medium text-foreground focus:outline-none appearance-none"
                     >
-                      {(f.options ?? []).map((o) => (
-                        <option key={o} value={o}>{o}</option>
+                      {(field.options ?? []).map((optionValue) => (
+                        <option key={optionValue} value={optionValue}>{optionValue}</option>
                       ))}
                     </select>
                   </div>
-                ) : f.type === "checkbox" ? (
+                ) : field.type === "checkbox" ? (
                   <label className="rounded-lg border border-foreground/25 bg-card flex items-center gap-2 px-3 h-9 cursor-pointer shadow-sm">
                     <input
                       type="checkbox"
-                      checked={Boolean(localConfig[f.key])}
-                      onChange={(e) => setField(f.key, e.target.checked)}
+                      checked={Boolean(localConfig[field.key])}
+                      onChange={(event) => setField(field.key, event.target.checked)}
                       className="h-4 w-4 accent-primary"
                     />
                     <span className="text-[12px] font-medium text-foreground">Enabled</span>
@@ -168,10 +168,10 @@ export function ConfigPanel({ node, onClose, onUpdate, onDelete }: ConfigPanelPr
                 ) : (
                   <div className="rounded-lg border border-foreground/25 bg-card flex items-center px-3 h-9 shadow-sm">
                     <input
-                      type={f.type}
-                      value={String(localConfig[f.key] ?? "")}
-                      onChange={(e) => setField(f.key, f.type === "number" ? Number(e.target.value) : e.target.value)}
-                      placeholder={`Enter ${f.label.toLowerCase()}…`}
+                      type={field.type}
+                      value={String(localConfig[field.key] ?? "")}
+                      onChange={(event) => setField(field.key, field.type === "number" ? Number(event.target.value) : event.target.value)}
+                      placeholder={`Enter ${field.label.toLowerCase()}…`}
                       className="flex-1 bg-transparent text-[12px] font-medium text-foreground placeholder:text-muted-foreground focus:outline-none"
                     />
                   </div>

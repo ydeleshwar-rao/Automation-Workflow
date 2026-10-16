@@ -6,7 +6,7 @@ import WorkflowLoading from "./loading";
 const WorkflowBuilder = dynamic(
   () =>
     import("@/src/components/work-flow/WorkflowBuilder").then(
-      (m) => m.WorkflowBuilder,
+      (workflowBuilderModule) => workflowBuilderModule.WorkflowBuilder,
     ),
   {
     ssr: false,

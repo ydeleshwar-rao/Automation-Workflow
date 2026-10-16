@@ -11,7 +11,7 @@ import { SaveAsTemplateButton } from "@/src/components/workflow-templates/compon
 interface WorkflowNavbarProps {
   workflows:              { id: string; name: string; status: "draft" | "active" | "paused" }[];
   currentWorkflowId:      string | null;
-  setActiveView:          (v: "builder" | "monitor") => void;
+  setActiveView:          (view: "builder" | "monitor") => void;
   activeView:             "builder" | "monitor";
   publishWorkflow:        () => Promise<void>;
   pauseWorkflow:          () => Promise<void>;
@@ -35,7 +35,7 @@ export default function WorkflowNavbar({
 }: WorkflowNavbarProps) {
   const isActive   = currentWorkflowStatus === "active";
   const workflowName =
-    workflows.find((w) => w.id === currentWorkflowId)?.name ?? "Untitled Workflow";
+    workflows.find((workflow) => workflow.id === currentWorkflowId)?.name ?? "Untitled Workflow";
 
   return (
     <header className={cn(

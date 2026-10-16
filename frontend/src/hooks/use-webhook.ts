@@ -77,8 +77,8 @@ export function useWebhook() {
       let result;
       try {
         result = await response.json();
-      } catch (e) {
-        console.error("[useWebhook] JSON parse error:", e);
+      } catch (error) {
+        console.error("[useWebhook] JSON parse error:", error);
         return;
       }
       

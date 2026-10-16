@@ -41,11 +41,11 @@ interface RendererInnerProps extends IntegrationStepRendererProps {
  * (handlers like onTestTrigger) as always equal, since their identity changes
  * on every render but doesn't represent a semantic change worth propagating.
  */
-function isFooterEqual(a: unknown, b: unknown): boolean {
-  if (Object.is(a, b)) return true;
-  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
-  const aObj = a as Record<string, unknown>;
-  const bObj = b as Record<string, unknown>;
+function isFooterEqual(firstFooter: unknown, secondFooter: unknown): boolean {
+  if (Object.is(firstFooter, secondFooter)) return true;
+  if (!firstFooter || !secondFooter || typeof firstFooter !== "object" || typeof secondFooter !== "object") return false;
+  const aObj = firstFooter as Record<string, unknown>;
+  const bObj = secondFooter as Record<string, unknown>;
   const aKeys = Object.keys(aObj);
   const bKeys = Object.keys(bObj);
   if (aKeys.length !== bKeys.length) return false;

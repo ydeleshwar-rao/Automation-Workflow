@@ -28,15 +28,15 @@ export function useLeadsHubContacts() {
     }
   };
 
+  // Contacts are fetched live from LeadsHub, so syncing just reloads them.
   const handleSync = async () => {
     setIsSyncing(true);
     setError(null);
     try {
-      await leadshubApi.syncContacts();
       await fetchContacts();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(`Sync error: ${msg}`);
+    } catch (syncError) {
+      const message = syncError instanceof Error ? syncError.message : String(syncError);
+      setError(`Sync error: ${message}`);
     } finally {
       setIsSyncing(false);
     }
@@ -49,10 +49,10 @@ export function useLeadsHubContacts() {
   const filteredContacts = useMemo(() => {
     if (!searchQuery) return contacts;
     const lower = searchQuery.toLowerCase();
-    return contacts.filter(c => 
-      (c.first_name + " " + c.last_name).toLowerCase().includes(lower) ||
-      c.email?.toLowerCase().includes(lower) ||
-      c.phone?.includes(searchQuery)
+    return contacts.filter(contact => 
+      (contact.first_name + " " + contact.last_name).toLowerCase().includes(lower) ||
+      contact.email?.toLowerCase().includes(lower) ||
+      contact.phone?.includes(searchQuery)
     );
   }, [contacts, searchQuery]);
 

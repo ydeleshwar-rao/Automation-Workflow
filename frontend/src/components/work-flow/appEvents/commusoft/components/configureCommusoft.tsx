@@ -31,16 +31,16 @@ function CommusoftSelectField({
 }: {
   field: CommusoftFieldDef;
   value: string;
-  onChange: (val: string) => void;
-  onPlusClick: (e: React.MouseEvent) => void;
+  onChange: (value: string) => void;
+  onPlusClick: (event: React.MouseEvent) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [popupPos, setPopupPos] = useState({ top: 0, right: 0 });
 
-  const selectedOption = field.options?.find((o) => o.value === value);
+  const selectedOption = field.options?.find((option) => option.value === value);
 
-  const handleOpen = (e: React.MouseEvent) => {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  const handleOpen = (event: React.MouseEvent) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     setPopupPos({ top: rect.top, right: window.innerWidth - rect.left + 10 });
     setIsOpen(true);
   };
@@ -67,7 +67,7 @@ function CommusoftSelectField({
             <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); onPlusClick(e); }}
+              onClick={(event) => { event.stopPropagation(); onPlusClick(event); }}
               className="w-7 h-7 flex items-center justify-center rounded-md border border-border bg-muted text-muted-foreground hover:text-primary hover:border-primary hover:bg-background transition-all shadow-sm"
             >
               <Plus className="w-4 h-4" />
@@ -84,7 +84,7 @@ function CommusoftSelectField({
           sections={[{
             id: "options",
             title: field.label,
-            items: (field.options || []).map((o) => ({ id: o.value, label: o.label })),
+            items: (field.options || []).map((option) => ({ id: option.value, label: option.label })),
             defaultOpen: true,
           }]}
           title={`Select ${field.label}`}
@@ -123,13 +123,13 @@ export function CommusoftConfigureStep({
     if (!isCommusoftConnected) return;
     axiosInstance
       .get(API_ROUTES.COMMUSOFT.CUSTOMER_TYPES)
-      .then((res) => {
-        const descriptions: string[] = res.data?.data ?? [];
+      .then((response) => {
+        const descriptions: string[] = response.data?.data ?? [];
         // Value must equal the raw description — backend does an ilike lookup
         // against commusoft_customertype.description, and ilike does not
         // normalise underscores vs spaces. Transforming breaks the lookup.
         setCustomerTypeOptions(
-          descriptions.map((d) => ({ label: d, value: d }))
+          descriptions.map((description) => ({ label: description, value: description }))
         );
       })
       .catch(() => {});
@@ -137,14 +137,14 @@ export function CommusoftConfigureStep({
 
   const fields: CommusoftFieldDef[] = useMemo(() => {
     const base = selectedEvent ? COMMUSOFT_EVENT_FIELDS[selectedEvent] ?? [] : [];
-    return base.map((f) =>
-      f.name === "customer_type" && f.type === "select"
-        ? { ...f, options: customerTypeOptions }
-        : f
+    return base.map((field) =>
+      field.name === "customer_type" && field.type === "select"
+        ? { ...field, options: customerTypeOptions }
+        : field
     );
   }, [selectedEvent, customerTypeOptions]);
 
-  const fieldKeys = useMemo(() => fields.map((f) => f.name), [fields]);
+  const fieldKeys = useMemo(() => fields.map((field) => field.name), [fields]);
 
   const webhookFlat = useMemo(() => {
     const raw = triggerTestPayload;
@@ -153,9 +153,9 @@ export function CommusoftConfigureStep({
   }, [triggerTestPayload]);
 
   const cleanedFlat = Object.fromEntries(
-    Object.entries(webhookFlat).map(([k, v]) => [
-      k.replace(/^[\w-]+?__/, ""),
-      v,
+    Object.entries(webhookFlat).map(([key, value]) => [
+      key.replace(/^[\w-]+?__/, ""),
+      value,
     ]),
   );
 
@@ -199,7 +199,7 @@ export function CommusoftConfigureStep({
     const raw = auto.formValues.customer_type;
     if (auto.isAutoMapped && raw != null && raw !== "" && customerTypeOptions.length > 0) {
       const customerType = String(raw);
-      const validValues = customerTypeOptions.map((o) => o.value);
+      const validValues = customerTypeOptions.map((customerTypeOption) => customerTypeOption.value);
       if (!validValues.includes(customerType)) {
         setValue("customer_type", customerTypeOptions[0].value);
       }
@@ -208,8 +208,8 @@ export function CommusoftConfigureStep({
 
   // Notify parent on every change
   useEffect(() => {
-    const requiredFields = fields.filter((f) => f.required);
-    const isValid = requiredFields.every((f) => !!formValues[f.name]);
+    const requiredFields = fields.filter((field) => field.required);
+    const isValid = requiredFields.every((requiredField) => !!formValues[requiredField.name]);
     onChange(formValues, isValid);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(formValues), fields]);
@@ -223,8 +223,8 @@ export function CommusoftConfigureStep({
 
   const activeFieldRef = useRef<string | null>(null);
 
-  const handlePlusClick = useCallback((e: React.MouseEvent, fieldName: string) => {
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
+  const handlePlusClick = useCallback((event: React.MouseEvent, fieldName: string) => {
+    const rect = (event.target as HTMLElement).getBoundingClientRect();
     activeFieldRef.current = fieldName;
     setPopupState({
       isOpen: true,
@@ -250,7 +250,7 @@ export function CommusoftConfigureStep({
   );
 
   const popupFieldLabel = popupState.fieldName
-    ? popupState.fieldName.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    ? popupState.fieldName.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
     : "";
 
   // ── Not connected to Commusoft ────────────────────────────────────────────
@@ -309,8 +309,8 @@ export function CommusoftConfigureStep({
                 <CommusoftSelectField
                   field={field}
                   value={formValues[field.name] ?? ""}
-                  onChange={(val) => setValue(field.name, val, { shouldValidate: true, shouldDirty: true })}
-                  onPlusClick={(e) => handlePlusClick(e, field.name)}
+                  onChange={(value) => setValue(field.name, value, { shouldValidate: true, shouldDirty: true })}
+                  onPlusClick={(event) => handlePlusClick(event, field.name)}
                 />
               </div>
             );
@@ -323,8 +323,8 @@ export function CommusoftConfigureStep({
                   label={field.label}
                   required={field.required}
                   value={String(formValues[field.name] ?? "")}
-                  onChange={(val) => setValue(field.name, val, { shouldValidate: true, shouldDirty: true })}
-                  onPlusClick={(e) => handlePlusClick(e, field.name)}
+                  onChange={(value) => setValue(field.name, value, { shouldValidate: true, shouldDirty: true })}
+                  onPlusClick={(event) => handlePlusClick(event, field.name)}
                   placeholder={field.placeholder || "Enter text or insert data..."}
                 />
               </div>
@@ -338,8 +338,8 @@ export function CommusoftConfigureStep({
                 label={field.label}
                 required={field.required}
                 value={String(formValues[field.name] ?? "")}
-                onChange={(val) => setValue(field.name, val, { shouldValidate: true, shouldDirty: true })}
-                onPlusClick={(e) => handlePlusClick(e, field.name)}
+                onChange={(value) => setValue(field.name, value, { shouldValidate: true, shouldDirty: true })}
+                onPlusClick={(event) => handlePlusClick(event, field.name)}
                 placeholder={field.placeholder || "Enter text or insert data..."}
               />
             </div>

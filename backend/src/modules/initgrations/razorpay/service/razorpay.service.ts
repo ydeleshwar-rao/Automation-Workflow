@@ -1,7 +1,9 @@
 import axios, { AxiosInstance } from "axios";
 import crypto from "crypto";
-import { supabase } from "../../../../config/db.config.js";
+import type { RazorpayIntegration } from "@prisma/client";
+import { buildPublicApiUrl } from "../../../../config/api.config.js";
 import { ApiError } from "../../../../utils/ApiError.js";
+import { razorpayRepository } from "../repositories/razorpay.repository.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -25,13 +27,9 @@ export type RazorpayEvent = typeof RAZORPAY_EVENTS[keyof typeof RAZORPAY_EVENTS]
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface RazorpayIntegrationRow {
-  user_id: string;
-  key_id: string;
-  key_secret: string;
-  webhook_secret: string | null;
-  razorpay_webhook_id: string | null;
-}
+export type RazorpayIntegrationRow = RazorpayIntegration;
+
+type RazorpayEntity = Record<string, any>;
 
 // ─── Axios client (Basic Auth with key_id:key_secret) ─────────────────────────
 
@@ -44,17 +42,88 @@ const getClient = (keyId: string, keySecret: string): AxiosInstance =>
   });
 
 const getCredentials = async (userId: string): Promise<RazorpayIntegrationRow> => {
-  const { data, error } = await supabase
-    .from("razorpay_integrations")
-    .select("user_id, key_id, key_secret, webhook_secret, razorpay_webhook_id")
-    .eq("user_id", userId)
-    .single();
+  const integration = await razorpayRepository.findByUserId(userId);
 
-  if (error || !data) {
+  if (!integration) {
     throw new ApiError(404, "Razorpay not connected. Please add your API keys first.");
   }
-  return data as RazorpayIntegrationRow;
+  return integration;
 };
+
+// ─── Live list helper ─────────────────────────────────────────────────────────
+// Vendor data is not copied into our database (credentials/config only), so the
+// list endpoints page through the Razorpay API on every call.
+
+async function fetchAllPages(userId: string, resourcePath: string): Promise<RazorpayEntity[]> {
+  const credentials = await getCredentials(userId);
+  const client = getClient(credentials.key_id, credentials.key_secret);
+  const records: RazorpayEntity[] = [];
+  let skip = 0;
+
+  while (true) {
+    const { data } = await client.get(resourcePath, {
+      params: { count: RAZORPAY_PAGE_SIZE, skip },
+    });
+    // Payment links are listed under `payment_links`; other collections under `items`
+    const items: RazorpayEntity[] = data.items ?? data.payment_links ?? [];
+    records.push(...items);
+    if (items.length < RAZORPAY_PAGE_SIZE) break;
+    skip += RAZORPAY_PAGE_SIZE;
+  }
+
+  return records;
+}
+
+const unixSecondsToIso = (unixSeconds?: number | null): string | null =>
+  unixSeconds ? new Date(unixSeconds * 1000).toISOString() : null;
+
+// Mappers keep the response keys of the former DB-backed endpoints.
+
+const toPaymentRecord = (userId: string, payment: RazorpayEntity) => ({
+  user_id: userId,
+  razorpay_id: payment.id,
+  order_id: payment.order_id,
+  amount: payment.amount,
+  currency: payment.currency,
+  status: payment.status,
+  method: payment.method,
+  email: payment.email,
+  contact: payment.contact,
+  description: payment.description,
+  captured_at: unixSecondsToIso(payment.captured_at),
+  raw: payment,
+});
+
+const toInvoiceRecord = (userId: string, invoice: RazorpayEntity) => ({
+  user_id: userId,
+  razorpay_id: invoice.id,
+  invoice_number: invoice.invoice_number,
+  customer_name: invoice.customer_details?.name,
+  customer_email: invoice.customer_details?.email,
+  amount: invoice.amount,
+  amount_paid: invoice.amount_paid,
+  amount_due: invoice.amount_due,
+  currency: invoice.currency,
+  status: invoice.status,
+  date: unixSecondsToIso(invoice.date),
+  raw: invoice,
+});
+
+const toPaymentLinkRecord = (userId: string, paymentLink: RazorpayEntity) => ({
+  user_id: userId,
+  razorpay_id: paymentLink.id,
+  amount: paymentLink.amount,
+  amount_paid: paymentLink.amount_paid,
+  currency: paymentLink.currency,
+  status: paymentLink.status,
+  description: paymentLink.description,
+  short_url: paymentLink.short_url,
+  customer_name: paymentLink.customer?.name,
+  customer_email: paymentLink.customer?.email,
+  customer_contact: paymentLink.customer?.contact,
+  event_type: "payment_link",
+  raw: paymentLink,
+});
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
@@ -77,53 +146,38 @@ export class RazorpayService {
 
     const webhookSecret = crypto.randomBytes(24).toString("hex");
 
-    const { error } = await supabase.from("razorpay_integrations").upsert({
-      user_id: userId,
+    await razorpayRepository.saveCredentials(userId, {
       key_id: keyId,
       key_secret: keySecret,
       webhook_secret: webhookSecret,
     });
 
-    if (error) throw new ApiError(500, `Failed to save Razorpay credentials: ${error.message}`);
-
     console.log(`[Razorpay] ✅ Connected user=${userId}`);
 
     return {
       connected: true,
-      webhook_url: `${process.env.BACKEND_URL}/razorpay/webhook/${userId}`,
+      webhook_url: buildPublicApiUrl(`/razorpay/webhook/${userId}`),
       webhook_secret: webhookSecret,
       message: "Add the webhook_url and webhook_secret to your Razorpay Dashboard → Webhooks.",
     };
   }
 
   static async getConnectionStatus(userId: string) {
-    const { data } = await supabase
-      .from("razorpay_integrations")
-      .select("user_id, key_id, webhook_secret, razorpay_webhook_id")
-      .eq("user_id", userId)
-      .maybeSingle();
+    const integration = await razorpayRepository.findByUserId(userId);
 
-    if (!data) return { connected: false };
+    if (!integration) return { connected: false };
 
     return {
       connected: true,
-      key_id: data.key_id,
-      webhook_url: `${process.env.BACKEND_URL}/razorpay/webhook/${userId}`,
-      webhook_secret: data.webhook_secret,
-      razorpay_webhook_id: data.razorpay_webhook_id,
+      key_id: integration.key_id,
+      webhook_url: buildPublicApiUrl(`/razorpay/webhook/${userId}`),
+      webhook_secret: integration.webhook_secret,
+      razorpay_webhook_id: integration.razorpay_webhook_id,
     };
   }
 
   static async disconnect(userId: string) {
-    await supabase.from("razorpay_integrations").delete().eq("user_id", userId);
-
-    await Promise.allSettled([
-      supabase.from("razorpay_payments").delete().eq("user_id", userId),
-      supabase.from("razorpay_invoices").delete().eq("user_id", userId),
-      supabase.from("razorpay_payment_links").delete().eq("user_id", userId),
-      supabase.from("razorpay_events").delete().eq("user_id", userId),
-    ]);
-
+    await razorpayRepository.delete(userId);
     return { disconnected: true };
   }
 
@@ -135,10 +189,10 @@ export class RazorpayService {
     const creds = await getCredentials(userId);
     const client = getClient(creds.key_id, creds.key_secret);
 
-    const webhookUrl = `${process.env.BACKEND_URL}/razorpay/webhook/${userId}`;
+    const webhookUrl = buildPublicApiUrl(`/razorpay/webhook/${userId}`);
 
     const events: Record<string, boolean> = {};
-    Object.values(RAZORPAY_EVENTS).forEach((e) => { events[e] = true; });
+    Object.values(RAZORPAY_EVENTS).forEach((eventName) => { events[eventName] = true; });
 
     try {
       const { data } = await client.post(`/webhooks`, {
@@ -149,10 +203,7 @@ export class RazorpayService {
         events,
       });
 
-      await supabase
-        .from("razorpay_integrations")
-        .update({ razorpay_webhook_id: data.id })
-        .eq("user_id", userId);
+      await razorpayRepository.saveRazorpayWebhookId(userId, data.id);
 
       return { registered: true, webhook_id: data.id, webhook_url: webhookUrl };
     } catch (err: any) {
@@ -162,6 +213,12 @@ export class RazorpayService {
   }
 
   // ─── Webhook Signature Verification ──────────────────────────────────────
+
+  /** Secret that signs this user's incoming webhooks, or null when not connected. */
+  static async getWebhookSecret(userId: string): Promise<string | null> {
+    const integration = await razorpayRepository.findByUserId(userId);
+    return integration?.webhook_secret ?? null;
+  }
 
   static verifySignature(
     rawBody: Buffer | string,
@@ -177,6 +234,7 @@ export class RazorpayService {
 
   // ─── Incoming Webhook Handler ─────────────────────────────────────────────
   // All 7 Zapier triggers come through here as real-time Instant events.
+  // The event is acknowledged but not stored: we keep config, not vendor data.
 
   static async handleWebhookEvent(
     userId: string,
@@ -189,286 +247,24 @@ export class RazorpayService {
       ?? payload.payload?.payment_page?.entity?.id
       ?? `${event}_${Date.now()}`;
 
-    // Save raw event to DB
-    await supabase.from("razorpay_events").upsert(
-      {
-        user_id: userId,
-        event_id: eventId,
-        event_type: event,
-        event_data: payload,
-        received_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,event_id" }
-    );
-
-    // Fan out to resource-specific tables
-    switch (event) {
-      case RAZORPAY_EVENTS.PAYMENT_CAPTURED:
-      case RAZORPAY_EVENTS.PAYMENT_FAILED: {
-        const payment = payload.payload?.payment?.entity;
-        if (payment) {
-          await supabase.from("razorpay_payments").upsert(
-            {
-              user_id: userId,
-              razorpay_id: payment.id,
-              order_id: payment.order_id,
-              amount: payment.amount,
-              currency: payment.currency,
-              status: payment.status,
-              method: payment.method,
-              email: payment.email,
-              contact: payment.contact,
-              description: payment.description,
-              captured_at: payment.captured_at
-                ? new Date(payment.captured_at * 1000).toISOString()
-                : null,
-              raw: payment,
-            },
-            { onConflict: "user_id,razorpay_id" }
-          );
-        }
-        break;
-      }
-
-      case RAZORPAY_EVENTS.INVOICE_PAID:
-      case RAZORPAY_EVENTS.INVOICE_PARTIALLY_PAID: {
-        const invoice = payload.payload?.invoice?.entity;
-        if (invoice) {
-          await supabase.from("razorpay_invoices").upsert(
-            {
-              user_id: userId,
-              razorpay_id: invoice.id,
-              invoice_number: invoice.invoice_number,
-              customer_name: invoice.customer_details?.name,
-              customer_email: invoice.customer_details?.email,
-              amount: invoice.amount,
-              amount_paid: invoice.amount_paid,
-              amount_due: invoice.amount_due,
-              currency: invoice.currency,
-              status: invoice.status,
-              date: invoice.date
-                ? new Date(invoice.date * 1000).toISOString()
-                : null,
-              raw: invoice,
-            },
-            { onConflict: "user_id,razorpay_id" }
-          );
-        }
-        break;
-      }
-
-      case RAZORPAY_EVENTS.PAYMENT_LINK_PAID:
-      case RAZORPAY_EVENTS.PAYMENT_LINK_PARTIALLY_PAID:
-      case RAZORPAY_EVENTS.PAYMENT_PAGE_PAID: {
-        const entity =
-          payload.payload?.payment_link?.entity ??
-          payload.payload?.payment_page?.entity;
-        if (entity) {
-          await supabase.from("razorpay_payment_links").upsert(
-            {
-              user_id: userId,
-              razorpay_id: entity.id,
-              amount: entity.amount,
-              amount_paid: entity.amount_paid,
-              currency: entity.currency,
-              status: entity.status,
-              description: entity.description,
-              short_url: entity.short_url,
-              customer_name: entity.customer?.name,
-              customer_email: entity.customer?.email,
-              customer_contact: entity.customer?.contact,
-              event_type: event,
-              raw: entity,
-            },
-            { onConflict: "user_id,razorpay_id" }
-          );
-        }
-        break;
-      }
-    }
-
     console.log(`[Razorpay] 📥 Event=${event} user=${userId} id=${eventId}`);
     return { received: true, event, event_id: eventId };
   }
 
-  // ─── Sync: Fetch from Razorpay API ───────────────────────────────────────
-
-  static async syncPayments(userId: string) {
-    const creds = await getCredentials(userId);
-    const client = getClient(creds.key_id, creds.key_secret);
-    const records: any[] = [];
-    let skip = 0;
-
-    while (true) {
-      const { data } = await client.get(`/payments`, {
-        params: { count: RAZORPAY_PAGE_SIZE, skip },
-      });
-      const items: any[] = data.items ?? [];
-      records.push(...items);
-      if (items.length < RAZORPAY_PAGE_SIZE) break;
-      skip += RAZORPAY_PAGE_SIZE;
-    }
-
-    if (records.length) {
-      await supabase.from("razorpay_payments").upsert(
-        records.map((p) => ({
-          user_id: userId,
-          razorpay_id: p.id,
-          order_id: p.order_id,
-          amount: p.amount,
-          currency: p.currency,
-          status: p.status,
-          method: p.method,
-          email: p.email,
-          contact: p.contact,
-          description: p.description,
-          captured_at: p.captured_at
-            ? new Date(p.captured_at * 1000).toISOString()
-            : null,
-          raw: p,
-        })),
-        { onConflict: "user_id,razorpay_id" }
-      );
-    }
-
-    return { synced: records.length };
-  }
-
-  static async syncInvoices(userId: string) {
-    const creds = await getCredentials(userId);
-    const client = getClient(creds.key_id, creds.key_secret);
-    const records: any[] = [];
-    let skip = 0;
-
-    while (true) {
-      const { data } = await client.get(`/invoices`, {
-        params: { count: RAZORPAY_PAGE_SIZE, skip },
-      });
-      const items: any[] = data.items ?? [];
-      records.push(...items);
-      if (items.length < RAZORPAY_PAGE_SIZE) break;
-      skip += RAZORPAY_PAGE_SIZE;
-    }
-
-    if (records.length) {
-      await supabase.from("razorpay_invoices").upsert(
-        records.map((inv) => ({
-          user_id: userId,
-          razorpay_id: inv.id,
-          invoice_number: inv.invoice_number,
-          customer_name: inv.customer_details?.name,
-          customer_email: inv.customer_details?.email,
-          amount: inv.amount,
-          amount_paid: inv.amount_paid,
-          amount_due: inv.amount_due,
-          currency: inv.currency,
-          status: inv.status,
-          date: inv.date ? new Date(inv.date * 1000).toISOString() : null,
-          raw: inv,
-        })),
-        { onConflict: "user_id,razorpay_id" }
-      );
-    }
-
-    return { synced: records.length };
-  }
-
-  static async syncPaymentLinks(userId: string) {
-    const creds = await getCredentials(userId);
-    const client = getClient(creds.key_id, creds.key_secret);
-    const records: any[] = [];
-    let skip = 0;
-
-    while (true) {
-      const { data } = await client.get(`/payment_links`, {
-        params: { count: RAZORPAY_PAGE_SIZE, skip },
-      });
-      const items: any[] = data.items ?? [];
-      records.push(...items);
-      if (items.length < RAZORPAY_PAGE_SIZE) break;
-      skip += RAZORPAY_PAGE_SIZE;
-    }
-
-    if (records.length) {
-      await supabase.from("razorpay_payment_links").upsert(
-        records.map((pl) => ({
-          user_id: userId,
-          razorpay_id: pl.id,
-          amount: pl.amount,
-          amount_paid: pl.amount_paid,
-          currency: pl.currency,
-          status: pl.status,
-          description: pl.description,
-          short_url: pl.short_url,
-          customer_name: pl.customer?.name,
-          customer_email: pl.customer?.email,
-          customer_contact: pl.customer?.contact,
-          event_type: "payment_link",
-          raw: pl,
-        })),
-        { onConflict: "user_id,razorpay_id" }
-      );
-    }
-
-    return { synced: records.length };
-  }
-
-  static async syncAll(userId: string) {
-    const [payments, invoices, paymentLinks] = await Promise.allSettled([
-      RazorpayService.syncPayments(userId),
-      RazorpayService.syncInvoices(userId),
-      RazorpayService.syncPaymentLinks(userId),
-    ]);
-
-    return {
-      payments: payments.status === "fulfilled" ? payments.value : { error: (payments as any).reason?.message },
-      invoices: invoices.status === "fulfilled" ? invoices.value : { error: (invoices as any).reason?.message },
-      payment_links: paymentLinks.status === "fulfilled" ? paymentLinks.value : { error: (paymentLinks as any).reason?.message },
-    };
-  }
-
-  // ─── DB reads ─────────────────────────────────────────────────────────────
+  // ─── Triggers: live reads from Razorpay ──────────────────────────────────
 
   static async getPayments(userId: string) {
-    const { data, error } = await supabase
-      .from("razorpay_payments")
-      .select("*")
-      .eq("user_id", userId)
-      .order("captured_at", { ascending: false });
-    if (error) throw new ApiError(500, error.message);
-    return data ?? [];
+    const payments = await fetchAllPages(userId, "/payments");
+    return payments.map((payment) => toPaymentRecord(userId, payment));
   }
 
   static async getInvoices(userId: string) {
-    const { data, error } = await supabase
-      .from("razorpay_invoices")
-      .select("*")
-      .eq("user_id", userId)
-      .order("date", { ascending: false });
-    if (error) throw new ApiError(500, error.message);
-    return data ?? [];
+    const invoices = await fetchAllPages(userId, "/invoices");
+    return invoices.map((invoice) => toInvoiceRecord(userId, invoice));
   }
 
   static async getPaymentLinks(userId: string) {
-    const { data, error } = await supabase
-      .from("razorpay_payment_links")
-      .select("*")
-      .eq("user_id", userId);
-    if (error) throw new ApiError(500, error.message);
-    return data ?? [];
-  }
-
-  static async getEvents(userId: string, eventType?: string) {
-    let query = supabase
-      .from("razorpay_events")
-      .select("*")
-      .eq("user_id", userId)
-      .order("received_at", { ascending: false });
-
-    if (eventType) query = query.eq("event_type", eventType);
-
-    const { data, error } = await query;
-    if (error) throw new ApiError(500, error.message);
-    return data ?? [];
+    const paymentLinks = await fetchAllPages(userId, "/payment_links");
+    return paymentLinks.map((paymentLink) => toPaymentLinkRecord(userId, paymentLink));
   }
 }

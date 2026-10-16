@@ -1,12 +1,14 @@
 // =============================================================================
-// Prisma Schema — Clean Architecture v2
+// Prisma Schema — single source of truth for the database
 //
-// Philosophy:
-//   - Integration tables: store CREDENTIALS ONLY (no service data)
-//   - No commusoft/servicem8/simpro/leadshub data tables
-//   - Custom JWT auth (Supabase used only for credential validation)
-//   - Every table tied to a profiles.id (user_id)
-//   - Role-based: admin | developer
+// Conventions:
+//   - Model names are PascalCase singular and mapped to the snake_case table.
+//   - Field names are exactly the column names (snake_case). They are also the
+//     JSON keys the API returns, so the frontend contract stays unchanged.
+//   - Integration tables store CREDENTIALS / CONFIG only — never copies of
+//     vendor data (jobs, customers, invoices…). Vendor data is fetched live.
+//   - Check constraints and expression indexes live in the SQL migrations;
+//     Prisma cannot express them, so edit those migrations by hand.
 // =============================================================================
 
 generator client {
@@ -18,468 +20,544 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── Note on enums ───────────────────────────────────────────────────────────
-// Prisma v7 + PrismaPg (pgBouncer adapter) does not support custom PostgreSQL
-// enum types — the driver sends text literals and PostgreSQL rejects implicit
-// text→enum casts.  All enum columns are mapped as String in Prisma; the
-// database enforces valid values via CHECK constraints.
+// ─── Auth & organizations ────────────────────────────────────────────────────
 
-// ─── Profiles ────────────────────────────────────────────────────────────────
-// Maps to public.profiles in Supabase
-// id = auth.users.id (Supabase manages the auth side)
+model AuthUser {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                  String
+  password_hash          String?
+  provider               String    @default("email")
+  user_metadata          Json      @default("{}")
+  reset_token_hash       String?
+  reset_token_expires_at DateTime? @db.Timestamptz(6)
+  last_sign_in_at        DateTime? @db.Timestamptz(6)
+  created_at             DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
 
-model Profile {
-  id         String   @id @db.Uuid
-  email      String   @unique
-  fullName   String   @default("") @map("full_name")
-  avatarUrl  String?  @map("avatar_url")
-  role       String   @default("developer")     // 'admin' | 'developer'  (enforced by DB CHECK)
-  organizationId String @map("organization_id") @db.Uuid
-  isActive   Boolean  @default(true) @map("is_active")
-  createdBy  String?  @map("created_by") @db.Uuid
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  identities AuthIdentity[]
+  profile    Profile?
 
-  // Self-referential: which admin created this developer
-  creator    Profile?  @relation("ProfileCreatedBy", fields: [createdBy], references: [id])
-  created    Profile[] @relation("ProfileCreatedBy")
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([reset_token_hash], map: "idx_auth_users_reset_token_hash")
+  @@map("auth_users")
+}
 
-  // Permissions
-  pagePermissions PagePermission[] @relation("UserPermissions")
-  grantedPerms    PagePermission[] @relation("GrantedByAdmin")
+model AuthIdentity {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id      String    @db.Uuid
+  provider     String
+  subject      String
+  email        String?
+  tenant_key   String?
+  last_used_at DateTime? @db.Timestamptz(6)
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
 
-  // Integrations (credentials only)
-  servicem8Integration  Servicem8Integration?
-  commussoftIntegration CommussoftIntegration?
-  simproIntegration     SimproIntegration?
-  leadshubIntegrations  LeadshubIntegration[]
+  user AuthUser @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  // SMTP
-  smtpConnections SmtpConnection[]
-
-  // Webhooks
-  webhooks Webhook[]
-
-  // Workflows
-  workflows          Workflow[]
-  workflowFolders    WorkflowFolder[]
-  workflowTags       WorkflowTag[]
-  lastEditedWorkflow Workflow[] @relation("WorkflowLastEditedBy")
-
-  // Templates
-  templateFolders   TemplateFolder[]
-  workflowTemplates WorkflowTemplate[]
-
-  // Webhook subscriptions
-  integrationWebhookSubs IntegrationWebhookSubscription[]
-
-  @@map("profiles")
+  @@unique([provider, subject])
+  @@index([user_id], map: "idx_auth_identities_user")
+  @@map("auth_identities")
 }
 
 model Organization {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  ownerId   String?  @map("owner_id") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String
+  owner_id     String?  @db.Uuid
+  type         String   @default("individual")
+  sso_required Boolean  @default(false)
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
-  profiles Profile[]
+  members        Profile[]
+  ssoConnections OrganizationSsoConnection[]
 
   @@map("organizations")
 }
 
-// ─── Page Permissions ─────────────────────────────────────────────────────────
-// Page keys: 'dashboard' | 'workflow' | 'assets' | 'integrations' | 'analytics'
-// 'admin' page is role-based (admin role only), not stored here
+model OrganizationSsoConnection {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String   @db.Uuid
+  provider        String
+  tenant_key      String
+  domain          String
+  created_by      String?  @db.Uuid
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  creator      Profile?     @relation(fields: [created_by], references: [id], onUpdate: NoAction)
+
+  @@unique([provider, tenant_key])
+  @@index([organization_id], map: "idx_organization_sso_connections_org")
+  @@map("organization_sso_connections")
+}
+
+model Profile {
+  id              String   @id @db.Uuid
+  email           String   @unique
+  full_name       String   @default("")
+  avatar_url      String?
+  role            String   @default("developer")
+  organization_id String   @db.Uuid
+  is_active       Boolean  @default(true)
+  created_by      String?  @db.Uuid
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  authUser        AuthUser     @relation(fields: [id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "profiles_auth_user_id_fkey")
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  creator         Profile?     @relation("ProfileCreator", fields: [created_by], references: [id], onUpdate: NoAction)
+  createdProfiles Profile[]    @relation("ProfileCreator")
+
+  pagePermissions        PagePermission[]            @relation("PermissionOwner")
+  grantedPagePermissions PagePermission[]            @relation("PermissionGranter")
+  createdSsoConnections  OrganizationSsoConnection[]
+
+  commusoftIntegration CommusoftIntegration?
+  servicem8Integration Servicem8Integration?
+  simproIntegration    SimproIntegration?
+  leadshubIntegrations LeadshubIntegration[]
+  smtpConnections      SmtpConnection[]
+  emailLogs            EmailLog[]
+
+  googleFormsIntegration   GoogleFormsIntegration?
+  googleSheetsIntegration  GoogleSheetsIntegration?
+  zohoInventoryIntegration ZohoInventoryIntegration?
+  zohoFormsIntegration     ZohoFormsIntegration?
+  razorpayIntegration      RazorpayIntegration?
+  googleFormWatches        GoogleFormWatch[]
+  googleSheetWatches       GoogleSheetWatch[]
+  zohoFormWebhooks         ZohoFormWebhook[]
+
+  pollingSubscriptions PollingSubscription[]
+  assignedClients      UserClientAccess[]    @relation("AssignedDeveloper")
+  assignedDevelopers   UserClientAccess[]    @relation("AssignedClient")
+
+  webhooks             Webhook[]
+  webhookSubscriptions IntegrationWebhookSubscription[]
+  workflows            Workflow[]                       @relation("WorkflowOwner")
+  lastEditedWorkflows  Workflow[]                       @relation("WorkflowLastEditor")
+  workflowFolders      WorkflowFolder[]
+  workflowTags         WorkflowTag[]
+  workflowTemplates    WorkflowTemplate[]
+  templateFolders      TemplateFolder[]
+  aiWorkflows          AiWorkflow[]
+
+  @@index([organization_id], map: "idx_profiles_organization_id")
+  @@map("profiles")
+}
 
 model PagePermission {
-  id         String   @id @default(uuid()) @db.Uuid
-  userId     String   @map("user_id") @db.Uuid
-  pageKey    String   @map("page_key")
-  canView    Boolean  @default(false) @map("can_view")
-  canEdit    Boolean  @default(false) @map("can_edit")
-  canDelete  Boolean  @default(false) @map("can_delete")
-  grantedBy  String?  @map("granted_by") @db.Uuid
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String   @db.Uuid
+  page_key   String
+  can_view   Boolean  @default(false)
+  can_edit   Boolean  @default(false)
+  can_delete Boolean  @default(false)
+  granted_by String?  @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
-  user    Profile  @relation("UserPermissions", fields: [userId], references: [id], onDelete: Cascade)
-  granter Profile? @relation("GrantedByAdmin", fields: [grantedBy], references: [id], onDelete: SetNull)
+  user    Profile  @relation("PermissionOwner", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  granter Profile? @relation("PermissionGranter", fields: [granted_by], references: [id], onUpdate: NoAction)
 
-  @@unique([userId, pageKey])
+  @@unique([user_id, page_key])
   @@map("page_permissions")
 }
 
-// ─── Integration Credentials (NO data tables) ────────────────────────────────
-// These tables store ONLY OAuth tokens / API keys.
-// Workflow engine uses these credentials to make live API calls.
-// No contacts, jobs, materials, opportunities data stored.
+// ─── Integration credentials (no vendor data) ────────────────────────────────
 
-model Servicem8Integration {
-  id              String    @id @default(uuid()) @db.Uuid
-  userId          String    @unique @map("user_id") @db.Uuid
-  accessToken     String    @map("access_token")
-  refreshToken    String?   @map("refresh_token")
-  expiresAt       DateTime? @map("expires_at")
-  scopes          String?
-  sm8AccountUuid  String?   @map("sm8_account_uuid")
-  needsReauth     Boolean   @default(false) @map("needs_reauth")
-  lastSyncedAt    DateTime? @map("last_synced_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+model CommusoftIntegration {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        String   @unique @db.Uuid
+  client_id      String?
+  username       String?
+  password       String?
+  application_id String?
+  access_token   String?
+  needs_reauth   Boolean  @default(false)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
-  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("servicem8_integrations")
-}
-
-model CommussoftIntegration {
-  id            String   @id @default(uuid()) @db.Uuid
-  userId        String   @unique @map("user_id") @db.Uuid
-  clientId      String?  @map("client_id")
-  username      String?
-  password      String?  // encrypted
-  applicationId String?  @map("application_id")
-  accessToken   String?  @map("access_token")
-  needsReauth   Boolean  @default(false) @map("needs_reauth")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-
-  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("commusoft_integrations")
 }
 
-model SimproIntegration {
-  id           String    @id @default(uuid()) @db.Uuid
-  userId       String    @unique @map("user_id") @db.Uuid
-  buildName    String    @map("build_name")
-  baseUrl      String    @map("base_url")
-  companyId    Int       @default(0) @map("company_id")
-  accessToken  String    @map("access_token")
-  refreshToken String?   @map("refresh_token")
-  expiresAt    DateTime? @map("expires_at")
-  scopes       String?
-  needsReauth  Boolean   @default(false) @map("needs_reauth")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+model Servicem8Integration {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id          String    @unique @db.Uuid
+  access_token     String
+  refresh_token    String?
+  expires_at       DateTime? @db.Timestamptz(6)
+  scopes           String?
+  sm8_account_uuid String?
+  needs_reauth     Boolean   @default(false)
+  last_synced_at   DateTime? @db.Timestamptz(6)
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
 
-  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("servicem8_integrations")
+}
+
+model SimproIntegration {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id       String    @unique @db.Uuid
+  build_name    String    @default("")
+  base_url      String    @default("")
+  company_id    Int       @default(0)
+  access_token  String    @default("")
+  refresh_token String?
+  expires_at    DateTime? @db.Timestamptz(6)
+  scopes        String?
+  needs_reauth  Boolean   @default(false)
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("simpro_integrations")
 }
 
 model LeadshubIntegration {
-  id           String    @id @default(uuid()) @db.Uuid
-  userId       String    @map("user_id") @db.Uuid
-  companyId    String?   @map("company_id")
-  locationId   String?   @map("location_id")
-  accessToken  String?   @map("access_token")
-  refreshToken String?   @map("refresh_token")
-  expiresIn    BigInt?   @map("expires_in")
-  expiresAt    DateTime? @map("expires_at")
-  userType     String?   @map("user_type")
-  isActive     Boolean   @default(true) @map("is_active")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id       String    @db.Uuid
+  company_id    String?
+  location_id   String?
+  access_token  String?
+  refresh_token String?
+  expires_in    BigInt?
+  expires_at    DateTime? @db.Timestamptz(6)
+  user_type     String?
+  is_active     Boolean   @default(true)
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
 
-  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("leadshub_integrations")
 }
 
-// ─── SMTP Connections ─────────────────────────────────────────────────────────
+/// Baileys WhatsApp session per user. user_id is text with no foreign key.
+model WhatsappSession {
+  user_id        String   @id
+  phone_number   String?
+  status         String   @default("disconnected")
+  webhook_url    String?
+  webhook_secret String?
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@map("whatsapp_sessions")
+}
+
+/// Baileys signal-protocol key store, one row per user and key.
+model WhatsappAuthKey {
+  user_id  String
+  key_id   String
+  key_data Json
+
+  @@id([user_id, key_id])
+  @@index([user_id], map: "idx_whatsapp_auth_keys_user")
+  @@map("whatsapp_auth_keys")
+}
+
+// ─── Mail ────────────────────────────────────────────────────────────────────
 
 model SmtpConnection {
-  id                String     @id @default(uuid()) @db.Uuid
-  userId            String     @map("user_id") @db.Uuid
-  name              String
-  host              String
-  port              Int
-  username          String
-  encryptedPassword String     @map("encrypted_password")
-  useTls            Boolean    @default(true) @map("use_tls")
-  status            String     @default("active")   // 'active' | 'inactive'
-  totalSent         Int        @default(0) @map("total_sent")
-  totalFailed       Int        @default(0) @map("total_failed")
-  createdAt         DateTime   @default(now()) @map("created_at")
-  updatedAt         DateTime   @updatedAt @map("updated_at")
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id            String   @db.Uuid
+  name               String
+  host               String
+  port               Int
+  username           String
+  encrypted_password String
+  use_tls            Boolean  @default(true)
+  status             String   @default("active")
+  total_sent         Int      @default(0)
+  total_failed       Int      @default(0)
+  created_at         DateTime @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
-  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      Profile    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  emailLogs EmailLog[]
 
   @@map("smtp_connections")
 }
 
-// ─── Webhooks ─────────────────────────────────────────────────────────────────
+// ─── Dynamic webhooks (user-created inbound URLs) ────────────────────────────
 
 model Webhook {
-  id              String        @id @default(uuid()) @db.Uuid
-  userId          String        @map("user_id") @db.Uuid
-  name            String
-  uniquePath      String        @unique @map("unique_path")
-  method          String        @default("POST")
-  secretToken     String?       @map("secret_token")
-  isActive        Boolean       @default(true) @map("is_active")
-  actionType      String?       @map("action_type")
-  actionConfig    Json          @default("{}") @map("action_config")
-  mode            String        @default("test")    // 'test' | 'live'
-  status          String        @default("active")  // 'active' | 'inactive' | 'archived'
-  fullUrl         String?       @map("full_url")
-  workflowId      String?       @map("workflow_id") @db.Uuid
-  lastTriggeredAt DateTime?     @map("last_triggered_at")
-  expiresAt       DateTime?     @map("expires_at")
-  deletedAt       DateTime?     @map("deleted_at")
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id           String    @db.Uuid
+  name              String
+  unique_path       String    @unique
+  method            String    @default("POST")
+  secret_token      String?
+  is_active         Boolean   @default(true)
+  action_type       String?
+  action_config     Json      @default("{}")
+  mode              String    @default("test")
+  status            String    @default("active")
+  full_url          String?
+  workflow_id       String?   @db.Uuid
+  last_triggered_at DateTime? @db.Timestamptz(6)
+  expires_at        DateTime? @db.Timestamptz(6)
+  deleted_at        DateTime? @db.Timestamptz(6)
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
 
-  user     Profile        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workflow Workflow?      @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+  user     Profile        @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  workflow Workflow?      @relation(fields: [workflow_id], references: [id], onUpdate: NoAction)
   events   WebhookEvent[]
 
   @@map("webhooks")
 }
 
 model WebhookEvent {
-  id             String             @id @default(uuid()) @db.Uuid
-  webhookId      String?            @map("webhook_id") @db.Uuid
-  requestHeaders Json?              @map("request_headers")
-  requestBody    Json?              @map("request_body")
-  status         String             @default("pending") // 'pending' | 'processing' | 'done' | 'failed'
-  errorMessage   String?            @map("error_message")
-  receivedAt     DateTime           @default(now()) @map("received_at")
-  processedAt    DateTime?          @map("processed_at")
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  webhook_id      String?   @db.Uuid
+  request_headers Json?
+  request_body    Json?
+  status          String    @default("pending")
+  error_message   String?
+  received_at     DateTime  @default(now()) @db.Timestamptz(6)
+  processed_at    DateTime? @db.Timestamptz(6)
 
-  webhook Webhook? @relation(fields: [webhookId], references: [id], onDelete: SetNull)
+  webhook  Webhook?         @relation(fields: [webhook_id], references: [id], onUpdate: NoAction)
+  attempts WebhookAttempt[]
 
   @@map("webhook_events")
 }
 
-// ─── Workflow Engine ───────────────────────────────────────────────────────────
+// ─── Vendor webhook engine (push events from ServiceM8, simPRO, Commusoft) ──
+
+model IntegrationWebhookSubscription {
+  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workflow_id              String    @db.Uuid
+  node_id                  String    @unique @db.Uuid
+  user_id                  String    @db.Uuid
+  integration_key          String
+  event_key                String
+  config                   Json      @default("{}")
+  external_subscription_id String?
+  target_path              String
+  signing_secret           String?
+  is_active                Boolean   @default(true)
+  last_received_at         DateTime? @db.Timestamptz(6)
+  total_received           Int       @default(0)
+  error_count              Int       @default(0)
+  last_error               String?
+  created_at               DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  workflow Workflow          @relation(fields: [workflow_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  node     WorkflowNode      @relation(fields: [node_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user     Profile           @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  events   WebhookEventLog[]
+
+  @@map("integration_webhook_subscriptions")
+}
+
+model WebhookEventLog {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subscription_id   String    @db.Uuid
+  external_event_id String?
+  event_type        String?
+  payload           Json?
+  status            String    @default("received")
+  processed_at      DateTime? @db.Timestamptz(6)
+  error             String?
+  received_at       DateTime  @default(now()) @db.Timestamptz(6)
+
+  subscription IntegrationWebhookSubscription @relation(fields: [subscription_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("webhook_event_log")
+}
+
+// ─── Workflows ───────────────────────────────────────────────────────────────
 
 model WorkflowFolder {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  name      String
-  parentId  String?  @map("parent_id") @db.Uuid
-  position  Int      @default(0)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String   @db.Uuid
+  name       String
+  parent_id  String?  @db.Uuid
+  position   Int      @default(0)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
-  user      Profile          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parent    WorkflowFolder?  @relation("FolderChildren", fields: [parentId], references: [id])
-  children  WorkflowFolder[] @relation("FolderChildren")
-  workflows Workflow[]
+  user       Profile          @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  parent     WorkflowFolder?  @relation("WorkflowFolderTree", fields: [parent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subfolders WorkflowFolder[] @relation("WorkflowFolderTree")
+  workflows  Workflow[]
 
   @@map("workflow_folders")
 }
 
 model Workflow {
-  id                   String         @id @default(uuid()) @db.Uuid
-  userId               String         @map("user_id") @db.Uuid
-  folderId             String?        @map("folder_id") @db.Uuid
-  name                 String
-  status               String         @default("draft")  // 'draft' | 'active' | 'inactive'
-  version              Int            @default(1)
-  tag                  String?
-  position             Int            @default(0)
-  lastEditedByUserId   String?        @map("last_edited_by_user_id") @db.Uuid
-  lastEditedByName     String?        @map("last_edited_by_name")
-  lastEditedAt         DateTime?      @map("last_edited_at")
-  createdAt            DateTime       @default(now()) @map("created_at")
-  updatedAt            DateTime       @updatedAt @map("updated_at")
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                String    @db.Uuid
+  folder_id              String?   @db.Uuid
+  name                   String
+  status                 String    @default("draft")
+  version                Int       @default(1)
+  tag                    String?
+  position               Int       @default(0)
+  last_edited_by_user_id String?   @db.Uuid
+  last_edited_by_name    String?
+  last_edited_at         DateTime? @db.Timestamptz(6)
+  created_at             DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
 
-  user           Profile          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  folder         WorkflowFolder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  lastEditedBy   Profile?         @relation("WorkflowLastEditedBy", fields: [lastEditedByUserId], references: [id], onDelete: SetNull)
+  user         Profile         @relation("WorkflowOwner", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  lastEditedBy Profile?        @relation("WorkflowLastEditor", fields: [last_edited_by_user_id], references: [id], onUpdate: NoAction)
+  folder       WorkflowFolder? @relation(fields: [folder_id], references: [id], onUpdate: NoAction)
 
-  nodes          WorkflowNode[]
-  executions     WorkflowExecution[]
-  tagLinks       WorkflowTagLink[]
-  webhooks       Webhook[]
-  webhookSubs    IntegrationWebhookSubscription[]
-  templates      WorkflowTemplate[] @relation("WorkflowTemplates")
+  nodes                WorkflowNode[]
+  executions           WorkflowExecution[]
+  tagLinks             WorkflowTagLink[]
+  webhooks             Webhook[]
+  webhookSubscriptions IntegrationWebhookSubscription[]
+  derivedTemplates     WorkflowTemplate[]
+  pollingSubscriptions PollingSubscription[]
 
   @@map("workflows")
 }
 
 model WorkflowNode {
-  id             String   @id @default(uuid()) @db.Uuid
-  workflowId     String   @map("workflow_id") @db.Uuid
-  type           String                          // 'trigger' | 'action'
-  integrationKey String   @map("integration_key") // 'servicem8' | 'webhook' | 'mail' | etc.
-  actionKey      String   @map("action_key")      // 'job_created' | 'send_email' | etc.
-  config         Json     @default("{}")
-  position       Int
-  nodeCategory   String   @default("action") @map("node_category")
-  samplePayload  Json     @default("{}") @map("sample_payload")
-  outputSchema   Json     @default("{}") @map("output_schema")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workflow_id     String   @db.Uuid
+  type            String
+  integration_key String
+  action_key      String
+  config          Json     @default("{}")
+  position        Int
+  node_category   String   @default("action")
+  sample_payload  Json     @default("{}")
+  output_schema   Json     @default("{}")
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
-  workflow            Workflow                        @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  workflow            Workflow                        @relation(fields: [workflow_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   fieldMapping        WorkflowFieldMapping?
-  executionLogs       WorkflowExecutionLog[]
   webhookSubscription IntegrationWebhookSubscription?
+  pollingSubscription PollingSubscription?
+  executionLogs       WorkflowExecutionLog[]
 
   @@map("workflow_nodes")
 }
 
 model WorkflowFieldMapping {
-  id             String   @id @default(uuid()) @db.Uuid
-  workflowNodeId String   @unique @map("workflow_node_id") @db.Uuid
-  mappings       Json     @default("[]")
-  createdAt      DateTime @default(now()) @map("created_at")
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workflow_node_id String   @unique @db.Uuid
+  mappings         Json     @default("[]")
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
 
-  node WorkflowNode @relation(fields: [workflowNodeId], references: [id], onDelete: Cascade)
+  node WorkflowNode @relation(fields: [workflow_node_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("workflow_field_mappings")
 }
 
 model WorkflowExecution {
-  id             String    @id @default(uuid()) @db.Uuid
-  workflowId     String?   @map("workflow_id") @db.Uuid
-  status         String    @default("running")
-  triggerPayload Json?     @map("trigger_payload")
-  startedAt      DateTime  @default(now()) @map("started_at")
-  finishedAt     DateTime? @map("finished_at")
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workflow_id     String?   @db.Uuid
+  status          String    @default("running")
+  trigger_payload Json?
+  started_at      DateTime  @default(now()) @db.Timestamptz(6)
+  finished_at     DateTime? @db.Timestamptz(6)
 
-  workflow Workflow?              @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+  workflow Workflow?              @relation(fields: [workflow_id], references: [id], onUpdate: NoAction)
   logs     WorkflowExecutionLog[]
 
   @@map("workflow_executions")
 }
 
 model WorkflowExecutionLog {
-  id             String   @id @default(uuid()) @db.Uuid
-  executionId    String   @map("execution_id") @db.Uuid
-  workflowId     String?  @map("workflow_id") @db.Uuid
-  nodeId         String   @map("node_id") @db.Uuid
-  nodePosition   Int?     @map("node_position")
-  integrationKey String?  @map("integration_key")
-  actionKey      String?  @map("action_key")
-  logLevel       String   @default("info") @map("log_level")
-  resolvedValue  String?  @map("resolved_value")
-  status         String
-  errorMessage   String?  @map("error_message")
-  createdAt      DateTime @default(now()) @map("created_at")
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  execution_id    String   @db.Uuid
+  workflow_id     String?  @db.Uuid
+  node_id         String   @db.Uuid
+  node_position   Int?
+  integration_key String?
+  action_key      String?
+  log_level       String   @default("info")
+  resolved_value  String?
+  status          String
+  error_message   String?
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
 
-  execution WorkflowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
-  node      WorkflowNode      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  execution WorkflowExecution @relation(fields: [execution_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  node      WorkflowNode      @relation(fields: [node_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("workflow_execution_logs")
 }
 
 model WorkflowTag {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  name      String
-  color     String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String   @db.Uuid
+  name       String
+  color      String?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
-  user     Profile           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tagLinks WorkflowTagLink[]
+  user  Profile           @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  links WorkflowTagLink[]
 
   @@map("workflow_tags")
 }
 
 model WorkflowTagLink {
-  id         String   @id @default(uuid()) @db.Uuid
-  workflowId String   @map("workflow_id") @db.Uuid
-  tagId      String   @map("tag_id") @db.Uuid
-  createdAt  DateTime @default(now()) @map("created_at")
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workflow_id String   @db.Uuid
+  tag_id      String   @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
 
-  workflow Workflow    @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  tag      WorkflowTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  workflow Workflow    @relation(fields: [workflow_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  tag      WorkflowTag @relation(fields: [tag_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  @@unique([workflowId, tagId])
+  @@unique([workflow_id, tag_id])
   @@map("workflow_tag_links")
 }
 
-// ─── Webhook Subscriptions (workflow triggers via external webhooks) ───────────
-
-model IntegrationWebhookSubscription {
-  id                     String    @id @default(uuid()) @db.Uuid
-  workflowId             String    @map("workflow_id") @db.Uuid
-  nodeId                 String    @unique @map("node_id") @db.Uuid
-  userId                 String    @map("user_id") @db.Uuid
-  integrationKey         String    @map("integration_key")
-  eventKey               String    @map("event_key")
-  config                 Json      @default("{}")
-  externalSubscriptionId String?   @map("external_subscription_id")
-  targetPath             String    @map("target_path")
-  signingSecret          String?   @map("signing_secret")
-  isActive               Boolean   @default(true) @map("is_active")
-  lastReceivedAt         DateTime? @map("last_received_at")
-  totalReceived          Int       @default(0) @map("total_received")
-  errorCount             Int       @default(0) @map("error_count")
-  lastError              String?   @map("last_error")
-  createdAt              DateTime  @default(now()) @map("created_at")
-  updatedAt              DateTime  @updatedAt @map("updated_at")
-
-  workflow  Workflow          @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  node      WorkflowNode      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
-  user      Profile           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  eventLogs WebhookEventLog[]
-
-  @@map("integration_webhook_subscriptions")
-}
-
-model WebhookEventLog {
-  id              String    @id @default(uuid()) @db.Uuid
-  subscriptionId  String    @map("subscription_id") @db.Uuid
-  externalEventId String?   @map("external_event_id")
-  eventType       String?   @map("event_type")
-  payload         Json?
-  status          String    @default("received")
-  processedAt     DateTime? @map("processed_at")
-  error           String?
-  receivedAt      DateTime  @default(now()) @map("received_at")
-
-  subscription IntegrationWebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-
-  @@map("webhook_event_log")
-}
-
-// ─── Workflow Templates ────────────────────────────────────────────────────────
+// ─── Workflow templates ──────────────────────────────────────────────────────
 
 model TemplateFolder {
-  id          String    @id @default(uuid()) @db.Uuid
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name        String
   description String?
-  parentId    String?   @map("parent_id") @db.Uuid
-  createdBy   String?   @map("created_by") @db.Uuid
-  isPublic    Boolean   @default(false) @map("is_public")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  parent_id   String?  @db.Uuid
+  created_by  String?  @db.Uuid
+  is_public   Boolean  @default(false)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
-  parent    TemplateFolder?    @relation("TemplateFolderChildren", fields: [parentId], references: [id])
-  children  TemplateFolder[]   @relation("TemplateFolderChildren")
-  creator   Profile?           @relation(fields: [createdBy], references: [id], onDelete: SetNull)
-  templates WorkflowTemplate[]
+  creator    Profile?           @relation(fields: [created_by], references: [id], onUpdate: NoAction)
+  parent     TemplateFolder?    @relation("TemplateFolderTree", fields: [parent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subfolders TemplateFolder[]   @relation("TemplateFolderTree")
+  templates  WorkflowTemplate[]
 
   @@map("template_folders")
 }
 
 model WorkflowTemplate {
-  id               String                 @id @default(uuid()) @db.Uuid
-  name             String
-  description      String?
-  category         String?
-  tag              String?
-  sourceWorkflowId String?                @map("source_workflow_id") @db.Uuid
-  createdBy        String?                @map("created_by") @db.Uuid
-  isPublic         Boolean                @default(false) @map("is_public")
-  usageCount       Int                    @default(0) @map("usage_count")
-  status           String                 @default("active") // 'active' | 'inactive' | 'draft'
-  templateFolderId String?                @map("template_folder_id") @db.Uuid
-  createdAt        DateTime               @default(now()) @map("created_at")
-  updatedAt        DateTime               @updatedAt @map("updated_at")
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name               String
+  description        String?
+  category           String?
+  tag                String?
+  source_workflow_id String?  @db.Uuid
+  created_by         String?  @db.Uuid
+  is_public          Boolean  @default(false)
+  usage_count        Int      @default(0)
+  status             String   @default("active")
+  template_folder_id String?  @db.Uuid
+  created_at         DateTime @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
-  sourceWorkflow Workflow?              @relation("WorkflowTemplates", fields: [sourceWorkflowId], references: [id], onDelete: SetNull)
-  creator        Profile?              @relation(fields: [createdBy], references: [id], onDelete: SetNull)
-  folder         TemplateFolder?       @relation(fields: [templateFolderId], references: [id], onDelete: SetNull)
+  creator        Profile?                  @relation(fields: [created_by], references: [id], onUpdate: NoAction)
+  sourceWorkflow Workflow?                 @relation(fields: [source_workflow_id], references: [id], onUpdate: NoAction)
+  folder         TemplateFolder?           @relation(fields: [template_folder_id], references: [id], onUpdate: NoAction)
   nodes          WorkflowTemplateNode[]
   mappings       WorkflowTemplateMapping[]
 
@@ -487,35 +565,350 @@ model WorkflowTemplate {
 }
 
 model WorkflowTemplateNode {
-  id                   String    @id @default(uuid()) @db.Uuid
-  templateId           String    @map("template_id") @db.Uuid
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  template_id          String   @db.Uuid
   type                 String
-  nodeCategory         String?   @map("node_category")
-  integrationKey       String    @map("integration_key")
-  actionKey            String?   @map("action_key")
-  configSchema         Json?     @map("config_schema")
-  requiredCredentials  Json?     @map("required_credentials")
-  outputSchema         Json?     @map("output_schema")
+  node_category        String?
+  integration_key      String
+  action_key           String?
+  config_schema        Json?
+  required_credentials Json?
+  output_schema        Json?
   position             Int
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
+  created_at           DateTime @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
-  template WorkflowTemplate           @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  template WorkflowTemplate          @relation(fields: [template_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   mappings WorkflowTemplateMapping[]
 
   @@map("workflow_template_nodes")
 }
 
 model WorkflowTemplateMapping {
-  id             String   @id @default(uuid()) @db.Uuid
-  templateId     String   @map("template_id") @db.Uuid
-  templateNodeId String   @map("template_node_id") @db.Uuid
-  mappings       Json?
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  template_id      String   @db.Uuid
+  template_node_id String   @db.Uuid
+  mappings         Json?
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
-  template     WorkflowTemplate     @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  templateNode WorkflowTemplateNode @relation(fields: [templateNodeId], references: [id], onDelete: Cascade)
+  template     WorkflowTemplate     @relation(fields: [template_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  templateNode WorkflowTemplateNode @relation(fields: [template_node_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("workflow_template_mappings")
+}
+
+// ─── AI workflow builder ─────────────────────────────────────────────────────
+
+model AiWorkflow {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String   @db.Uuid
+  name        String
+  description String?
+  status      String   @default("draft")
+  nodes       Json     @default("[]")
+  edges       Json     @default("[]")
+  viewport    Json?
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  user       Profile               @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  executions AiWorkflowExecution[]
+
+  @@index([user_id, updated_at(sort: Desc)], map: "idx_ai_workflows_user_updated")
+  @@map("ai_workflows")
+}
+
+model AiWorkflowExecution {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workflow_id  String?   @db.Uuid
+  status       String    @default("pending")
+  trigger      String    @default("manual")
+  node_results Json?
+  error        String?
+  started_at   DateTime  @default(now()) @db.Timestamptz(6)
+  finished_at  DateTime? @db.Timestamptz(6)
+
+  workflow AiWorkflow? @relation(fields: [workflow_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([workflow_id, started_at(sort: Desc)], map: "idx_ai_workflow_executions_workflow_started")
+  @@map("ai_workflow_executions")
+}
+
+// ─── Integration credentials (one row per user) ──────────────────────────────
+
+model GoogleFormsIntegration {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id       String   @unique @db.Uuid
+  access_token  String
+  refresh_token String
+  expires_at    DateTime @db.Timestamptz(6)
+  needs_reauth  Boolean  @default(false)
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("google_forms_integrations")
+}
+
+model GoogleSheetsIntegration {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id       String   @unique @db.Uuid
+  access_token  String
+  refresh_token String
+  expires_at    DateTime @db.Timestamptz(6)
+  needs_reauth  Boolean  @default(false)
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("google_sheets_integrations")
+}
+
+model ZohoInventoryIntegration {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id         String   @unique @db.Uuid
+  access_token    String
+  /// Zoho omits the refresh token on some re-authorisations.
+  refresh_token   String?
+  expires_at      DateTime @db.Timestamptz(6)
+  organization_id String   @default("")
+  needs_reauth    Boolean  @default(false)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("zoho_inventory_integrations")
+}
+
+model ZohoFormsIntegration {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id       String   @unique @db.Uuid
+  access_token  String
+  /// Zoho omits the refresh token on some re-authorisations.
+  refresh_token String?
+  expires_at    DateTime @db.Timestamptz(6)
+  needs_reauth  Boolean  @default(false)
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("zoho_forms_integrations")
+}
+
+model RazorpayIntegration {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id             String   @unique @db.Uuid
+  key_id              String
+  key_secret          String
+  webhook_secret      String?
+  razorpay_webhook_id String?
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("razorpay_integrations")
+}
+
+// ─── GoHighLevel lead input ──────────────────────────────────────────────────
+
+/// GHL access token per location; looked up by location_id only.
+model GhlToken {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  location_id  String   @unique
+  access_token String
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@map("ghl_tokens")
+}
+
+/// Inbox of inbound lead webhooks. client_id is a GHL location id (text, not a profile).
+model LeadInputWebhook {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  client_id  String
+  source     String   @default("unknown")
+  payload    Json
+  headers    Json     @default("{}")
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([client_id])
+  @@map("lead_input_webhooks")
+}
+
+// ─── Polling engine ──────────────────────────────────────────────────────────
+
+model PollingSubscription {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workflow_id     String    @db.Uuid
+  node_id         String    @unique @db.Uuid
+  user_id         String    @db.Uuid
+  integration_key String
+  event_key       String
+  config          Json      @default("{}")
+  /// Seconds between polls.
+  poll_interval   Int       @default(300)
+  /// ISO timestamp or vendor id of the newest record already processed.
+  cursor_value    String?
+  last_polled_at  DateTime? @db.Timestamptz(6)
+  last_error      String?
+  error_count     Int       @default(0)
+  is_active       Boolean   @default(false)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  workflow    Workflow            @relation(fields: [workflow_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  node        WorkflowNode        @relation(fields: [node_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user        Profile             @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  seenRecords PollingSeenRecord[]
+
+  @@index([workflow_id])
+  @@index([user_id])
+  @@index([is_active, error_count, last_polled_at])
+  @@map("polling_subscriptions")
+}
+
+/// Vendor record ids already processed by a subscription (deduplication only).
+model PollingSeenRecord {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subscription_id String   @db.Uuid
+  external_id     String
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  subscription PollingSubscription @relation(fields: [subscription_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([subscription_id, external_id])
+  @@map("polling_seen_records")
+}
+
+// ─── Dynamic webhook delivery attempts ───────────────────────────────────────
+
+model WebhookAttempt {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  event_id        String   @db.Uuid
+  attempt_no      Int
+  response_status Int?
+  error_message   String?
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  event WebhookEvent @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([event_id])
+  @@map("webhook_attempts")
+}
+
+// ─── Trigger watches (what to watch, not the vendor data itself) ─────────────
+
+model GoogleFormWatch {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        String    @db.Uuid
+  form_id        String
+  last_synced_at DateTime? @db.Timestamptz(6)
+  active         Boolean   @default(true)
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, form_id])
+  @@map("google_form_watches")
+}
+
+model GoogleSheetWatch {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        String    @db.Uuid
+  spreadsheet_id String
+  sheet_name     String    @default("Sheet1")
+  /// new_row | new_or_updated_row | new_spreadsheet | new_worksheet
+  trigger_type   String
+  last_row_count Int       @default(0)
+  last_synced_at DateTime? @db.Timestamptz(6)
+  active         Boolean   @default(true)
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  user            Profile                     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  rowFingerprints GoogleSheetRowFingerprint[]
+
+  @@unique([user_id, spreadsheet_id, sheet_name, trigger_type])
+  @@map("google_sheet_watches")
+}
+
+/// Hash of each row's content so the new_or_updated_row trigger can detect
+/// changes without storing the sheet's data.
+model GoogleSheetRowFingerprint {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  watch_id     String   @db.Uuid
+  row_number   Int
+  content_hash String
+  updated_at   DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  watch GoogleSheetWatch @relation(fields: [watch_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([watch_id, row_number])
+  @@map("google_sheet_row_fingerprints")
+}
+
+model ZohoFormWebhook {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id         String   @db.Uuid
+  form_id         String
+  webhook_url     String
+  zoho_webhook_id String?
+  active          Boolean  @default(true)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, form_id])
+  @@map("zoho_form_webhooks")
+}
+
+// ─── Mail log ────────────────────────────────────────────────────────────────
+
+model EmailLog {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id       String   @db.Uuid
+  /// Kept nullable so logs survive deleting the SMTP connection.
+  smtp_id       String?  @db.Uuid
+  to_email      String
+  cc            String[] @default([])
+  bcc           String[] @default([])
+  /// File names / metadata of attachments, never file contents.
+  attachments   Json     @default("[]")
+  subject       String
+  /// success | failed
+  status        String
+  attempt_count Int      @default(1)
+  error_message String?
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+
+  user Profile         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  smtp SmtpConnection? @relation(fields: [smtp_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([user_id])
+  @@map("email_logs")
+}
+
+// ─── Access control ──────────────────────────────────────────────────────────
+
+/// Which client accounts a developer is assigned to.
+model UserClientAccess {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        String   @db.Uuid
+  client_user_id String   @db.Uuid
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  developer Profile @relation("AssignedDeveloper", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  client    Profile @relation("AssignedClient", fields: [client_user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, client_user_id])
+  @@index([client_user_id])
+  @@map("user_client_access")
 }

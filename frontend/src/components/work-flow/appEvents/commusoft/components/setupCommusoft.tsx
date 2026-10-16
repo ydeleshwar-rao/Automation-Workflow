@@ -29,7 +29,7 @@ export function CommusoftSetupStep({
   const { events, isLoading } = useCommusoftActionEventTypes(isTrigger);
 
   const AppIcon = selectedApp.icon || Link2;
-  const displayLabel = events.find((e) => e.id === selectedEvent)?.label ?? selectedEvent;
+  const displayLabel = events.find((event) => event.id === selectedEvent)?.label ?? selectedEvent;
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">

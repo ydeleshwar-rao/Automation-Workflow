@@ -27,13 +27,13 @@ export default function UpdatePasswordPage() {
   useEffect(() => {
     checkPasswordResetLink()
       .then(() => setReady(true))
-      .catch((e) => {
-        setError(e instanceof Error ? e.message : String(e));
+      .catch((resetLinkError) => {
+        setError(resetLinkError instanceof Error ? resetLinkError.message : String(resetLinkError));
       });
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError(null);
     setSuccess(null);
 
@@ -96,7 +96,7 @@ export default function UpdatePasswordPage() {
                         placeholder="New password"
                         required
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        onChange={(event) => setPassword(event.target.value)}
                         className="pr-10"
                       />
                       <button
@@ -119,7 +119,7 @@ export default function UpdatePasswordPage() {
                         placeholder="Confirm password"
                         required
                         value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        onChange={(event) => setConfirmPassword(event.target.value)}
                         className="pr-10"
                       />
                       <button

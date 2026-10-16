@@ -39,13 +39,13 @@ export function IntegrationCard({
   const showPanel = isExpanded && !isConnected && !needsReauth && !isLocked;
   const isActionLoading = isConnecting || isDisconnecting;
 
-  const handleDisconnectClick = (e: MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation();
+  const handleDisconnectClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
     onDisconnect();
   };
 
-  const handleConnectClick = (e: MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation();
+  const handleConnectClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
     if (app.connectType === "credentials") {
       onToggle();
       return;
@@ -144,7 +144,7 @@ export function IntegrationCard({
                   </span>
                   <button
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); onConnect(); }}
+                    onClick={(event) => { event.stopPropagation(); onConnect(); }}
                     disabled={isConnecting}
                     className="inline-flex items-center gap-1.5 px-4 py-2 text-xs rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors disabled:cursor-not-allowed disabled:opacity-70"
                   >
@@ -160,8 +160,8 @@ export function IntegrationCard({
                   </span>
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={(event) => {
+                      event.stopPropagation();
                       onDisconnect();
                     }}
                     disabled={isDisconnecting}
@@ -194,8 +194,8 @@ export function IntegrationCard({
                         ? "Collapse connection details"
                         : "Expand connection details"
                     }
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={(event) => {
+                      event.stopPropagation();
                       onToggle();
                     }}
                     disabled={isActionLoading}

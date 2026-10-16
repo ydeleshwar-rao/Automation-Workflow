@@ -33,18 +33,18 @@ function useServiceM8StepProps(step: ConfigStep, context: StepContext) {
     setTestStatus("testing");
 
     // Strip {{map:id|label|value}} tokens → value (3rd segment).
-    const resolveTokens = (v: unknown): unknown => {
-      if (typeof v !== "string") return v;
-      return v.replace(/\{\{map:[^|]*\|[^|]*\|([^}]*)\}\}/g, "$1").trim();
+    const resolveTokens = (value: unknown): unknown => {
+      if (typeof value !== "string") return value;
+      return value.replace(/\{\{map:[^|]*\|[^|]*\|([^}]*)\}\}/g, "$1").trim();
     };
 
     const rawConfig = context.node.config || {};
     const allowedKeys = new Set(
-      (SM8_EVENT_FIELDS[eventKey] ?? []).map((f) => f.name)
+      (SM8_EVENT_FIELDS[eventKey] ?? []).map((field) => field.name)
     );
     const cleanConfig = Object.fromEntries(
       Object.entries(rawConfig).filter(
-        ([k, v]) => allowedKeys.has(k) && v !== "" && v != null
+        ([key, value]) => allowedKeys.has(key) && value !== "" && value != null
       )
     );
 
@@ -112,7 +112,7 @@ function useServiceM8StepProps(step: ConfigStep, context: StepContext) {
 
       // Action path — executes the action in ServiceM8 via the test-action endpoint.
       const input = Object.fromEntries(
-        Object.entries(cleanConfig).map(([k, v]) => [k, resolveTokens(v)])
+        Object.entries(cleanConfig).map(([key, value]) => [key, resolveTokens(value)])
       );
 
       const actionRes = await axiosInstance.post(
@@ -132,8 +132,8 @@ function useServiceM8StepProps(step: ConfigStep, context: StepContext) {
       } else {
         setTestStatus("failed");
       }
-    } catch (err) {
-      console.error("Test trigger failed:", err);
+    } catch (error) {
+      console.error("Test trigger failed:", error);
       setTestStatus("failed");
     }
   }, [pollingSubId, context]);

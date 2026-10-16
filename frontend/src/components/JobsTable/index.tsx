@@ -28,36 +28,33 @@ type IntegrationType = "servicem8" | "commusoft" | "simpro";
 
 const INTEGRATION_CONFIG: Record<
   IntegrationType,
-  { endpoint: string; syncEndpoint: string; label: string }
+  { endpoint: string; label: string }
 > = {
   servicem8: {
     endpoint: API_ROUTES.SERVICEM8.GET_ALL_JOBS,
-    syncEndpoint: API_ROUTES.SERVICEM8.SYNC,
     label: "ServiceM8",
   },
   commusoft: {
     endpoint: API_ROUTES.COMMUSOFT.GET_ALL_JOBS,
-    syncEndpoint: API_ROUTES.COMMUSOFT.SYNC,
     label: "Commusoft",
   },
   simpro: {
     endpoint: API_ROUTES.SIMPRO.GET_ALL_JOBS,
-    syncEndpoint: API_ROUTES.SIMPRO.SYNC,
     label: "simPRO",
   },
 };
 
 // Trim & normalize. Treats null/undefined/whitespace as empty so the fallback
 // chain below doesn't fall on a string of spaces.
-const str = (v: unknown): string => {
-  if (v === null || v === undefined) return "";
-  const s = String(v).trim();
-  return s;
+const str = (value: unknown): string => {
+  if (value === null || value === undefined) return "";
+  const trimmed = String(value).trim();
+  return trimmed;
 };
-const firstNonEmpty = (...vals: unknown[]): string => {
-  for (const v of vals) {
-    const s = str(v);
-    if (s) return s;
+const firstNonEmpty = (...values: unknown[]): string => {
+  for (const value of values) {
+    const text = str(value);
+    if (text) return text;
   }
   return "";
 };
@@ -113,7 +110,7 @@ export function JobsTable({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Server-side cursor pagination
   const [apiCursor, setApiCursor] = useState<string | undefined>(undefined);
@@ -128,7 +125,7 @@ export function JobsTable({
   const [showFilters, setShowFilters] = useState(false);
 
   const activeFilterCount = (Object.keys(filters) as (keyof JobsFilters)[]).reduce(
-    (n, k) => (filters[k] ? n + 1 : n),
+    (count, filterKey) => (filters[filterKey] ? count + 1 : count),
     0,
   );
 
@@ -216,20 +213,19 @@ export function JobsTable({
     fetchJobs(prevCursor);
   }, [cursorHistory, fetchJobs]);
 
-  const handleSync = useCallback(async () => {
+  // Jobs are fetched live from the integration, so refreshing just reloads page 1.
+  const handleRefresh = useCallback(async () => {
     try {
-      setIsSyncing(true);
-      await axiosInstance.post(config.syncEndpoint, {});
-      // After sync always reset to page 1
+      setIsRefreshing(true);
       setCursorHistory([]);
       setApiCursor(undefined);
       await fetchJobs(undefined);
     } catch (error) {
-      console.error("Sync failed:", error);
+      console.error("Refresh failed:", error);
     } finally {
-      setIsSyncing(false);
+      setIsRefreshing(false);
     }
-  }, [config.syncEndpoint, fetchJobs]);
+  }, [fetchJobs]);
 
   // When filters or integration change (fetchJobs recreates), reset pagination and fetch page 1
   useEffect(() => {
@@ -281,7 +277,7 @@ export function JobsTable({
           <div className="relative pr-1">
             <button
               type="button"
-              onClick={() => setShowFilters((s) => !s)}
+              onClick={() => setShowFilters((prev) => !prev)}
               className={cn(
                 "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 activeFilterCount > 0
@@ -322,8 +318,8 @@ export function JobsTable({
           integration={integrationProp}
           loadError={loadError}
           lastSyncedAt={lastSyncAt}
-          onRefresh={handleSync}
-          isSyncing={isSyncing}
+          onRefresh={handleRefresh}
+          isSyncing={isRefreshing}
           filters={filters}
           onFiltersChange={setFilters}
           hasMoreApiPages={hasMore}

@@ -20,12 +20,12 @@ const CATEGORY_ORDER: NodeCategory[] = [
 function DraggableNodeCard({ def }: { def: NodeDefinition }) {
   const color = CATEGORY_COLOR[def.category];
 
-  const onDragStart = (e: React.DragEvent) => {
-    e.dataTransfer.setData(
+  const onDragStart = (event: React.DragEvent) => {
+    event.dataTransfer.setData(
       "application/ai-workflow-node",
       JSON.stringify(def)
     );
-    e.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.effectAllowed = "move";
   };
 
   return (
@@ -109,11 +109,11 @@ export function NodePalette() {
 
   // Search across all categories
   const searchResults: NodeDefinition[] = search.trim()
-    ? CATEGORY_ORDER.flatMap((cat) =>
-        CATALOG_BY_CATEGORY[cat].filter(
-          (n) =>
-            n.label.toLowerCase().includes(search.toLowerCase()) ||
-            n.description.toLowerCase().includes(search.toLowerCase())
+    ? CATEGORY_ORDER.flatMap((category) =>
+        CATALOG_BY_CATEGORY[category].filter(
+          (node) =>
+            node.label.toLowerCase().includes(search.toLowerCase()) ||
+            node.description.toLowerCase().includes(search.toLowerCase())
         )
       )
     : [];
@@ -131,7 +131,7 @@ export function NodePalette() {
           <input
             placeholder="Search nodes…"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(event) => setSearch(event.target.value)}
             className="flex-1 bg-transparent text-[12px] text-foreground placeholder:text-muted-foreground focus:outline-none font-medium"
           />
         </div>

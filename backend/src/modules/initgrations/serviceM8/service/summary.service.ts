@@ -1,7 +1,12 @@
-import { supabase } from "../../../../config/db.config.js";
-import { normalizeDatabaseError } from "../../../../lib/errors/normalize-database-error.js";
-import { toApiError } from "../../../../lib/errors/to-api-error.js";
-import { ServiceM8Service } from "./serviceM8.service.js";
+import { ApiError } from "../../../../utils/ApiError.js";
+import { ServiceM8Service, type JobListFilters } from "./serviceM8.service.js";
+import {
+  equalsCondition,
+  fetchServiceM8Records,
+  fetchServiceM8RecordsMatching,
+  normalizeServiceM8Record,
+  type ServiceM8Record,
+} from "./serviceM8Api.client.js";
 
 /** Same shape as getJobDetails `data` (contact, site, head_office, job, engineer, payment, activities, materials). */
 export type JobDetailDataBlock = {
@@ -79,19 +84,7 @@ export type JobDetailDataBlock = {
 
 /** One job's details without the customer-level fields (those live on the group). */
 export type CustomerJobEntry = {
-  job: {
-    generated_job_id: string | null;
-    status: string | null;
-    date: string | null;
-    job_address: string | null;
-    job_description: string | null;
-    work_done_description: string | null;
-    total_invoice_amount: string | null;
-    purchase_order_number: string | null;
-    category: string | null;
-    quote_date: string | null;
-    completion_date: string | null;
-  };
+  job: Omit<JobDetailDataBlock["job"], "job_count">;
   engineer: JobDetailDataBlock["engineer"];
   payment: JobDetailDataBlock["payment"];
   activities: JobDetailDataBlock["activities"];
@@ -108,752 +101,369 @@ export type CustomerJobGroup = {
   jobs: CustomerJobEntry[];
 };
 
-//
-type Row = Record<string, unknown>;
+export type JobPageMeta = { has_more: boolean; next_cursor: string | null; total_returned: number };
+
+type JobFilters = Omit<JobListFilters, "active" | "dateBefore">;
 
 /**
- * Pre-loaded lookup tables for the bulk-block path.
- * Built once per request by `preloadJobLookups`, then handed to every
- * `buildJobDetailBlock` call so they can resolve foreign-key data via
- * Map.get() instead of firing 5–8 Supabase queries each. For 588 jobs this
- * cuts ~3500 round-trips down to ~8.
+ * Related ServiceM8 records for a job set, loaded once per request (a handful of
+ * API calls) so every detail block resolves foreign keys with Map.get().
  */
 export interface JobLookupMaps {
-  activitiesByJob: Map<string, Row[]>;
-  paymentsByJob: Map<string, Row[]>;
-  materialsByJob: Map<string, Row[]>;
-  notesByJob: Map<string, Row[]>;
+  activitiesByJob: Map<string, ServiceM8Record[]>;
+  paymentsByJob: Map<string, ServiceM8Record[]>;
+  materialsByJob: Map<string, ServiceM8Record[]>;
+  notesByJob: Map<string, ServiceM8Record[]>;
   jobCountByCompany: Map<string, number>;
-  companyByUuid: Map<string, Row>;
-  headOfficeByUuid: Map<string, Row>;
-  primaryContactByCompany: Map<string, Row>;
-  staffByUuid: Map<string, Row>;
-  categoryByUuid: Map<string, Row>;
+  companyByUuid: Map<string, ServiceM8Record>;
+  headOfficeByUuid: Map<string, ServiceM8Record>;
+  primaryContactByCompany: Map<string, ServiceM8Record>;
+  staffByUuid: Map<string, ServiceM8Record>;
+  categoryByUuid: Map<string, ServiceM8Record>;
 }
 
-/**
- * PostgREST encodes `.in()` filters into the URL query string
- * (`?col=in.(uuid1,uuid2,…)`). With ~36-char UUIDs the URL crosses the 8KB
- * gateway limit somewhere around 150–200 values and the request silently
- * comes back with an empty body. To stay safe we split the list into
- * fixed-size chunks and fan the queries out in parallel.
- */
-const IN_CHUNK_SIZE = 100;
+const DEFAULT_PAGE_LIMIT = 50;
+const ACTIVE_CONDITION = "active eq 1";
+const PRIMARY_CONTACT_FLAG = "1";
+const SOLO_JOB_KEY_PREFIX = "__solo__";
 
-const chunkArray = <T>(arr: T[], size: number): T[][] => {
-  if (arr.length <= size) return arr.length ? [arr] : [];
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) {
-    out.push(arr.slice(i, i + size));
+const textOrNull = (value: unknown): string | null => (value == null ? null : String(value));
+
+const collectValues = (records: ServiceM8Record[], field: string): string[] => [
+  ...new Set(records.map((record) => record[field]).filter((value): value is string => typeof value === "string" && value !== "")),
+];
+
+const groupRecords = (records: ServiceM8Record[], field: string): Map<string, ServiceM8Record[]> => {
+  const grouped = new Map<string, ServiceM8Record[]>();
+  for (const record of records) {
+    const key = record[field];
+    if (typeof key !== "string" || !key) continue;
+    const group = grouped.get(key);
+    if (group) group.push(record);
+    else grouped.set(key, [record]);
   }
-  return out;
+  return grouped;
 };
 
-type SupabaseSelectResult = { data: Row[] | null; error: { message?: string } | null };
+const indexRecords = (records: ServiceM8Record[], field: string): Map<string, ServiceM8Record> => {
+  const indexed = new Map<string, ServiceM8Record>();
+  for (const record of records) {
+    const key = record[field];
+    if (typeof key === "string" && key && !indexed.has(key)) indexed.set(key, record);
+  }
+  return indexed;
+};
 
-const fetchInChunks = async (
-  values: string[],
-  build: (chunk: string[]) => PromiseLike<SupabaseSelectResult>,
-  label: string,
-): Promise<Row[]> => {
-  if (values.length === 0) return [];
-  const chunks = chunkArray(values, IN_CHUNK_SIZE);
-  const results = await Promise.all(chunks.map((c) => build(c)));
-  const merged: Row[] = [];
-  for (const r of results) {
-    if (r.error) {
-      console.error(`[fetchInChunks:${label}] chunk failed:`, r.error.message);
-      continue;
+/** Newest first; jobs without a date go last. */
+const sortJobsByDateDescending = (jobs: ServiceM8Record[]) =>
+  jobs.sort((first, second) => {
+    if (!first.date) return second.date ? 1 : 0;
+    if (!second.date) return -1;
+    return String(second.date).localeCompare(String(first.date));
+  });
+
+/** Prefers the contact marked primary; otherwise any contact of the company. */
+const pickContactPerCompany = (contacts: ServiceM8Record[]): Map<string, ServiceM8Record> => {
+  const contactByCompany = new Map<string, ServiceM8Record>();
+  const primaryFirst = [...contacts].sort(
+    (first, second) =>
+      Number(second.is_primary_contact === PRIMARY_CONTACT_FLAG) - Number(first.is_primary_contact === PRIMARY_CONTACT_FLAG)
+  );
+  for (const contact of primaryFirst) {
+    const companyUuid = contact.company_uuid;
+    if (typeof companyUuid === "string" && companyUuid && !contactByCompany.has(companyUuid)) {
+      contactByCompany.set(companyUuid, contact);
     }
-    if (r.data) merged.push(...r.data);
   }
-  return merged;
+  return contactByCompany;
 };
 
-const groupRows = (rows: Row[], key: string): Map<string, Row[]> => {
-  const out = new Map<string, Row[]>();
-  for (const r of rows) {
-    const k = r?.[key] as string | undefined;
-    if (!k) continue;
-    const cur = out.get(k);
-    if (cur) cur.push(r);
-    else out.set(k, [r]);
+const countJobsPerCompany = (jobs: ServiceM8Record[]): Map<string, number> => {
+  const jobCountByCompany = new Map<string, number>();
+  for (const job of jobs) {
+    const companyUuid = job.company_uuid;
+    if (typeof companyUuid === "string" && companyUuid) {
+      jobCountByCompany.set(companyUuid, (jobCountByCompany.get(companyUuid) ?? 0) + 1);
+    }
   }
-  return out;
+  return jobCountByCompany;
 };
 
-const indexRows = (rows: Row[], key: string): Map<string, Row> => {
-  const out = new Map<string, Row>();
-  for (const r of rows) {
-    const k = r?.[key] as string | undefined;
-    if (!k || out.has(k)) continue;
-    out.set(k, r);
-  }
-  return out;
+const fetchNormalizedMatching = async (
+  userId: string,
+  resource: string,
+  field: string,
+  values: string[],
+  baseConditions: string[] = []
+) => {
+  const records = await fetchServiceM8RecordsMatching(userId, resource, field, values, baseConditions);
+  return records.map(normalizeServiceM8Record);
 };
+
+const toContactBlock = (contact: ServiceM8Record | null): JobDetailDataBlock["contact"] =>
+  contact
+    ? {
+        name: `${contact.first ?? ""} ${contact.last ?? ""}`.trim(),
+        email: textOrNull(contact.email),
+        phone: textOrNull(contact.phone),
+        mobile: textOrNull(contact.mobile),
+        type: textOrNull(contact.type),
+        is_primary_contact: textOrNull(contact.is_primary_contact),
+      }
+    : null;
+
+const toSiteBlock = (company: ServiceM8Record | null): JobDetailDataBlock["site"] =>
+  company
+    ? {
+        name: textOrNull(company.name),
+        website: textOrNull(company.website),
+        abn_number: textOrNull(company.abn_number),
+        address: textOrNull(company.address),
+        address_street: textOrNull(company.address_street),
+        address_city: textOrNull(company.address_city),
+        address_state: textOrNull(company.address_state),
+        address_postcode: textOrNull(company.address_postcode),
+        address_country: textOrNull(company.address_country),
+        billing_address: textOrNull(company.billing_address),
+        fax_number: textOrNull(company.fax_number),
+      }
+    : null;
+
+const toEngineerBlock = (engineer: ServiceM8Record | null): JobDetailDataBlock["engineer"] =>
+  engineer
+    ? {
+        name: `${engineer.first ?? ""} ${engineer.last ?? ""}`.trim(),
+        email: textOrNull(engineer.email),
+        mobile: textOrNull(engineer.mobile),
+        job_title: textOrNull(engineer.job_title),
+        status_message: textOrNull(engineer.status_message),
+      }
+    : null;
+
+const toJobFields = (
+  job: ServiceM8Record,
+  category: ServiceM8Record | null,
+  jobCount: number
+): JobDetailDataBlock["job"] => ({
+  generated_job_id: textOrNull(job.generated_job_id),
+  status: textOrNull(job.status),
+  date: textOrNull(job.date),
+  job_address: textOrNull(job.job_address),
+  job_description: textOrNull(job.job_description),
+  work_done_description: textOrNull(job.work_done_description),
+  total_invoice_amount: textOrNull(job.total_invoice_amount),
+  purchase_order_number: textOrNull(job.purchase_order_number),
+  category: textOrNull(category?.name),
+  quote_date: textOrNull(job.quote_date),
+  completion_date: textOrNull(job.completion_date),
+  job_count: jobCount,
+});
+
+const toPaymentBlock = (job: ServiceM8Record, payments: ServiceM8Record[]): JobDetailDataBlock["payment"] => ({
+  status: job.payment_date ? "Paid" : "Unpaid",
+  amount: textOrNull(job.payment_amount),
+  method: textOrNull(job.payment_method),
+  date: textOrNull(job.payment_date),
+  total_invoice: textOrNull(job.total_invoice_amount),
+  ready_to_invoice: job.ready_to_invoice === "1",
+  payments,
+});
+
+const lookupByField = (map: Map<string, ServiceM8Record>, key: unknown) =>
+  typeof key === "string" && key ? map.get(key) ?? null : null;
 
 export class SummaryService {
-  /**
-   * Eager-load every related row a job set will need.
-   * Two-phase (companies first, then their parents) — total round-trips: 2.
-   */
-  static async preloadJobLookups(
-    userId: string,
-    jobs: Row[]
-  ): Promise<JobLookupMaps> {
-    const jobUuids = jobs.map((j) => j.uuid).filter(Boolean) as string[];
-    const companyUuids = [
-      ...new Set(jobs.map((j) => j.company_uuid).filter(Boolean) as string[]),
-    ];
-    const staffUuids = [
-      ...new Set(
-        jobs.map((j) => j.completion_actioned_by_uuid).filter(Boolean) as string[]
-      ),
-    ];
-    const categoryUuids = [
-      ...new Set(jobs.map((j) => j.category_uuid).filter(Boolean) as string[]),
-    ];
+  /** Loads every related ServiceM8 record a job set needs (companies first, then their parents). */
+  static async preloadJobLookups(userId: string, jobs: ServiceM8Record[]): Promise<JobLookupMaps> {
+    const jobUuids = collectValues(jobs, "uuid");
+    const companyUuids = collectValues(jobs, "company_uuid");
 
-    // Phase 1 — every lookup is chunked to stay under PostgREST's URL cap.
-    // NOTE: companies/contacts/staff are looked up WITHOUT a `user_id` filter.
-    // ServiceM8 generates globally-unique UUIDs and the upsert path
-    // (`onConflict: "uuid"`) doesn't reliably keep `user_id` aligned across
-    // multi-user dev environments — so a strict `eq("user_id", ...)` here
-    // gave a 100% miss rate even when the rows existed (matches the
-    // `safeFK` validation path in serviceM8.service which also ignores user_id
-    // when checking FKs). Knowing the UUID already implies authorization
-    // since it came from this user's own job rows.
-    const [activities, payments, materials, notes, companies, contacts, staff, categories] =
-      await Promise.all([
-        fetchInChunks(jobUuids, (chunk) =>
-          supabase
-            .from("servicem8_job_activities")
-            .select("*")
-            .eq("user_id", userId)
-            .in("job_uuid", chunk),
-          "activities",
-        ),
-        fetchInChunks(jobUuids, (chunk) =>
-          supabase
-            .from("servicem8_job_payments")
-            .select("*")
-            .eq("user_id", userId)
-            .in("job_uuid", chunk),
-          "payments",
-        ),
-        fetchInChunks(jobUuids, (chunk) =>
-          supabase
-            .from("servicem8_job_materials")
-            .select("*")
-            .eq("user_id", userId)
-            .in("job_uuid", chunk),
-          "materials",
-        ),
-        fetchInChunks(jobUuids, (chunk) =>
-          supabase
-            .from("servicem8_notes")
-            .select("*")
-            .eq("user_id", userId)
-            .eq("active", 1)
-            .eq("related_object", "Job")
-            .in("related_object_uuid", chunk),
-          "notes",
-        ),
-        fetchInChunks(companyUuids, (chunk) =>
-          supabase.from("servicem8_site_details").select("*").in("uuid", chunk),
-          "companies",
-        ),
-        // Fetch ALL contacts for these companies (not just primary). The map
-        // builder below prefers `is_primary_contact='1'` but falls back to any
-        // contact so jobs whose company has only non-primary contacts still
-        // surface a name/email/phone in the UI.
-        fetchInChunks(companyUuids, (chunk) =>
-          supabase.from("servicem8_contacts").select("*").in("company_uuid", chunk),
-          "contacts",
-        ),
-        fetchInChunks(staffUuids, (chunk) =>
-          supabase.from("servicem8_staff").select("*").in("uuid", chunk),
-          "staff",
-        ),
-        fetchInChunks(categoryUuids, (chunk) =>
-          supabase.from("servicem8_categories").select("*").in("uuid", chunk),
-          "categories",
-        ),
-      ]);
+    const [activities, payments, materials, notes, companies, contacts, staff, categories] = await Promise.all([
+      fetchNormalizedMatching(userId, "jobactivity", "job_uuid", jobUuids),
+      fetchNormalizedMatching(userId, "jobpayment", "job_uuid", jobUuids),
+      fetchNormalizedMatching(userId, "jobmaterial", "job_uuid", jobUuids),
+      // Matching related_object_uuid against job uuids already limits notes to job notes.
+      fetchNormalizedMatching(userId, "note", "related_object_uuid", jobUuids, [ACTIVE_CONDITION]),
+      fetchNormalizedMatching(userId, "company", "uuid", companyUuids),
+      fetchNormalizedMatching(userId, "companycontact", "company_uuid", companyUuids),
+      fetchNormalizedMatching(userId, "staff", "uuid", collectValues(jobs, "completion_actioned_by_uuid")),
+      fetchNormalizedMatching(userId, "category", "uuid", collectValues(jobs, "category_uuid")),
+    ]);
 
-    const companyByUuid = indexRows(companies, "uuid");
-
-    // Phase 2: head offices = parents of any company that has parent_company_uuid.
-    const parentUuids = [
-      ...new Set(
-        [...companyByUuid.values()]
-          .map((c) => c.parent_company_uuid)
-          .filter(Boolean) as string[]
-      ),
-    ];
-    const parents = await fetchInChunks(parentUuids, (chunk) =>
-      supabase.from("servicem8_site_details").select("*").in("uuid", chunk),
-      "parents",
-    );
-
-    // Build the contact map in two passes so primaries always win.
-    // Pass 1: only is_primary_contact='1' rows.
-    // Pass 2: any remaining company that still has no contact gets the
-    // first non-primary as a fallback. This way the UI shows *some* contact
-    // for companies that exist in ServiceM8 but never marked one primary.
-    const contactByCompany = new Map<string, Row>();
-    for (const c of contacts) {
-      const cu = c?.company_uuid as string | undefined;
-      if (cu && c.is_primary_contact === "1" && !contactByCompany.has(cu)) {
-        contactByCompany.set(cu, c);
-      }
-    }
-    for (const c of contacts) {
-      const cu = c?.company_uuid as string | undefined;
-      if (cu && !contactByCompany.has(cu)) {
-        contactByCompany.set(cu, c);
-      }
-    }
-
-    const jobCountByCompany = new Map<string, number>();
-    for (const j of jobs) {
-      const cu = j.company_uuid as string | undefined;
-      if (cu) jobCountByCompany.set(cu, (jobCountByCompany.get(cu) ?? 0) + 1);
-    }
-
-    // Diagnostic — surfaces *why* the UI sees nulls.
-    const jobsWithoutCompany = jobs.filter((j) => !j.company_uuid).length;
-    const missingCompanies = companyUuids.filter((u) => !companyByUuid.has(u)).length;
-    const companiesWithoutContact = companyUuids.filter((u) => !contactByCompany.has(u)).length;
-    console.log(
-      `[preloadJobLookups] jobs=${jobs.length}  jobsWithoutCompany=${jobsWithoutCompany}  ` +
-      `companyUuids=${companyUuids.length}  companiesLoaded=${companies.length}  missingCompanies=${missingCompanies}  ` +
-      `companiesWithoutContact=${companiesWithoutContact}  contactsLoaded=${contacts.length}`
+    const headOffices = await fetchNormalizedMatching(
+      userId, "company", "uuid", collectValues(companies, "parent_company_uuid")
     );
 
     return {
-      activitiesByJob: groupRows(activities, "job_uuid"),
-      paymentsByJob: groupRows(payments, "job_uuid"),
-      materialsByJob: groupRows(materials, "job_uuid"),
-      notesByJob: groupRows(notes, "related_object_uuid"),
-      jobCountByCompany,
-      companyByUuid,
-      headOfficeByUuid: indexRows(parents, "uuid"),
-      primaryContactByCompany: contactByCompany,
-      staffByUuid: indexRows(staff, "uuid"),
-      categoryByUuid: indexRows(categories, "uuid"),
+      activitiesByJob: groupRecords(activities, "job_uuid"),
+      paymentsByJob: groupRecords(payments, "job_uuid"),
+      materialsByJob: groupRecords(materials, "job_uuid"),
+      notesByJob: groupRecords(notes, "related_object_uuid"),
+      jobCountByCompany: countJobsPerCompany(jobs),
+      companyByUuid: indexRecords(companies, "uuid"),
+      headOfficeByUuid: indexRecords(headOffices, "uuid"),
+      primaryContactByCompany: pickContactPerCompany(contacts),
+      staffByUuid: indexRecords(staff, "uuid"),
+      categoryByUuid: indexRecords(categories, "uuid"),
     };
   }
 
-  /**
-   * Build one job-details payload.
-   * Pass `maps` (from `preloadJobLookups`) in the bulk path to avoid firing
-   * a per-job query storm. Without `maps` the function falls back to its
-   * original per-job Supabase queries — kept for single-job callers.
-   */
-  static async buildJobDetailBlock(
-    userId: string,
-    job: Record<string, unknown>,
-    contactOverride?: Record<string, unknown> | null,
-    maps?: JobLookupMaps
-  ): Promise<JobDetailDataBlock> {
-    const jobUuid = job.uuid as string;
+  /** Builds one job-details payload from records preloaded by `preloadJobLookups`. */
+  static buildJobDetailBlock(
+    job: ServiceM8Record,
+    maps: JobLookupMaps,
+    contactOverride?: ServiceM8Record
+  ): JobDetailDataBlock {
+    const jobUuid = String(job.uuid ?? "");
+    const company = lookupByField(maps.companyByUuid, job.company_uuid);
+    const headOffice = lookupByField(maps.headOfficeByUuid, company?.parent_company_uuid);
+    const contact = contactOverride ?? lookupByField(maps.primaryContactByCompany, job.company_uuid);
+    const companyUuid = typeof job.company_uuid === "string" ? job.company_uuid : "";
 
-    let activities: Row[] | null;
-    let payments: Row[] | null;
-    let jobmaterials: Row[] | null;
-    let jobnotes: Row[] | null;
-
-    if (maps) {
-      activities = maps.activitiesByJob.get(jobUuid) ?? [];
-      payments = maps.paymentsByJob.get(jobUuid) ?? [];
-      jobmaterials = maps.materialsByJob.get(jobUuid) ?? [];
-      jobnotes = maps.notesByJob.get(jobUuid) ?? [];
-    } else {
-      const [
-        { data: a },
-        { data: p },
-        { data: m },
-        { data: n },
-      ] = await Promise.all([
-        supabase.from("servicem8_job_activities").select("*").eq("user_id", userId).eq("job_uuid", jobUuid),
-        supabase.from("servicem8_job_payments").select("*").eq("user_id", userId).eq("job_uuid", jobUuid),
-        supabase.from("servicem8_job_materials").select("*").eq("user_id", userId).eq("job_uuid", jobUuid),
-        supabase.from("servicem8_notes").select("*").eq("user_id", userId).eq("active", 1).eq("related_object", "Job").eq("related_object_uuid", jobUuid),
-      ]);
-      activities = a;
-      payments = p;
-      jobmaterials = m;
-      jobnotes = n;
-    }
-
-    // See note in preloadJobLookups — companies/contacts/staff are intentionally
-    // looked up without a `user_id` filter to match the FK-validation path in
-    // listJobsFiltered. The UUID is the source of authorization here.
-    const companyUuid = job.company_uuid as string | null | undefined;
-    let company: Row | null = null;
-    if (companyUuid) {
-      if (maps) {
-        company = maps.companyByUuid.get(companyUuid) ?? null;
-      } else {
-        const r = await supabase
-          .from("servicem8_site_details")
-          .select("*")
-          .eq("uuid", companyUuid)
-          .maybeSingle();
-        company = r.data;
-      }
-    }
-
-    let headOffice: Row | null = null;
-    const parentUuid = company?.parent_company_uuid as string | undefined;
-    if (parentUuid) {
-      if (maps) {
-        headOffice = maps.headOfficeByUuid.get(parentUuid) ?? null;
-      } else {
-        const r = await supabase
-          .from("servicem8_site_details")
-          .select("*")
-          .eq("uuid", parentUuid)
-          .maybeSingle();
-        headOffice = r.data;
-      }
-    }
-
-    let contact: Record<string, unknown> | null = contactOverride ?? null;
-    if (!contact && companyUuid) {
-      if (maps) {
-        contact = maps.primaryContactByCompany.get(companyUuid) ?? null;
-      } else {
-        // Try the primary contact first; if none is marked primary, fall
-        // back to any contact at this company so the UI still shows some
-        // name/email/phone.
-        const primaryRes = await supabase
-          .from("servicem8_contacts")
-          .select("*")
-          .eq("company_uuid", companyUuid)
-          .eq("is_primary_contact", "1")
-          .maybeSingle();
-        if (primaryRes.data) {
-          contact = primaryRes.data;
-        } else {
-          const fallbackRes = await supabase
-            .from("servicem8_contacts")
-            .select("*")
-            .eq("company_uuid", companyUuid)
-            .limit(1)
-            .maybeSingle();
-          contact = fallbackRes.data ?? null;
-        }
-      }
-    }
-
-    let engineer: Row | null = null;
-    const staffUuid = job.completion_actioned_by_uuid as string | undefined;
-    if (staffUuid) {
-      if (maps) {
-        engineer = maps.staffByUuid.get(staffUuid) ?? null;
-      } else {
-        const r = await supabase
-          .from("servicem8_staff")
-          .select("*")
-          .eq("uuid", staffUuid)
-          .maybeSingle();
-        engineer = r.data;
-      }
-    }
-
-    let category: Row | null = null;
-    const categoryUuid = job.category_uuid as string | undefined;
-    if (categoryUuid) {
-      if (maps) {
-        category = maps.categoryByUuid.get(categoryUuid) ?? null;
-      } else {
-        const r = await supabase
-          .from("servicem8_categories")
-          .select("*")
-          .eq("uuid", categoryUuid)
-          .single();
-        category = r.data;
-      }
-    }
-
-    const c = contact;
     return {
-      contact: c
-        ? {
-            name: `${c.first ?? ""} ${c.last ?? ""}`.trim(),
-            email: (c.email as string) ?? null,
-            phone: (c.phone as string) ?? null,
-            mobile: (c.mobile as string) ?? null,
-            type: (c.type as string) ?? null,
-            is_primary_contact: (c.is_primary_contact as string) ?? null,
-          }
-        : null,
-      site: company
-        ? {
-            name: (company.name as string) ?? null,
-            website: (company.website as string) ?? null,
-            abn_number: (company.abn_number as string) ?? null,
-            address: (company.address as string) ?? null,
-            address_street: (company.address_street as string) ?? null,
-            address_city: (company.address_city as string) ?? null,
-            address_state: (company.address_state as string) ?? null,
-            address_postcode: (company.address_postcode as string) ?? null,
-            address_country: (company.address_country as string) ?? null,
-            billing_address: (company.billing_address as string) ?? null,
-            fax_number: (company.fax_number as string) ?? null,
-          }
-        : null,
-      head_office: headOffice
-        ? {
-            name: (headOffice.name as string) ?? null,
-            address: (headOffice.address as string) ?? null,
-          }
-        : null,
-      job: {
-        generated_job_id: job.generated_job_id as string | null,
-        status: job.status as string | null,
-        date: job.date as string | null,
-        job_address: job.job_address as string | null,
-        job_description: job.job_description as string | null,
-        work_done_description: job.work_done_description as string | null,
-        total_invoice_amount: job.total_invoice_amount as string | null,
-        purchase_order_number: job.purchase_order_number as string | null,
-        category: (category?.name as string) ?? null,
-        quote_date: job.quote_date as string | null,
-        completion_date: job.completion_date as string | null,
-        job_count: maps
-          ? (maps.jobCountByCompany.get(companyUuid ?? "") ?? 1)
-          : 1,
-      },
-      engineer: engineer
-        ? {
-            name: `${engineer.first ?? ""} ${engineer.last ?? ""}`.trim(),
-            email: (engineer.email as string) ?? null,
-            mobile: (engineer.mobile as string) ?? null,
-            job_title: (engineer.job_title as string) ?? null,
-            status_message: (engineer.status_message as string) ?? null,
-          }
-        : null,
-      payment: {
-        status: job.payment_date ? "Paid" : "Unpaid",
-        amount: job.payment_amount as string | null,
-        method: job.payment_method as string | null,
-        date: job.payment_date as string | null,
-        total_invoice: job.total_invoice_amount as string | null,
-        ready_to_invoice: job.ready_to_invoice === "1",
-        payments: payments ?? [],
-      },
-      activities: (activities ?? []).map((a: Record<string, unknown>) => ({
-        start_date: a.start_date,
-        end_date: a.end_date,
-        scheduled: a.activity_was_scheduled,
+      contact: toContactBlock(contact),
+      site: toSiteBlock(company),
+      head_office: headOffice ? { name: textOrNull(headOffice.name), address: textOrNull(headOffice.address) } : null,
+      job: toJobFields(job, lookupByField(maps.categoryByUuid, job.category_uuid), maps.jobCountByCompany.get(companyUuid) ?? 1),
+      engineer: toEngineerBlock(lookupByField(maps.staffByUuid, job.completion_actioned_by_uuid)),
+      payment: toPaymentBlock(job, maps.paymentsByJob.get(jobUuid) ?? []),
+      activities: (maps.activitiesByJob.get(jobUuid) ?? []).map((activity) => ({
+        start_date: activity.start_date,
+        end_date: activity.end_date,
+        scheduled: activity.activity_was_scheduled,
       })),
-      jobmaterials: (jobmaterials ?? []).map((m: Record<string, unknown>) => ({
-        name: m.name as string | null,
-        quantity: m.quantity,
-        price: m.price,
-        total: m.cost,
-        displayed_amount: m.displayed_amount,
-        cost: m.cost,
-        displayed_cost: m.displayed_cost,
+      jobmaterials: (maps.materialsByJob.get(jobUuid) ?? []).map((material) => ({
+        name: textOrNull(material.name),
+        quantity: material.quantity,
+        price: material.price,
+        total: material.cost,
+        displayed_amount: material.displayed_amount,
+        cost: material.cost,
+        displayed_cost: material.displayed_cost,
       })),
-      notes: (jobnotes ?? []).map((n: Record<string, unknown>) => ({
-        uuid: n.uuid as string,
-        note: n.note as string | null,
-        action_required: n.action_required as string | null,
-        create_date: n.create_date as string | null,
-        edit_date: n.edit_date as string | null,
-        active: n.active as number | null,
+      notes: (maps.notesByJob.get(jobUuid) ?? []).map((note) => ({
+        uuid: String(note.uuid),
+        note: textOrNull(note.note),
+        action_required: textOrNull(note.action_required),
+        create_date: textOrNull(note.create_date),
+        edit_date: textOrNull(note.edit_date),
+        active: note.active == null ? null : Number(note.active),
       })),
     };
+  }
+
+  static async buildCustomerGroups(
+    userId: string,
+    jobs: ServiceM8Record[],
+    contactByCompany?: Map<string, ServiceM8Record>
+  ): Promise<CustomerJobGroup[]> {
+    const maps = await SummaryService.preloadJobLookups(userId, jobs);
+    const blocks = jobs.map((job) => {
+      const contactOverride = lookupByField(contactByCompany ?? new Map(), job.company_uuid);
+      return SummaryService.buildJobDetailBlock(job, maps, contactOverride ?? undefined);
+    });
+    return SummaryService.groupBlocksByCustomer(jobs, blocks);
+  }
+
+  static async fetchJobByGeneratedId(userId: string, generatedJobId: string): Promise<ServiceM8Record> {
+    const jobs = await fetchServiceM8Records(userId, "job", [equalsCondition("generated_job_id", generatedJobId)]);
+    const job = jobs[0];
+    if (!job) throw new ApiError(404, `Job #${generatedJobId} not found`);
+    return normalizeServiceM8Record(job);
   }
 
   static async getJobDetails(userId: string, generatedJobId: string) {
-    const { data: job, error: jobError } = await supabase
-      .from("servicem8_jobs")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("generated_job_id", generatedJobId)
-      .single();
-    if (jobError || !job) throw new Error(`Job #${generatedJobId} not found`);
-
-    const data = await SummaryService.buildJobDetailBlock(userId, job);
-    return { success: true, data };
+    const job = await SummaryService.fetchJobByGeneratedId(userId, generatedJobId);
+    const maps = await SummaryService.preloadJobLookups(userId, [job]);
+    return { success: true, data: SummaryService.buildJobDetailBlock(job, maps) };
   }
 
   /**
-   * All jobs for any contact row matching email OR phone (servicem8_contacts.email / phone / mobile).
-   * Each list item uses the same shape as getJobDetails `data`.
+   * All jobs of every company with a contact whose email OR phone matches (case-insensitive).
+   * Each list item uses the same shape as getJobDetails `data`, grouped per customer.
    */
   static async getJobDetailsListByEmailOrPhone(
     userId: string,
     email?: string,
     phone?: string
   ): Promise<{ success: true; data: CustomerJobGroup[] }> {
-    const normalizedEmail = email?.trim();
-    const normalizedPhone = phone?.trim();
+    const normalizedEmail = email?.trim().toLowerCase();
+    const normalizedPhone = phone?.trim().toLowerCase();
     if (!normalizedEmail && !normalizedPhone) return { success: true, data: [] };
 
-    // Same rationale as preloadJobLookups: do NOT filter contacts by `user_id`.
-    // The contacts table's `uuid` is globally unique and the upsert path does
-    // not reliably keep `user_id` aligned across users, so an email/phone
-    // search that adds `eq("user_id", ...)` returned zero rows even when a
-    // matching contact existed in the DB.
-    let query = supabase
-      .from("servicem8_contacts")
-      .select("*");
+    const allContacts = await fetchServiceM8Records(userId, "companycontact");
+    const contacts = allContacts.map(normalizeServiceM8Record).filter((contact) => {
+      const contactEmail = textOrNull(contact.email)?.toLowerCase();
+      const contactPhone = textOrNull(contact.phone)?.toLowerCase();
+      return (normalizedEmail && contactEmail === normalizedEmail) || (normalizedPhone && contactPhone === normalizedPhone);
+    });
+    console.log(`[getJobDetailsListByEmailOrPhone] matched ${contacts.length} contact(s)`);
 
-    if (normalizedEmail && normalizedPhone) {
-      query = query.or(
-        `email.ilike.${normalizedEmail},phone.ilike.${normalizedPhone}`
-      );
-    } else if (normalizedEmail) {
-      query = query.ilike("email", normalizedEmail);
-    } else {
-      query = query.or(
-        `phone.ilike.${normalizedPhone}`
-      );
-    }
-
-    const { data: contacts, error: contactError } = await query;
-
-    if (contactError) {
-      const apiErr = normalizeDatabaseError(contactError);
-      throw apiErr ?? toApiError(contactError);
-    }
-    console.log(
-      `[getJobDetailsListByEmailOrPhone] email=${normalizedEmail ?? "-"} phone=${normalizedPhone ?? "-"} → matched ${contacts?.length ?? 0} contact(s)`
-    );
-    if (!contacts?.length) return { success: true, data: [] };
-
-    const companySet = new Set(
-      contacts
-        .map((c) => c.company_uuid)
-        .filter(Boolean) as string[]
-    );
-    
-    const companyUuids = [...companySet];
+    const companyUuids = collectValues(contacts, "company_uuid");
     if (companyUuids.length === 0) return { success: true, data: [] };
 
-    const jobRows = await fetchInChunks(
-      companyUuids,
-      (chunk) =>
-        supabase
-          .from("servicem8_jobs")
-          .select("*")
-          .eq("user_id", userId)
-          .in("company_uuid", chunk)
-          .order("date", { ascending: false, nullsFirst: false }),
-      "emailPhoneLookup:jobs",
-    );
-    if (!jobRows.length) return { success: true, data: [] };
-    const jobs = jobRows;
+    const jobs = sortJobsByDateDescending(await fetchNormalizedMatching(userId, "job", "company_uuid", companyUuids));
+    if (jobs.length === 0) return { success: true, data: [] };
 
-    const contactByCompany = new Map<string, Record<string, unknown>>();
-    for (const c of contacts) {
-      if (c.company_uuid && !contactByCompany.has(c.company_uuid)) {
-        contactByCompany.set(c.company_uuid, c as Record<string, unknown>);
-      }
-    }
-
-    // Batch-preload every FK this job set will need so each block resolves
-    // synchronously from in-memory maps instead of firing 5–8 queries.
-    const maps = await SummaryService.preloadJobLookups(
-      userId,
-      jobs as Record<string, unknown>[]
-    );
-
-    const rawJobs = jobs as Record<string, unknown>[];
-    const list = await Promise.all(
-      rawJobs.map((job) => {
-        const companyUuid = job.company_uuid as string | undefined;
-        const contactOverride = companyUuid
-          ? contactByCompany.get(companyUuid)
-          : undefined;
-        return SummaryService.buildJobDetailBlock(userId, job, contactOverride, maps);
-      })
-    );
-    return { success: true, data: SummaryService.groupBlocksByCustomer(rawJobs, list) };
+    // The matched contact (not the company's primary contact) is shown for its company.
+    const contactByCompany = indexRecords(contacts, "company_uuid");
+    return { success: true, data: await SummaryService.buildCustomerGroups(userId, jobs, contactByCompany) };
   }
 
   /**
-   * Fetch jobs with full detail blocks.
-   * - If `generatedJobId` is supplied → returns a single-item array for that job.
-   * - Otherwise → returns ALL jobs for the user, each as a full JobDetailDataBlock.
+   * Jobs with full detail blocks, fetched live from ServiceM8.
+   * - `generatedJobId` → that single job.
+   * - Otherwise → jobs matching `filters`, newest first, paged by `cursor` (the last job's date).
    */
   static async getJobs(
     userId: string,
     generatedJobId?: string,
-    filters?: {
-      queueUuid?: string;
-      categoryUuid?: string;
-      status?: string;
-      dateFrom?: string;
-      dateTo?: string;
-      staffUuid?: string;
-      companyUuid?: string;
-    },
-    options?: { forceLive?: boolean; limit?: number; cursor?: string }
-  ): Promise<{ success: true; data: CustomerJobGroup[]; meta: { has_more: boolean; next_cursor: string | null; total_returned: number } }> {
-    let jobs: Record<string, unknown>[] = [];
-    const pageLimit = options?.limit ?? 50;
-    const cursor    = options?.cursor;
-    const hasFilters = !generatedJobId && options?.forceLive === true;
-
-    if (hasFilters) {
-      console.log(
-        `[SummaryService.getJobs] path=LIVE_API  filters=${JSON.stringify(filters ?? {})}  forceLive=${options?.forceLive ?? false}`
-      );
-      const apiFilters: NonNullable<Parameters<typeof ServiceM8Service.listJobsFiltered>[1]> = {};
-      if (filters?.queueUuid)    apiFilters.queueUuid = filters.queueUuid;
-      if (filters?.categoryUuid) apiFilters.categoryUuid = filters.categoryUuid;
-      if (filters?.status)       apiFilters.status = filters.status;
-      if (filters?.dateFrom)     apiFilters.dateFrom = filters.dateFrom;
-      if (filters?.dateTo)       apiFilters.dateTo = filters.dateTo;
-      if (filters?.staffUuid)    apiFilters.staffUuid = filters.staffUuid;
-      if (filters?.companyUuid)  apiFilters.companyUuid = filters.companyUuid;
-      try {
-        const { data: liveJobs } = await ServiceM8Service.listJobsFiltered(userId, apiFilters);
-        jobs = (liveJobs ?? []) as Record<string, unknown>[];
-        jobs.sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
-        console.log(`[SummaryService.getJobs] ✓ live API returned ${jobs.length} job(s) after sort`);
-      } catch (err) {
-        console.warn(`[SummaryService.getJobs] live API failed, falling back to local DB:`, err);
-      }
+    filters: JobFilters = {},
+    options: { limit?: number; cursor?: string } = {}
+  ): Promise<{ success: true; data: CustomerJobGroup[]; meta: JobPageMeta }> {
+    if (generatedJobId) {
+      const job = await SummaryService.fetchJobByGeneratedId(userId, generatedJobId);
+      const data = await SummaryService.buildCustomerGroups(userId, [job]);
+      return { success: true, data, meta: { has_more: false, next_cursor: null, total_returned: 1 } };
     }
 
-    // Fallback to local DB if live API returned nothing or was skipped
-    if (!hasFilters || jobs.length === 0) {
-      console.log(
-        hasFilters
-          ? `[SummaryService.getJobs] live API returned 0 jobs — falling back to LOCAL_DB`
-          : `[SummaryService.getJobs] path=LOCAL_DB  generatedJobId=${generatedJobId ?? "(none)"}`
-      );
-
-      // ── DEBUG: check how many rows exist in servicem8_jobs ──
-      const { count: totalInTable } = await supabase
-        .from("servicem8_jobs")
-        .select("*", { count: "exact", head: true });
-      const { count: totalForUser } = await supabase
-        .from("servicem8_jobs")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", userId);
-      console.log(
-        `[SummaryService.getJobs] DEBUG  userId="${userId}"  totalRowsInTable=${totalInTable ?? "err"}  rowsForThisUser=${totalForUser ?? "err"}`
-      );
-      if ((totalForUser ?? 0) === 0 && (totalInTable ?? 0) > 0) {
-        const { data: sampleRows } = await supabase
-          .from("servicem8_jobs")
-          .select("user_id")
-          .limit(5);
-        console.log(
-          `[SummaryService.getJobs] DEBUG  sample user_ids in DB:`,
-          sampleRows?.map((r) => r.user_id)
-        );
-        const { data: integration } = await supabase
-          .from("servicem8_integrations")
-          .select("user_id, created_at, needs_reauth")
-          .eq("user_id", userId)
-          .maybeSingle();
-        console.log(
-          `[SummaryService.getJobs] DEBUG  integration for this user:`,
-          integration ?? "NOT FOUND"
-        );
-      }
-      // ── END DEBUG ──
-
-      let query = supabase
-        .from("servicem8_jobs")
-        .select("*")
-        .eq("user_id", userId);
-
-      if (generatedJobId) {
-        query = query.eq("generated_job_id", generatedJobId);
-      } else {
-        if (filters?.status)       query = query.eq("status", filters.status);
-        if (filters?.queueUuid)    query = query.eq("queue_uuid", filters.queueUuid);
-        if (filters?.categoryUuid) query = query.eq("category_uuid", filters.categoryUuid);
-        if (filters?.staffUuid)    query = query.eq("completion_actioned_by_uuid", filters.staffUuid);
-        if (filters?.companyUuid)  query = query.eq("company_uuid", filters.companyUuid);
-        if (filters?.dateFrom)     query = query.gte("date", filters.dateFrom);
-        if (filters?.dateTo)       query = query.lte("date", filters.dateTo);
-        if (cursor)                query = query.lt("date", cursor);
-        query = query.order("date", { ascending: false, nullsFirst: false }).limit(pageLimit + 1);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        const apiErr = normalizeDatabaseError(error);
-        throw apiErr ?? toApiError(error);
-      }
-
-      if (generatedJobId && (!data || data.length === 0)) {
-        throw new Error(`Job #${generatedJobId} not found`);
-      }
-
-      jobs = (data ?? []) as Record<string, unknown>[];
-      console.log(`[SummaryService.getJobs] ✓ local DB returned ${jobs.length} job(s)`);
-    }
-
+    const pageLimit = options.limit ?? DEFAULT_PAGE_LIMIT;
+    const { data: matchingJobs } = await ServiceM8Service.listJobsFiltered(userId, {
+      ...filters,
+      ...(options.cursor ? { dateBefore: options.cursor } : {}),
+    });
+    const sortedJobs = sortJobsByDateDescending(matchingJobs);
+    const hasMore = sortedJobs.length > pageLimit;
+    const jobs = sortedJobs.slice(0, pageLimit);
     if (jobs.length === 0) {
       return { success: true, data: [], meta: { has_more: false, next_cursor: null, total_returned: 0 } };
     }
 
-    const hasMore = !generatedJobId && jobs.length > pageLimit;
-    if (hasMore) jobs.pop();
-    const nextCursor = hasMore ? (String(jobs[jobs.length - 1]?.date ?? "") || null) : null;
-
-    // Batch-load every related row this job set will need (~2 round-trips)
-    // before building blocks — avoids the N×6 query storm that exhausts
-    // Supabase connections and cascades into "fetch failed" elsewhere.
-    const maps = await SummaryService.preloadJobLookups(userId, jobs);
-
-    const BATCH_SIZE = 50;
-    const blocks: JobDetailDataBlock[] = [];
-    for (let i = 0; i < jobs.length; i += BATCH_SIZE) {
-      const batchBlocks = await Promise.all(
-        jobs.slice(i, i + BATCH_SIZE).map((job) => SummaryService.buildJobDetailBlock(userId, job, undefined, maps))
-      );
-      blocks.push(...batchBlocks);
-    }
-
+    const nextCursor = hasMore ? textOrNull(jobs[jobs.length - 1]?.date) : null;
     return {
       success: true,
-      data: SummaryService.groupBlocksByCustomer(jobs, blocks),
+      data: await SummaryService.buildCustomerGroups(userId, jobs),
       meta: { has_more: hasMore, next_cursor: nextCursor, total_returned: jobs.length },
     };
   }
 
-  static groupBlocksByCustomer(
-    jobs: Row[],
-    blocks: JobDetailDataBlock[]
-  ): CustomerJobGroup[] {
-    const orderMap = new Map<string, number>();
-    const result: CustomerJobGroup[] = [];
+  static groupBlocksByCustomer(jobs: ServiceM8Record[], blocks: JobDetailDataBlock[]): CustomerJobGroup[] {
+    const groupIndexByCompany = new Map<string, number>();
+    const groups: CustomerJobGroup[] = [];
 
-    for (let i = 0; i < blocks.length; i++) {
-      const rawJob = jobs[i] as Row;
-      const block = blocks[i] as JobDetailDataBlock;
-      const companyKey = (rawJob.company_uuid as string | null) ?? `__solo__${rawJob.uuid as string}`;
+    blocks.forEach((block, index) => {
+      const rawJob = jobs[index] ?? {};
+      const companyKey = textOrNull(rawJob.company_uuid) ?? `${SOLO_JOB_KEY_PREFIX}${String(rawJob.uuid)}`;
 
-      if (!orderMap.has(companyKey)) {
-        orderMap.set(companyKey, result.length);
-        result.push({
-          contact: block.contact,
-          site: block.site,
-          head_office: block.head_office,
-          job_count: block.job.job_count,
-          jobs: [],
-        });
+      let groupIndex = groupIndexByCompany.get(companyKey);
+      if (groupIndex === undefined) {
+        groupIndex = groups.length;
+        groupIndexByCompany.set(companyKey, groupIndex);
+        groups.push({ contact: block.contact, site: block.site, head_office: block.head_office, job_count: block.job.job_count, jobs: [] });
       }
 
-      const groupIdx = orderMap.get(companyKey) as number;
-      const group = result[groupIdx] as CustomerJobGroup;
-      const { job_count: _jc, ...jobFields } = block.job;
-      group.jobs.push({
+      const { job_count: _jobCount, ...jobFields } = block.job;
+      groups[groupIndex]?.jobs.push({
         job: jobFields,
         engineer: block.engineer,
         payment: block.payment,
@@ -861,54 +471,32 @@ export class SummaryService {
         jobmaterials: block.jobmaterials,
         notes: block.notes,
       });
-    }
+    });
 
-    return result;
+    return groups;
   }
 
   static async getAllJobIds(userId: string) {
-    const { data: jobs, error } = await supabase
-      .from("servicem8_jobs")
-      .select("uuid, generated_job_id, job_description, company_uuid, status")
-      .eq("user_id", userId)
-      .order("generated_job_id", { ascending: true });
+    const jobs = (await fetchServiceM8Records(userId, "job")).map(normalizeServiceM8Record);
+    if (jobs.length === 0) return [];
 
-    if (error) {
-      const apiErr = normalizeDatabaseError(error);
-      throw apiErr ?? toApiError(error);
-    }
-    if (!jobs || jobs.length === 0) return [];
+    jobs.sort((first, second) =>
+      String(first.generated_job_id ?? "").localeCompare(String(second.generated_job_id ?? ""), undefined, { numeric: true })
+    );
 
-    const companyUUIDs = [
-      ...new Set(jobs.map((j) => j.company_uuid).filter(Boolean) as string[]),
-    ];
+    const companies = await fetchServiceM8RecordsMatching(userId, "company", "uuid", collectValues(jobs, "company_uuid"));
+    const companyNameByUuid = new Map(companies.map((company) => [String(company.uuid), textOrNull(company.name)]));
+    const jobCountByCompany = countJobsPerCompany(jobs);
 
-    const companiesRows = companyUUIDs.length > 0
-      ? await fetchInChunks(
-          companyUUIDs,
-          (chunk) => supabase.from("servicem8_site_details").select("uuid, name").in("uuid", chunk),
-          "getAllJobIds:companies",
-        )
-      : [];
-
-    const companyMap = new Map(companiesRows.map((c: Row) => [c.uuid as string, c.name as string]));
-
-    const jobCountByCompany = new Map<string, number>();
-    for (const job of jobs) {
-      if (job.company_uuid) {
-        jobCountByCompany.set(job.company_uuid, (jobCountByCompany.get(job.company_uuid) ?? 0) + 1);
-      }
-    }
-
-    return jobs.map((job) => ({
-      generated_job_id: job.generated_job_id,
-      job_name: job.job_description || "No Description",
-      customer_name: job.company_uuid
-        ? companyMap.get(job.company_uuid) ?? "Unknown"
-        : "No Customer",
-      status: job.status,
-      number_of_jobs: job.company_uuid ? (jobCountByCompany.get(job.company_uuid) ?? 1) : 1,
-    }));
+    return jobs.map((job) => {
+      const companyUuid = textOrNull(job.company_uuid);
+      return {
+        generated_job_id: job.generated_job_id,
+        job_name: job.job_description || "No Description",
+        customer_name: companyUuid ? companyNameByUuid.get(companyUuid) ?? "Unknown" : "No Customer",
+        status: job.status,
+        number_of_jobs: companyUuid ? jobCountByCompany.get(companyUuid) ?? 1 : 1,
+      };
+    });
   }
 }
-

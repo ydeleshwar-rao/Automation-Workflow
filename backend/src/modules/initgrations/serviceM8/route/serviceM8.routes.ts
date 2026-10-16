@@ -4,7 +4,7 @@ import { ServiceM8Controller } from "../controller/serviceM8.controller.js";
 
 const router = Router();
 
-// All ServiceM8 routes require a valid Supabase access token (Authorization: Bearer <token>)
+// All ServiceM8 routes require a valid access token (Authorization: Bearer <token>)
 // router.use(authMiddleware);
 
 // ─── OAuth Connect / Disconnect ───────────────────────────
@@ -68,8 +68,6 @@ router.get("/liststaffmembers", ServiceM8Controller.listStaffMembers);
 router.get("/listactivestaff", ServiceM8Controller.listActiveStaff);
 
 
-// ─── Sync All ─────────────────────────────────────────────────────────────────
-router.post("/sync", ServiceM8Controller.syncAll);
 
 // ─── Get Job Details (Summary) ───────────────────────────────────────────────
 router.get(

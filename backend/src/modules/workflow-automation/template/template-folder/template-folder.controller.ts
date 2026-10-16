@@ -7,10 +7,10 @@ import {
   deleteTemplateFolderService,
   getRequiredIntegrationsService,
   getUserIntegrationStatusService,
+  isClientAssignedToDeveloperService,
   listTemplateFoldersService,
   updateTemplateFolderService,
 } from "./template-folder.service.js";
-import { supabase } from "../../../../config/db.config.js";
 import { ApiResponse } from "../../../../utils/ApiResponse.js";
 import { validateId } from "../../../../utils/CustomFunc.js";
 
@@ -109,14 +109,8 @@ export async function getIntegrationStatusController(
     // Developer → only their assigned clients
     // User → only themselves
     if (requestingUser.role === "developer") {
-      const { data: access } = await supabase
-        .from("user_client_access")
-        .select("client_user_id")
-        .eq("user_id", requestingUser.id)
-        .eq("client_user_id", userId)
-        .maybeSingle();
-
-      if (!access) {
+      const isAssigned = await isClientAssignedToDeveloperService(requestingUser.id, String(userId));
+      if (!isAssigned) {
         return res.status(403).json({ message: "Access denied: client not assigned to you" });
       }
     } else if (requestingUser.role !== "admin" && requestingUser.id !== userId) {
@@ -125,7 +119,7 @@ export async function getIntegrationStatusController(
 
     // Parse optional filter: ?integrations=service_m8,commusoft
     const filter = req.query.integrations
-      ? String(req.query.integrations).split(",").map((s) => s.trim())
+      ? String(req.query.integrations).split(",").map((integrationKey) => integrationKey.trim())
       : undefined;
 
     const status = await getUserIntegrationStatusService(

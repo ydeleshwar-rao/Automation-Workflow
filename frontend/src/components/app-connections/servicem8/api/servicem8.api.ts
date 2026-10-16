@@ -1,6 +1,16 @@
 import axiosInstance from "@/src/services/apiClient";
 import { API_ROUTES } from "@/src/constants/api.constants";
 
+/** The ServiceM8 job fields the frontend reads; the backend passes ServiceM8's job.json through. */
+export interface ServiceM8Job {
+  uuid: string;
+  status?: string | null;
+  date?: string | null;
+  total_invoice_amount?: string | number | null;
+  payment_processed?: string | number | boolean | null;
+  [field: string]: unknown;
+}
+
 /**
  * ServiceM8 API client.
  * All authentication is handled via JWT Bearer token in axiosInstance.
@@ -35,14 +45,11 @@ export const servicem8Api = {
     return data;
   },
 
-  getJobs: async (): Promise<Record<string, unknown>[]> => {
-    const { data } = await axiosInstance.get<{ servicem8?: Record<string, unknown>[] }>(
+  /** Jobs fetched live from ServiceM8 by the backend (GET /servicem8/listjobs). */
+  getJobs: async (): Promise<ServiceM8Job[]> => {
+    const { data } = await axiosInstance.get<{ data?: ServiceM8Job[] }>(
       API_ROUTES.SERVICEM8.JOBS
     );
-    return data.servicem8 || [];
-  },
-
-  sync: async (): Promise<void> => {
-    await axiosInstance.post(API_ROUTES.SERVICEM8.SYNC, undefined);
+    return data.data ?? [];
   },
 };

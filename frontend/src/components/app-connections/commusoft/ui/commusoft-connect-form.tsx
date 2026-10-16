@@ -20,8 +20,8 @@ export function CommusoftConnectForm({ onSuccess }: CommusoftConnectFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!clientId || !username || !password) {
       setError("Please enter Client ID, username and password");
       return;
@@ -81,7 +81,7 @@ export function CommusoftConnectForm({ onSuccess }: CommusoftConnectFormProps) {
                   placeholder="e.g. 20225"
                   className="pl-10 h-12 rounded-xl bg-muted/50 border-border/50 focus:bg-background transition-all"
                   value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
+                  onChange={(event) => setClientId(event.target.value)}
                   disabled={isLoading}
                 />
                 <Info className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-[#f58320] transition-colors" />
@@ -96,7 +96,7 @@ export function CommusoftConnectForm({ onSuccess }: CommusoftConnectFormProps) {
                   placeholder="Your username"
                   className="pl-10 h-12 rounded-xl bg-muted/50 border-border/50 focus:bg-background transition-all"
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  onChange={(event) => setUsername(event.target.value)}
                   disabled={isLoading}
                 />
                 <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-[#f58320] transition-colors" />
@@ -111,7 +111,7 @@ export function CommusoftConnectForm({ onSuccess }: CommusoftConnectFormProps) {
                   placeholder="••••••••"
                   className="pl-10 h-12 rounded-xl bg-muted/50 border-border/50 focus:bg-background transition-all"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(event) => setPassword(event.target.value)}
                   disabled={isLoading}
                 />
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-[#f58320] transition-colors" />

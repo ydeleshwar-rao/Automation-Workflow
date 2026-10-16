@@ -16,9 +16,9 @@ export function useServiceM8Data(selectedEvent?: string | null) {
 
       if (Array.isArray(contact)) {
         setContactFields(
-          contact.map((f: any) => ({
-            name: f.key || f.id,
-            label: f.name,
+          contact.map((field: any) => ({
+            name: field.key || field.id,
+            label: field.name,
             type: "text" as const,
           }))
         );
@@ -26,19 +26,19 @@ export function useServiceM8Data(selectedEvent?: string | null) {
 
       if (Array.isArray(action)) {
         setActionFields(
-          action.map((f: any) => ({
-            name: f.name,
-            label: f.label,
-            type: f.type as any,
-            required: f.required,
-            placeholder: f.placeholder,
-            options: f.options,
-            optionsSource: f.optionsSource,
+          action.map((field: any) => ({
+            name: field.name,
+            label: field.label,
+            type: field.type as any,
+            required: field.required,
+            placeholder: field.placeholder,
+            options: field.options,
+            optionsSource: field.optionsSource,
           }))
         );
       }
-    } catch (err) {
-      console.error("Failed to load ServiceM8 data:", err);
+    } catch (error) {
+      console.error("Failed to load ServiceM8 data:", error);
     } finally {
       setIsLoading(false);
     }

@@ -1,6 +1,17 @@
-import { supabase } from "../../config/db.config.js";
-import { ApiError }  from "../../utils/ApiError.js";
 import crypto        from "crypto";
+import { ApiError }  from "../../utils/ApiError.js";
+import { hashPassword } from "../auth/security/password-hasher.js";
+import { authUserRepository } from "../auth/repositories/auth-user.repository.js";
+import {
+  accessRepository,
+  type MemberProfile,
+  type PermissionChanges,
+  type PermissionRecord,
+  type ProfileStatus,
+} from "./access.repository.js";
+
+const TEMP_PASSWORD_BYTES = 12;
+const EMAIL_PROVIDER = "email";
 
 export interface PagePermissionInput {
   page_key:   string;
@@ -9,28 +20,9 @@ export interface PagePermissionInput {
   can_delete?: boolean;
 }
 
-type ProfileRow = {
-  id: string;
-  email: string;
-  full_name: string | null;
-  avatar_url: string | null;
-  role: string;
-  organization_id: string;
-  is_active: boolean | null;
-  created_at?: string;
-  updated_at?: string;
-};
+type MappableProfile = ProfileStatus & Partial<Pick<MemberProfile, "avatar_url" | "created_at" | "updated_at">>;
 
-type PermissionRow = {
-  id?: string;
-  page_key: string;
-  can_view: boolean | null;
-  can_edit: boolean | null;
-  can_delete: boolean | null;
-  updated_at?: string;
-};
-
-function mapProfile(row: ProfileRow, pagePermissions: PermissionRow[] = []) {
+function mapProfile(row: MappableProfile, pagePermissions: PermissionRecord[] = []) {
   return {
     id: row.id,
     email: row.email,
@@ -45,7 +37,7 @@ function mapProfile(row: ProfileRow, pagePermissions: PermissionRow[] = []) {
   };
 }
 
-function mapPermission(row: PermissionRow) {
+function mapPermission(row: PermissionRecord) {
   return {
     id: row.id,
     pageKey: row.page_key,
@@ -56,40 +48,29 @@ function mapPermission(row: PermissionRow) {
   };
 }
 
+function toPermissionGrant(permission: PagePermissionInput) {
+  return {
+    page_key: permission.page_key,
+    can_view: permission.can_view,
+    can_edit: permission.can_edit ?? false,
+    can_delete: permission.can_delete ?? false,
+  };
+}
+
 export class AccessService {
   private static async assertUserInOrganization(userId: string, organizationId: string) {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id,organization_id")
-      .eq("id", userId)
-      .maybeSingle();
-
-    if (error) throw new ApiError(500, error.message);
-    if (!data || data.organization_id !== organizationId) {
+    const membership = await accessRepository.findMembership(userId);
+    if (!membership || membership.organization_id !== organizationId) {
       throw new ApiError(404, "User not found");
     }
   }
 
   private static async getProfileWithPermissions(userId: string) {
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("id,email,full_name,avatar_url,role,organization_id,is_active,created_at,updated_at")
-      .eq("id", userId)
-      .maybeSingle();
-
-    if (profileError) throw new ApiError(500, profileError.message);
-    if (!profile) return null;
-
-    const { data: permissions, error: permissionsError } = await supabase
-      .from("page_permissions")
-      .select("id,page_key,can_view,can_edit,can_delete,updated_at")
-      .eq("user_id", userId)
-      .order("page_key", { ascending: true });
-
-    if (permissionsError) throw new ApiError(500, permissionsError.message);
-    return mapProfile(profile as ProfileRow, (permissions ?? []) as PermissionRow[]);
+    const profile = await accessRepository.findWithPermissions(userId);
+    return profile ? mapProfile(profile, profile.pagePermissions) : null;
   }
 
+  /** Creates login account + profile + page permissions in one transaction. */
   static async createDeveloper(payload: {
     email:       string;
     fullName:    string;
@@ -98,46 +79,25 @@ export class AccessService {
     permissions: PagePermissionInput[];
     password?:   string;
   }) {
-    const password = payload.password ?? crypto.randomBytes(12).toString("base64url");
-
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email: payload.email,
-      password,
-      email_confirm: true,
-      user_metadata: {
-        full_name: payload.fullName,
-        role: "developer",
-        organization_id: payload.organizationId,
-      },
-    });
-
-    if (authError) {
-      if (authError.message.toLowerCase().includes("already registered")) {
-        throw new ApiError(409, "A user with this email already exists");
-      }
-      throw new ApiError(400, authError.message);
+    const password = payload.password ?? crypto.randomBytes(TEMP_PASSWORD_BYTES).toString("base64url");
+    if (await authUserRepository.findIdByEmail(payload.email)) {
+      throw new ApiError(409, "A user with this email already exists");
     }
 
-    if (!authData.user?.id) throw new ApiError(500, "Failed to create auth user");
-
-    const userId = authData.user.id;
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .upsert({
-        id: userId,
+    const { userId } = await authUserRepository.createAccount({
+      user: {
         email: payload.email,
-        full_name: payload.fullName,
-        role: "developer",
-        organization_id: payload.organizationId,
-        created_by: payload.createdById,
-        is_active: true,
-      }, { onConflict: "id" });
-
-    if (profileError) throw new ApiError(500, profileError.message);
-
-    if (payload.permissions.length > 0) {
-      await AccessService.setPagePermissions(userId, payload.permissions, payload.createdById, payload.organizationId);
-    }
+        provider: EMAIL_PROVIDER,
+        password_hash: await hashPassword(password),
+        user_metadata: { full_name: payload.fullName, role: "developer", organization_id: payload.organizationId },
+      },
+      organization: { existingOrganizationId: payload.organizationId },
+      profile: { full_name: payload.fullName, avatar_url: null, role: "developer", created_by: payload.createdById },
+      pagePermissions: payload.permissions.map((permission) => ({
+        ...toPermissionGrant(permission),
+        granted_by: payload.createdById,
+      })),
+    });
 
     const profile = await AccessService.getProfileWithPermissions(userId);
     return { profile, temp_password: password };
@@ -149,15 +109,8 @@ export class AccessService {
       return self ? [self] : [];
     }
 
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("role", "developer")
-      .eq("organization_id", organizationId)
-      .order("created_at", { ascending: false });
-
-    if (error) throw new ApiError(500, error.message);
-    return Promise.all((data ?? []).map((row: { id: string }) => AccessService.getProfileWithPermissions(row.id)));
+    const developers = await accessRepository.findDevelopersWithPermissions(organizationId);
+    return developers.map((developer) => mapProfile(developer, developer.pagePermissions));
   }
 
   static async getDeveloper(developerId: string, organizationId?: string) {
@@ -170,74 +123,38 @@ export class AccessService {
   static async toggleDeveloperStatus(developerId: string, isActive: boolean, organizationId?: string) {
     if (organizationId) await AccessService.assertUserInOrganization(developerId, organizationId);
 
-    const { data: profile, error: fetchError } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", developerId)
-      .maybeSingle();
+    const membership = await accessRepository.findMembership(developerId);
+    if (!membership) throw new ApiError(404, "Developer not found");
+    if (membership.role !== "developer") throw new ApiError(400, "Target user is not a developer");
 
-    if (fetchError) throw new ApiError(500, fetchError.message);
-    if (!profile) throw new ApiError(404, "Developer not found");
-    if (profile.role !== "developer") throw new ApiError(400, "Target user is not a developer");
-
-    const { data, error } = await supabase
-      .from("profiles")
-      .update({ is_active: isActive })
-      .eq("id", developerId)
-      .select("id,email,full_name,is_active,role,organization_id")
-      .single();
-
-    if (error) throw new ApiError(500, error.message);
-    return mapProfile(data as ProfileRow);
+    const updatedProfile = await accessRepository.updateActiveStatus(developerId, isActive);
+    return mapProfile(updatedProfile);
   }
 
   static async deleteDeveloper(developerId: string, organizationId?: string) {
     const profile = await AccessService.getDeveloper(developerId, organizationId);
     if (profile.role !== "developer") throw new ApiError(400, "Can only delete developer accounts");
 
-    const { error } = await supabase.auth.admin.deleteUser(developerId);
-    if (error) throw new ApiError(500, `Failed to delete auth user: ${error.message}`);
-
+    await authUserRepository.delete(developerId);
     return { message: "Developer deleted successfully" };
   }
 
   static async listAdmins(organizationId: string) {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id,email,full_name,avatar_url,role,organization_id,is_active,created_at,updated_at")
-      .eq("role", "admin")
-      .eq("organization_id", organizationId)
-      .order("created_at", { ascending: true });
-
-    if (error) throw new ApiError(500, error.message);
-    return ((data ?? []) as ProfileRow[]).map((row) => mapProfile(row));
+    const admins = await accessRepository.findAdmins(organizationId);
+    return admins.map((admin) => mapProfile(admin));
   }
 
   static async deleteAdmin(adminId: string, callerId: string, organizationId: string) {
     if (adminId === callerId) throw new ApiError(400, "You cannot delete your own account while logged in");
 
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("id,role,organization_id")
-      .eq("id", adminId)
-      .maybeSingle();
+    const membership = await accessRepository.findMembership(adminId);
+    if (!membership || membership.organization_id !== organizationId) throw new ApiError(404, "Admin account not found");
+    if (membership.role !== "admin") throw new ApiError(400, "Target account is not an admin");
 
-    if (profileError) throw new ApiError(500, profileError.message);
-    if (!profile || profile.organization_id !== organizationId) throw new ApiError(404, "Admin account not found");
-    if (profile.role !== "admin") throw new ApiError(400, "Target account is not an admin");
+    const adminCount = await accessRepository.countAdmins(organizationId);
+    if (adminCount <= 1) throw new ApiError(400, "Cannot delete the last admin account â€” add another admin first");
 
-    const { count, error: countError } = await supabase
-      .from("profiles")
-      .select("id", { count: "exact", head: true })
-      .eq("role", "admin")
-      .eq("organization_id", organizationId);
-
-    if (countError) throw new ApiError(500, countError.message);
-    if ((count ?? 0) <= 1) throw new ApiError(400, "Cannot delete the last admin account — add another admin first");
-
-    const { error } = await supabase.auth.admin.deleteUser(adminId);
-    if (error) throw new ApiError(500, `Failed to delete auth user: ${error.message}`);
-
+    await authUserRepository.delete(adminId);
     return { message: "Admin account deleted successfully" };
   }
 
@@ -249,25 +166,8 @@ export class AccessService {
   ) {
     if (organizationId) await AccessService.assertUserInOrganization(userId, organizationId);
 
-    const { error: deleteError } = await supabase
-      .from("page_permissions")
-      .delete()
-      .eq("user_id", userId);
-
-    if (deleteError) throw new ApiError(500, deleteError.message);
+    await accessRepository.replacePermissions(userId, permissions.map(toPermissionGrant), grantedBy);
     if (permissions.length === 0) return [];
-
-    const rows = permissions.map((permission) => ({
-      user_id: userId,
-      page_key: permission.page_key,
-      can_view: permission.can_view,
-      can_edit: permission.can_edit ?? false,
-      can_delete: permission.can_delete ?? false,
-      granted_by: grantedBy,
-    }));
-
-    const { error: insertError } = await supabase.from("page_permissions").insert(rows);
-    if (insertError) throw new ApiError(500, insertError.message);
 
     return AccessService.getPagePermissions(userId, organizationId);
   }
@@ -281,56 +181,30 @@ export class AccessService {
   ) {
     if (organizationId) await AccessService.assertUserInOrganization(userId, organizationId);
 
-    const { data: row, error } = await supabase
-      .from("page_permissions")
-      .upsert({
-        user_id: userId,
-        page_key: pageKey,
-        ...(data.canView !== undefined ? { can_view: data.canView } : {}),
-        ...(data.canEdit !== undefined ? { can_edit: data.canEdit } : {}),
-        ...(data.canDelete !== undefined ? { can_delete: data.canDelete } : {}),
-        granted_by: grantedBy,
-      }, { onConflict: "user_id,page_key" })
-      .select("id,page_key,can_view,can_edit,can_delete,updated_at")
-      .single();
-
-    if (error) throw new ApiError(500, error.message);
-    return mapPermission(row as PermissionRow);
+    const changes: PermissionChanges = {
+      ...(data.canView !== undefined ? { can_view: data.canView } : {}),
+      ...(data.canEdit !== undefined ? { can_edit: data.canEdit } : {}),
+      ...(data.canDelete !== undefined ? { can_delete: data.canDelete } : {}),
+    };
+    const permission = await accessRepository.upsertPermission(userId, pageKey, changes, grantedBy);
+    return mapPermission(permission);
   }
 
   static async getPagePermissions(userId: string, organizationId?: string) {
     if (organizationId) await AccessService.assertUserInOrganization(userId, organizationId);
 
-    const { data, error } = await supabase
-      .from("page_permissions")
-      .select("id,page_key,can_view,can_edit,can_delete,updated_at")
-      .eq("user_id", userId)
-      .order("page_key", { ascending: true });
-
-    if (error) throw new ApiError(500, error.message);
-    return ((data ?? []) as PermissionRow[]).map(mapPermission);
+    const permissions = await accessRepository.findPermissions(userId);
+    return permissions.map(mapPermission);
   }
 
   static async removePagePermission(userId: string, pageKey: string, organizationId?: string) {
     if (organizationId) await AccessService.assertUserInOrganization(userId, organizationId);
 
-    const { data: existing, error: findError } = await supabase
-      .from("page_permissions")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("page_key", pageKey)
-      .maybeSingle();
+    if (!(await accessRepository.hasPermission(userId, pageKey))) {
+      throw new ApiError(404, `Permission '${pageKey}' not found for this user`);
+    }
 
-    if (findError) throw new ApiError(500, findError.message);
-    if (!existing) throw new ApiError(404, `Permission '${pageKey}' not found for this user`);
-
-    const { error } = await supabase
-      .from("page_permissions")
-      .delete()
-      .eq("user_id", userId)
-      .eq("page_key", pageKey);
-
-    if (error) throw new ApiError(500, error.message);
+    await accessRepository.deletePermission(userId, pageKey);
     return { message: "Permission removed" };
   }
 }

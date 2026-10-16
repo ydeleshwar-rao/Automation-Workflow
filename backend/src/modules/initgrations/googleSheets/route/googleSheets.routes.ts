@@ -41,7 +41,7 @@ router.get(
   catchAsync(GoogleSheetsController.getRows)
 );
 
-// Cached rows from Supabase
+// Former cached-rows endpoint — now reads the rows live from Google
 router.get(
   "/spreadsheets/:spreadsheetId/rows/cached",
   catchAsync(GoogleSheetsController.getCachedRows)

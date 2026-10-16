@@ -41,8 +41,8 @@ export function CreateFolderModal({
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && folderName.trim()) {
+  const handleKeyPress = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter" && folderName.trim()) {
       handleCreate();
     }
   };
@@ -64,7 +64,7 @@ export function CreateFolderModal({
     >
       <div
         className="bg-card text-card-foreground w-full max-w-[450px] rounded-2xl shadow-2xl border border-border overflow-hidden animate-in zoom-in-95 duration-150"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border">
@@ -90,7 +90,7 @@ export function CreateFolderModal({
               type="text"
               placeholder="e.g., Client Onboarding"
               value={folderName}
-              onChange={(e) => setFolderName(e.target.value)}
+              onChange={(event) => setFolderName(event.target.value)}
               onKeyPress={handleKeyPress}
               autoFocus
               className="w-full h-11 px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground border border-border rounded-lg focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary focus-visible:ring-offset-0 transition-all"

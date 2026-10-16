@@ -17,7 +17,7 @@ import { loadSession } from "@/src/store/localStorage"
  */
 export function AccessBootstrap() {
   const dispatch = useDispatch<AppDispatch>()
-  const status = useSelector((s: RootState) => s.access.status)
+  const status = useSelector((state: RootState) => state.access.status)
   const pathname = usePathname()
   const didRun = useRef(false)
 

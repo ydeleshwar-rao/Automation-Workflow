@@ -16,20 +16,18 @@ Requires Bun 1.4+ (`powershell -c "irm bun.sh/install.ps1|iex"`) and a Redis ser
 bun install
 ```
 
-## 2. Choose a database: PostgreSQL or Supabase
+## 2. Architecture: PostgreSQL + Prisma
 
-The app runs on either. One setting in each app picks it, and they must match:
-
-| | Plain PostgreSQL (default) | Supabase |
-|---|---|---|
-| `backend` → `DB_PROVIDER` | `postgres` | `supabase` |
-| `frontend` → `NEXT_PUBLIC_AUTH_PROVIDER` | `postgres` | `supabase` |
-| Database queries | `pg` driver, via our query builder (`backend/src/lib/db/`) | Supabase client (PostgREST) |
-| Login accounts | `auth_users` table, scrypt-hashed passwords | Supabase Auth |
-| Google sign-in | Google ID token, needs `GOOGLE_CLIENT_ID` / `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Supabase Google provider |
-| Forgot password email | Backend sends it through `SMTP_*` (dev: link printed in backend log) | Supabase sends it |
-
-Services use the same `supabase.from(...)` code either way; only `backend/src/config/db.config.ts` switches.
+- **Database:** PostgreSQL only. **Prisma** is the only data-access layer.
+- **Single source of truth:** `backend/prisma/schema.prisma`. Model names are PascalCase; field names are
+  exactly the column names (snake_case), which are also the JSON keys the API returns.
+- **Layers:** `route → controller → service → repository → Prisma`. Repositories (`*.repository.ts`) are the
+  only files that call Prisma. Coding rules: see [CLAUDE.md](CLAUDE.md).
+- **API:** every backend route is under `/api/v1` (`backend/src/config/api.config.ts`).
+- **Login accounts:** `auth_users` table (scrypt-hashed passwords), Google / Microsoft ID tokens and company SSO,
+  all verified by the backend. Forgot-password emails go through `SMTP_*` (dev: link printed in the backend log).
+- **Integrations** (ServiceM8, Commusoft, simPRO, Zoho, Google, Razorpay, LeadsHub) store **credentials and
+  configuration only**. Vendor data (jobs, customers, invoices…) is fetched live from the vendor API, never copied.
 
 ## 3. Environment files
 
@@ -43,65 +41,44 @@ Each example file explains every variable. Minimum for local PostgreSQL:
 
 ```
 # backend/.env.development
-DB_PROVIDER=postgres
 DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/automation_workflow
 DIRECT_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/automation_workflow
 JWT_ACCESS_SECRET=…   JWT_REFRESH_SECRET=…   REDIS_URL=redis://localhost:6379
 
 # frontend/.env.local
-NEXT_PUBLIC_API_URL=http://localhost:5000
-NEXT_PUBLIC_AUTH_PROVIDER=postgres
+NEXT_PUBLIC_API_URL=http://localhost:5000      # backend origin, without /api/v1
 ```
 
 ## 4. Database
 
-Migrations live in `backend/prisma/migrations/`, one per table, applied in order.
-
-**Local PostgreSQL, first time:** create the database (PowerShell):
+**First time:** create the database (PowerShell), then apply all migrations:
 
 ```
 & "C:\Program Files\PostgreSQL\13\bin\psql.exe" -U postgres -c "CREATE DATABASE automation_workflow"
-```
-
-**Import table definitions from Supabase:** this is needed once, for tables that so far exist only in the
-Supabase project. Put `SUPABASE_DB_URL=` (Supabase → Project Settings → Database → direct URI, port 5432)
-in `backend/.env.development`, then:
-
-```
 cd backend
-bun scripts/generate-migrations-from-db.ts
+bun run db:migrate          # prisma migrate deploy — applies backend/prisma/migrations in order
 ```
 
-It only reads the schema (no data). It writes one new migration per missing table, plus any missing columns,
-functions and triggers. Commit the new folders.
+`bun install` runs `prisma generate` automatically, so the typed Prisma client is always up to date.
 
-**New, empty database:**
+**Changing the schema** (run from `backend/`):
 
-```
-bun run db:migrate
-```
+1. Edit `prisma/schema.prisma`.
+2. `bun run db:migrate:create -- --name <what_changed>` — writes a new migration folder (does not apply it).
+3. Review the generated `migration.sql`, then `bun run db:migrate` to apply it.
+4. Commit `schema.prisma` and the new migration folder together.
 
-**Existing database that already has tables** (created earlier from `supabase-setup.sql`) — run once:
+Check constraints and expression indexes (e.g. case-insensitive email uniqueness) cannot be written in
+`schema.prisma`; they live in the hand-written SQL migrations and Prisma leaves them alone.
 
-```
-bun run db:migrate:existing
-```
-
-This applies every migration on top of what is there (keeps all data, adds anything missing,
-converts old enum columns to text) and records them, so `bun run db:migrate` works from then on.
-
-Check state with `bun run db:migrate:status`. To migrate production, set `NODE_ENV` first so
-`backend/.env.production` is used — PowerShell: `$env:NODE_ENV="production"; bun run db:migrate`
-(bash: `NODE_ENV=production bun run db:migrate`).
-
-> Do **not** run `prisma migrate dev` or `prisma db push`: `schema.prisma` does not describe
-> the `ai_workflows` tables or the DB-side defaults, so Prisma would try to drop/alter them.
-> Add a new migration folder by hand instead (next number, `create_<table>` / `alter_<table>`).
+Other commands: `bun run db:migrate:status`, `bun run db:studio` (browse data), `bun run db:generate`.
+To migrate production, set `NODE_ENV` first so `backend/.env.production` is used —
+PowerShell: `$env:NODE_ENV="production"; bun run db:migrate` (bash: `NODE_ENV=production bun run db:migrate`).
 
 The first account: open http://localhost:3000/sign-up (individual or company), or /setup for a
 company admin with email and password.
 
-## Sign-in options: individuals and company SSO (postgres provider)
+## Sign-in options: individuals and company SSO
 
 | Who | How they sign up / in | Workspace |
 |---|---|---|
@@ -117,7 +94,7 @@ company admin with email and password.
 - Setup: Google OAuth client (`GOOGLE_CLIENT_ID` / `NEXT_PUBLIC_GOOGLE_CLIENT_ID`) and/or a Microsoft Entra
   app registration (`MICROSOFT_CLIENT_ID` / `NEXT_PUBLIC_MICROSOFT_CLIENT_ID`); see the comments in
   `backend/.env.example`. Both use the redirect URI `http://localhost:3000/auth/callback`.
-- Code: `backend/src/lib/auth/oidc.ts` (token verification), `backend/src/modules/sso/` (rules + `/sso/*` API),
+- Code: `backend/src/lib/auth/oidc.ts` (token verification), `backend/src/modules/sso/` (rules + `/api/v1/sso/*` API),
   `frontend/src/lib/auth/provider.ts` (redirects + callback).
 
 ## 5. Run
@@ -141,7 +118,6 @@ bun start               # start both
 
 ```
 bun run test            # backend tests
-bun run --filter backend test:db   # query-builder tests; needs TEST_DATABASE_URL (empty, migrated DB)
 bun run --filter backend test:sso  # company SSO rules + token checks; needs TEST_DATABASE_URL
 bun run lint            # frontend lint
 bun run prisma:generate # regenerate the Prisma client after editing schema.prisma

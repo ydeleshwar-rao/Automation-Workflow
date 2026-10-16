@@ -50,9 +50,9 @@ export function EventSidebarHeader({
                           autoFocus
                           className="w-40 border-b border-primary bg-transparent text-[13px] font-semibold text-foreground outline-none"
                           value={editedTitle}
-                          onChange={(e) => setEditedTitle(e.target.value)}
+                          onChange={(event) => setEditedTitle(event.target.value)}
                           onBlur={() => setIsEditingTitle(false)}
-                          onKeyDown={(e) => e.key === "Enter" && setIsEditingTitle(false)}
+                          onKeyDown={(event) => event.key === "Enter" && setIsEditingTitle(false)}
                         />
                       ) : (
                         <div

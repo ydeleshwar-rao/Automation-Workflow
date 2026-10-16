@@ -2,13 +2,13 @@ import type { JobRow } from "../../types";
 
 export function filterEngineerJobs(jobs: JobRow[], query: string): JobRow[] {
   if (!query.trim()) return jobs;
-  const q = query.toLowerCase().trim();
+  const normalizedQuery = query.toLowerCase().trim();
   return jobs.filter(
-    (j) =>
-      j.name?.toLowerCase().includes(q) ||
-      j.email?.toLowerCase().includes(q) ||
-      j.phone?.toLowerCase().includes(q) ||
-      j.address?.toLowerCase().includes(q)
+    (job) =>
+      job.name?.toLowerCase().includes(normalizedQuery) ||
+      job.email?.toLowerCase().includes(normalizedQuery) ||
+      job.phone?.toLowerCase().includes(normalizedQuery) ||
+      job.address?.toLowerCase().includes(normalizedQuery)
   );
 }
 

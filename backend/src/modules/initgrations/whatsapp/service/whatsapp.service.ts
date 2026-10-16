@@ -1,5 +1,5 @@
-import { supabase } from "../../../../config/db.config.js";
 import { ApiError } from "../../../../utils/ApiError.js";
+import { whatsappRepository } from "../repository/whatsapp.repository.js";
 import {
   createSession,
   getSession,
@@ -37,14 +37,7 @@ const requireConnected = (userId: string) => {
   return sess.socket;
 };
 
-const getSessionRow = async (userId: string) => {
-  const { data } = await supabase
-    .from("whatsapp_sessions")
-    .select("*")
-    .eq("user_id", userId)
-    .maybeSingle();
-  return data;
-};
+const getSessionRow = (userId: string) => whatsappRepository.findSession(userId);
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
@@ -154,16 +147,10 @@ export class WhatsAppService {
     webhookUrl: string,
     webhookSecret?: string
   ) {
-    const { error } = await supabase.from("whatsapp_sessions").upsert(
-      {
-        user_id: userId,
-        webhook_url: webhookUrl,
-        webhook_secret: webhookSecret ?? null,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id" }
-    );
-    if (error) throw new ApiError(500, `Failed to save webhook: ${error.message}`);
+    await whatsappRepository.upsertWebhook(userId, {
+      webhook_url: webhookUrl,
+      webhook_secret: webhookSecret ?? null,
+    });
     return { webhook_url: webhookUrl };
   }
 
@@ -173,10 +160,7 @@ export class WhatsAppService {
   }
 
   static async removeWebhook(userId: string) {
-    await supabase
-      .from("whatsapp_sessions")
-      .update({ webhook_url: null, webhook_secret: null, updated_at: new Date().toISOString() })
-      .eq("user_id", userId);
+    await whatsappRepository.clearWebhook(userId);
     return { removed: true };
   }
 
@@ -307,9 +291,9 @@ export class WhatsAppService {
     const result = await sock.sendMessage(jid, {
       text: payload.text,
       footer: payload.footer ?? "",
-      buttons: payload.buttons.map((b) => ({
-        buttonId: b.id,
-        buttonText: { displayText: b.text },
+      buttons: payload.buttons.map((button) => ({
+        buttonId: button.id,
+        buttonText: { displayText: button.text },
         type: 1,
       })),
       headerType: 1,
@@ -345,27 +329,27 @@ export class WhatsAppService {
       error?: string;
     }> = [];
 
-    for (const msg of messages) {
+    for (const bulkMessage of messages) {
       try {
-        const res = await WhatsAppService.sendText(userId, {
-          to: msg.to,
-          message: msg.message,
+        const sendResult = await WhatsAppService.sendText(userId, {
+          to: bulkMessage.to,
+          message: bulkMessage.message,
         });
-        results.push({ to: msg.to, status: "sent", ...(res.message_id ? { message_id: res.message_id } : {}) });
-      } catch (err: any) {
-        results.push({ to: msg.to, status: "failed", error: err.message });
+        results.push({ to: bulkMessage.to, status: "sent", ...(sendResult.message_id ? { message_id: sendResult.message_id } : {}) });
+      } catch (sendError: any) {
+        results.push({ to: bulkMessage.to, status: "failed", error: sendError.message });
       }
 
       // Anti-spam delay between messages
-      if (msg.delay_ms && msg.delay_ms > 0) {
-        await new Promise((r) => setTimeout(r, Math.min(msg.delay_ms!, 10_000)));
+      if (bulkMessage.delay_ms && bulkMessage.delay_ms > 0) {
+        await new Promise((resolve) => setTimeout(resolve, Math.min(bulkMessage.delay_ms!, 10_000)));
       }
     }
 
     return {
       total: messages.length,
-      sent: results.filter((r) => r.status === "sent").length,
-      failed: results.filter((r) => r.status === "failed").length,
+      sent: results.filter((result) => result.status === "sent").length,
+      failed: results.filter((result) => result.status === "failed").length,
       results,
     };
   }
@@ -375,16 +359,16 @@ export class WhatsAppService {
   static async getGroups(userId: string) {
     const sock = requireConnected(userId);
     const groups = await sock.groupFetchAllParticipating();
-    return Object.values(groups).map((g) => ({
-      id: g.id,
-      name: g.subject,
-      description: g.desc ?? null,
-      participant_count: g.participants.length,
-      participants: g.participants.map((p) => ({
-        jid: p.id,
-        role: p.admin ?? "member",
+    return Object.values(groups).map((group) => ({
+      id: group.id,
+      name: group.subject,
+      description: group.desc ?? null,
+      participant_count: group.participants.length,
+      participants: group.participants.map((participant) => ({
+        jid: participant.id,
+        role: participant.admin ?? "member",
       })),
-      created_at: g.creation,
+      created_at: group.creation,
     }));
   }
 
@@ -397,9 +381,9 @@ export class WhatsAppService {
       name: meta.subject,
       description: meta.desc ?? null,
       participant_count: meta.participants.length,
-      participants: meta.participants.map((p) => ({
-        jid: p.id,
-        role: p.admin ?? "member",
+      participants: meta.participants.map((participant) => ({
+        jid: participant.id,
+        role: participant.admin ?? "member",
       })),
       created_at: meta.creation,
     };
@@ -407,7 +391,7 @@ export class WhatsAppService {
 
   static async createGroup(userId: string, payload: WACreateGroupPayload) {
     const sock = requireConnected(userId);
-    const participantJids = payload.participants.map((p) => formatJid(p));
+    const participantJids = payload.participants.map((participant) => formatJid(participant));
     const result = await sock.groupCreate(payload.name, participantJids);
     return {
       group_id: result.id,
@@ -425,7 +409,7 @@ export class WhatsAppService {
     const jid = `${groupId.replace("@g.us", "")}@g.us`;
     const result = await sock.groupParticipantsUpdate(
       jid,
-      participants.map((p) => formatJid(p)),
+      participants.map((participant) => formatJid(participant)),
       "add"
     );
     return { result };
@@ -440,7 +424,7 @@ export class WhatsAppService {
     const jid = `${groupId.replace("@g.us", "")}@g.us`;
     const result = await sock.groupParticipantsUpdate(
       jid,
-      participants.map((p) => formatJid(p)),
+      participants.map((participant) => formatJid(participant)),
       "remove"
     );
     return { result };
@@ -455,7 +439,7 @@ export class WhatsAppService {
     const jid = `${groupId.replace("@g.us", "")}@g.us`;
     const result = await sock.groupParticipantsUpdate(
       jid,
-      participants.map((p) => formatJid(p)),
+      participants.map((participant) => formatJid(participant)),
       "promote"
     );
     return { result };
@@ -470,7 +454,7 @@ export class WhatsAppService {
     const jid = `${groupId.replace("@g.us", "")}@g.us`;
     const result = await sock.groupParticipantsUpdate(
       jid,
-      participants.map((p) => formatJid(p)),
+      participants.map((participant) => formatJid(participant)),
       "demote"
     );
     return { result };

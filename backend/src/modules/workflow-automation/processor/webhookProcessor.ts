@@ -1,5 +1,12 @@
 import { getLocationIdByUserId } from "../../../common/function.js";
-import { supabase } from "../../../config/db.config.js";
+import { workflowNodeRepository } from "../node/node.repository.js";
+import { workflowRepository } from "../workflow/workflow.repository.js";
+import { workflowFieldMappingRepository } from "../field_mapping/mapping.repository.js";
+import {
+  workflowExecutionRepository,
+  type CreateExecutionLogInput,
+} from "../execution/execution.repository.js";
+import { asJsonArray, asJsonObject } from "../shared/json-object.js";
 import { sendAndSaveEmail } from "../../mail/smtp-connection/service/mail.service.js";
 import { processLeadhubCreateAndContact } from "./leadhubProcessor.js";
 import { ServiceM8Service } from "../../initgrations/serviceM8/service/serviceM8.service.js";
@@ -25,35 +32,19 @@ export async function findWorkflowByWebhookId(
 ): Promise<{ workflowId: string; triggerNodeId: string } | null> {
   log.info("searching trigger node", { webhookId });
 
-  const { data: node, error } = await supabase
-    .from("workflow_nodes")
-    .select("id, workflow_id")
-    .eq("type", "trigger")
-    .eq("integration_key", "webhooks")
-    .contains("config", { webhook_id: webhookId })
-    .single();
-
-  if (error || !node) {
-    log.warn("no trigger node found", {
-      webhookId,
-      error: error?.message ?? "no data returned",
-    });
+  const node = await workflowNodeRepository.findWebhookTriggerNode(webhookId);
+  if (!node) {
+    log.warn("no trigger node found", { webhookId, error: "no data returned" });
     return null;
   }
 
   log.info("trigger node found", { nodeId: node.id, workflowId: node.workflow_id });
 
-  const { data: workflow, error: wfError } = await supabase
-    .from("workflows")
-    .select("id, status")
-    .eq("id", node.workflow_id)
-    .eq("status", "active")
-    .single();
-
-  if (wfError || !workflow) {
+  const workflow = await workflowRepository.findById(node.workflow_id);
+  if (!workflow || workflow.status !== "active") {
     log.warn("workflow not active or not found", {
       workflowId: node.workflow_id,
-      error: wfError?.message ?? "workflow status is not 'active'",
+      error: "workflow status is not 'active'",
     });
     return null;
   }
@@ -76,45 +67,25 @@ export async function executeWorkflow(
 
   try {
     // ── STEP 1: Create execution record ──────────────────────────────────────
-    const { data: execution, error: execError } = await supabase
-      .from("workflow_executions")
-      .insert({
-        workflow_id: workflowId,
-        status: "running",
-        trigger_payload: triggerData,
-        started_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-
-    if (execError) throw new Error(execError.message);
-    executionId = execution.id;
+    const execution = await workflowExecutionRepository.start(workflowId, triggerData);
+    const currentExecutionId = execution.id;
+    executionId = currentExecutionId;
     log.info("execution record created", { executionId, workflowId });
 
     // ── STEP 2: Fetch nodes ordered by position ───────────────────────────────
-    const { data: nodes, error: nodesError } = await supabase
-      .from("workflow_nodes")
-      .select("*")
-      .eq("workflow_id", workflowId)
-      .order("position", { ascending: true });
+    const workflowNodes = await workflowNodeRepository.findByWorkflow(workflowId);
+    if (workflowNodes.length === 0) throw new Error("No nodes found for this workflow");
 
-    if (nodesError) throw new Error(nodesError.message);
-    if (!nodes || nodes.length === 0) throw new Error("No nodes found for this workflow");
-
-    // Fetch user_id from workflows table (workflow_nodes does not store user_id)
-    const { data: workflowMeta } = await supabase
-      .from("workflows")
-      .select("user_id")
-      .eq("id", workflowId)
-      .single();
+    // workflow_nodes does not store user_id — actions need the workflow owner
+    const workflowMeta = await workflowRepository.findById(workflowId);
     const workflowUserId: string | null = workflowMeta?.user_id ?? null;
-    nodes.forEach((n) => (n.user_id = workflowUserId));
+    const nodes = workflowNodes.map((workflowNode) => ({ ...workflowNode, user_id: workflowUserId }));
 
     log.info("nodes fetched", {
       executionId,
       workflowId,
       count: nodes.length,
-      nodes: nodes.map((n) => `${n.type}/${n.integration_key}`),
+      nodes: nodes.map((workflowNode) => `${workflowNode.type}/${workflowNode.integration_key}`),
     });
 
     // ── STEP 3: Build output map — each node's resolved output is stored here ─
@@ -147,19 +118,10 @@ export async function executeWorkflow(
       }
 
       // ── Action node: resolve field mappings ───────────────────────────────
-      const { data: mappingRow, error: mappingError } = await supabase
-        .from("workflow_field_mappings")
-        .select("mappings")
-        .eq("workflow_node_id", node.id)
-        .maybeSingle();
-
-      if (mappingError) {
-        log.warn("failed to fetch field_mappings", { executionId, nodeId: node.id, error: mappingError.message });
-      }
-      const mappings: any[] = mappingRow?.mappings ?? [];
+      const mappings: any[] = await findNodeMappings(currentExecutionId, node.id);
 
       // Start resolved input with static node config (credentials, accountId, etc.)
-      const resolvedInput: Record<string, any> = { ...(node.sample_payload || {}) };
+      const resolvedInput: Record<string, any> = { ...asJsonObject(node.sample_payload) };
 
       // Collect mapping-level log entries for this node
       const mappingLogs: MappingLogEntry[] = [];
@@ -361,11 +323,11 @@ export async function executeWorkflow(
         ? "skipped"
         : "success";
 
-      const logRows = [
+      const logRows: CreateExecutionLogInput[] = [
         ...(mappingLogs.length > 0
           ? [
               {
-                execution_id: executionId,
+                execution_id: currentExecutionId,
                 workflow_id: workflowId,
                 node_id: node.id,
                 node_position: node.position ?? null,
@@ -380,7 +342,7 @@ export async function executeWorkflow(
             ]
           : []),
         {
-          execution_id: executionId,
+          execution_id: currentExecutionId,
           workflow_id: workflowId,
           node_id: node.id,
           node_position: node.position ?? null,
@@ -393,15 +355,7 @@ export async function executeWorkflow(
         },
       ];
 
-      const { error: logError } = await supabase
-        .from("workflow_execution_logs")
-        .insert(logRows);
-
-      if (logError) {
-        log.warn("failed to save execution logs", { executionId, nodeId: node.id, error: logError.message });
-      } else {
-        log.debug("execution logs saved", { executionId, nodeId: node.id, rows: logRows.length });
-      }
+      await saveExecutionLogs(currentExecutionId, node.id, logRows);
 
       if (nodeStatus === "failed") {
         throw new Error(nodeError!);
@@ -421,13 +375,7 @@ export async function executeWorkflow(
     }
 
     // ── STEP 5: Mark execution completed ─────────────────────────────────────
-    await supabase
-      .from("workflow_executions")
-      .update({
-        status: "completed",
-        finished_at: new Date().toISOString(),
-      })
-      .eq("id", executionId);
+    await workflowExecutionRepository.finish(currentExecutionId, "completed");
 
     log.info("COMPLETED", { executionId, workflowId, steps: stepResults.length });
     return { success: true };
@@ -435,15 +383,39 @@ export async function executeWorkflow(
   } catch (error: any) {
     log.error("WORKFLOW FAILED", { executionId, workflowId, error: error.message });
     if (executionId) {
-      await supabase
-        .from("workflow_executions")
-        .update({
-          status: "failed",
-          finished_at: new Date().toISOString(),
-        })
-        .eq("id", executionId);
+      await markExecutionFailed(executionId);
     }
     return { success: false, error: error.message };
+  }
+}
+
+/** A missing mapping row is normal; a failed lookup is logged and treated as "no mappings" like before. */
+async function findNodeMappings(executionId: string, nodeId: string): Promise<any[]> {
+  try {
+    const mappingRow = await workflowFieldMappingRepository.findByNode(nodeId);
+    return asJsonArray(mappingRow?.mappings);
+  } catch (error: any) {
+    log.warn("failed to fetch field_mappings", { executionId, nodeId, error: error?.message });
+    return [];
+  }
+}
+
+/** Execution logs are diagnostics only — a failed write must not fail the workflow run. */
+async function saveExecutionLogs(executionId: string, nodeId: string, logRows: CreateExecutionLogInput[]) {
+  try {
+    await workflowExecutionRepository.addLogs(logRows);
+    log.debug("execution logs saved", { executionId, nodeId, rows: logRows.length });
+  } catch (error: any) {
+    log.warn("failed to save execution logs", { executionId, nodeId, error: error?.message });
+  }
+}
+
+/** Called from the failure path — must never throw over the original error. */
+async function markExecutionFailed(executionId: string) {
+  try {
+    await workflowExecutionRepository.finish(executionId, "failed");
+  } catch (error: any) {
+    log.error("failed to mark execution as failed", { executionId, error: error?.message });
   }
 }
 
@@ -725,8 +697,8 @@ export async function executeAction(
     const pick = (keys: string[]) =>
       Object.fromEntries(
         keys
-          .map((k) => [k, input[k]])
-          .filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== "")
+          .map((key) => [key, input[key]])
+          .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "")
       );
 
     const companyPayload = pick([
@@ -801,8 +773,8 @@ export async function executeAction(
       throw new Error("[Action:service_m8:create_job] required field 'job_status' is empty");
     }
 
-    const nonEmpty = (v: any) =>
-      v !== undefined && v !== null && String(v).trim() !== "";
+    const nonEmpty = (value: any) =>
+      value !== undefined && value !== null && String(value).trim() !== "";
 
     // 1. Company
     const companyPayload: Record<string, any> = {
@@ -956,7 +928,7 @@ export async function executeAction(
     }
 
     const jobId = String(input.job_uuid).trim();
-    const nonEmpty = (v: any) => v !== undefined && v !== null && String(v).trim() !== "";
+    const nonEmpty = (value: any) => value !== undefined && value !== null && String(value).trim() !== "";
 
     const patch: Record<string, any> = {};
     if (nonEmpty(input.job_status))            patch.status                = String(input.job_status).trim();

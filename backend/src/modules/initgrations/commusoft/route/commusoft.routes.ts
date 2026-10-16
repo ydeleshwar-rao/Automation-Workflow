@@ -6,31 +6,21 @@ import { CommusoftController } from "../controller/commusoft.controller.js";
 
 const router = Router();
 
-
 // Connection management
 router.post("/connect", catchAsync(CommusoftController.generateAccessToken));
 router.get("/status", catchAsync(CommusoftController.getConnectionStatus));
 router.delete("/disconnect", catchAsync(CommusoftController.disconnect));
 
-// // Additional endpoints
-router.post("/customers/sync", catchAsync(CommusoftController.syncCustomersDirectory));
+// Live Commusoft reads
 router.get("/customers", catchAsync(CommusoftController.getCustomers));
-router.post(
-  "/customerdetails/sync",
-  catchAsync(CommusoftController.syncCustomerDetails)
-);
 router.get(
   "/customerdetails",
   compression({ level: 6 }),
   catchAsync(CommusoftController.getCustomerDetails)
 );
- router.get("/jobs", catchAsync(CommusoftController.getJobs));
-// router.get("/customers/:id/jobs", catchAsync(CommusoftController.getJobsByCustomerId));
- //router.get("/engineers", catchAsync(CommusoftController.getEngineers));
+router.get("/jobs", catchAsync(CommusoftController.getJobs));
 router.get("/jobdescriptions", catchAsync(CommusoftController.getJobDescriptions));
 
-router.post("/sync", catchAsync(CommusoftController.syncAll))
-router.get("/sync/status", catchAsync(CommusoftController.getSyncStatus));
 router.get("/getjobs", catchAsync(CommusoftController.getJobsByEmailOrPhone));
 router.get("/userpreference", catchAsync(CommusoftController.getUserPreference));
 router.get("/diaryevents", catchAsync(CommusoftController.getDiaryEvents));

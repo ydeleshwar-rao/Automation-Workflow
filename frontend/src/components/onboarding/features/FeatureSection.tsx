@@ -82,14 +82,14 @@ export function FeatureSection() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {FEATURES.map((f, i) => (
+        {FEATURES.map((feature, index) => (
           <ReusableCard
-            key={f.title}
-            iconBg={f.iconBg}
-            icon={f.icon}
-            title={f.title}
-            description={f.description}
-            delay={i * 100}
+            key={feature.title}
+            iconBg={feature.iconBg}
+            icon={feature.icon}
+            title={feature.title}
+            description={feature.description}
+            delay={index * 100}
           />
         ))}
       </div>

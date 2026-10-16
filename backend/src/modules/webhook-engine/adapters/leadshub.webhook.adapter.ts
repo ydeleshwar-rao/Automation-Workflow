@@ -354,22 +354,22 @@ async function getCustomFieldMap(
   if (cached && cached.expiresAt > Date.now()) return cached.map;
 
   try {
-    const res = await axios.get(
+    const customFieldsResponse = await axios.get(
       `${GHL_BASE_URL}/locations/${locationId}/customFields`,
       { headers }
     );
-    const fields: CustomFieldEntry[] = Array.isArray(res.data?.customFields)
-      ? res.data.customFields
+    const fields: CustomFieldEntry[] = Array.isArray(customFieldsResponse.data?.customFields)
+      ? customFieldsResponse.data.customFields
       : [];
-    const map = new Map(fields.map((f) => [f.id, f]));
+    const map = new Map(fields.map((field) => [field.id, field]));
     customFieldCache.set(locationId, {
       map,
       expiresAt: Date.now() + CUSTOM_FIELD_TTL_MS,
     });
     return map;
-  } catch (err: any) {
+  } catch (fetchError: any) {
     console.warn(
-      `[Leadshub:webhook:enrich] ✖ custom-field map fetch failed location=${locationId} status=${err?.response?.status}`
+      `[Leadshub:webhook:enrich] ✖ custom-field map fetch failed location=${locationId} status=${fetchError?.response?.status}`
     );
     return cached?.map ?? new Map();
   }
@@ -590,7 +590,7 @@ export async function fetchLeadshubWebhookSample(
   config: Record<string, any>,
   limit: number = 3
 ): Promise<Record<string, any>[]> {
-  const t0 = Date.now();
+  const startedAtMs = Date.now();
   console.log(
     `\n[Leadshub:webhook:sample] ▶ START  user=${userId}  event=${eventKey}  limit=${limit}  config=${JSON.stringify(config || {})}`
   );
@@ -611,24 +611,24 @@ export async function fetchLeadshubWebhookSample(
 
     let records: any[] = [];
     try {
-      const res = await axios.get(`${GHL_BASE_URL}/calendars/events`, {
+      const response = await axios.get(`${GHL_BASE_URL}/calendars/events`, {
         headers: { ...headers, Version: "2021-04-15" },
         params,
       });
-      records = Array.isArray(res.data?.events) ? res.data.events : [];
+      records = Array.isArray(response.data?.events) ? response.data.events : [];
       console.log(
         `[Leadshub:webhook:sample] appointments ← /calendars/events returned ${records.length} record(s)  filters=${JSON.stringify(params)}`
       );
-    } catch (err: any) {
+    } catch (error: any) {
       console.error(
-        `[Leadshub:webhook:sample] ✖ appointment search failed status=${err?.response?.status} body=${JSON.stringify(err?.response?.data)?.slice(0, 300)} message=${err?.message}`
+        `[Leadshub:webhook:sample] ✖ appointment search failed status=${error?.response?.status} body=${JSON.stringify(error?.response?.data)?.slice(0, 300)} message=${error?.message}`
       );
-      throw err;
+      throw error;
     }
 
-    const newestFirst = records.slice().sort((a: any, b: any) => {
-      const keyA = a.dateAdded ?? a.startTime ?? a.dateUpdated;
-      const keyB = b.dateAdded ?? b.startTime ?? b.dateUpdated;
+    const newestFirst = records.slice().sort((firstAppointment: any, secondAppointment: any) => {
+      const keyA = firstAppointment.dateAdded ?? firstAppointment.startTime ?? firstAppointment.dateUpdated;
+      const keyB = secondAppointment.dateAdded ?? secondAppointment.startTime ?? secondAppointment.dateUpdated;
       return String(keyB ?? "").localeCompare(String(keyA ?? ""));
     });
 
@@ -643,7 +643,7 @@ export async function fetchLeadshubWebhookSample(
     );
 
     console.log(
-      `[Leadshub:webhook:sample] ◀ END appointments  returned=${enriched.length}  duration=${Date.now() - t0}ms\n`
+      `[Leadshub:webhook:sample] ◀ END appointments  returned=${enriched.length}  duration=${Date.now() - startedAtMs}ms\n`
     );
     return enriched;
   }
@@ -665,19 +665,19 @@ export async function fetchLeadshubWebhookSample(
 
   let records: any[] = [];
   try {
-    const res = await axios.get(`${GHL_BASE_URL}/opportunities/search`, {
+    const response = await axios.get(`${GHL_BASE_URL}/opportunities/search`, {
       headers,
       params,
     });
-    records = Array.isArray(res.data?.opportunities) ? res.data.opportunities : [];
+    records = Array.isArray(response.data?.opportunities) ? response.data.opportunities : [];
     console.log(
       `[Leadshub:webhook:sample] step 2/4 ← /opportunities/search returned ${records.length} record(s)  filters=${JSON.stringify(params)}`
     );
-  } catch (err: any) {
+  } catch (error: any) {
     console.error(
-      `[Leadshub:webhook:sample] ✖ search failed status=${err?.response?.status} message=${err?.message}`
+      `[Leadshub:webhook:sample] ✖ search failed status=${error?.response?.status} message=${error?.message}`
     );
-    throw err;
+    throw error;
   }
 
   // For stage-change events, mirror what the real webhook receiver gates on:
@@ -685,9 +685,9 @@ export async function fetchLeadshubWebhookSample(
   // configured) that currently sit in it.
   const filtered =
     eventKey === "pipeline_stage_changed"
-      ? records.filter((r: any) => {
-          if (!r?.lastStageChangeAt) return false;
-          if (config?.pipelineStageId && r.pipelineStageId !== config.pipelineStageId)
+      ? records.filter((opportunity: any) => {
+          if (!opportunity?.lastStageChangeAt) return false;
+          if (config?.pipelineStageId && opportunity.pipelineStageId !== config.pipelineStageId)
             return false;
           return true;
         })
@@ -699,28 +699,28 @@ export async function fetchLeadshubWebhookSample(
 
   if (filtered.length === 0) {
     console.warn(
-      `[Leadshub:webhook:sample] ✖ zero records after filter — returning []  duration=${Date.now() - t0}ms\n`
+      `[Leadshub:webhook:sample] ✖ zero records after filter — returning []  duration=${Date.now() - startedAtMs}ms\n`
     );
     return [];
   }
 
   // Sort newest-first so the Test step shows the most recent activity, then
   // cap at `limit`.
-  const newestFirst = filtered.slice().sort((a: any, b: any) => {
+  const newestFirst = filtered.slice().sort((firstOpportunity: any, secondOpportunity: any) => {
     const keyA =
       eventKey === "pipeline_stage_changed"
-        ? a.lastStageChangeAt ?? a.updatedAt ?? a.createdAt
-        : a.updatedAt ?? a.createdAt;
+        ? firstOpportunity.lastStageChangeAt ?? firstOpportunity.updatedAt ?? firstOpportunity.createdAt
+        : firstOpportunity.updatedAt ?? firstOpportunity.createdAt;
     const keyB =
       eventKey === "pipeline_stage_changed"
-        ? b.lastStageChangeAt ?? b.updatedAt ?? b.createdAt
-        : b.updatedAt ?? b.createdAt;
+        ? secondOpportunity.lastStageChangeAt ?? secondOpportunity.updatedAt ?? secondOpportunity.createdAt
+        : secondOpportunity.updatedAt ?? secondOpportunity.createdAt;
     return String(keyB ?? "").localeCompare(String(keyA ?? ""));
   });
 
   const top = newestFirst.slice(0, limit);
   console.log(
-    `[Leadshub:webhook:sample] step 4/4 ▶ enriching top ${top.length} record(s)  ids=[${top.map((r: any) => r.id).join(", ")}]`
+    `[Leadshub:webhook:sample] step 4/4 ▶ enriching top ${top.length} record(s)  ids=[${top.map((opportunity: any) => opportunity.id).join(", ")}]`
   );
 
   // Auth + customField map resolved ONCE and shared — without this every
@@ -733,7 +733,7 @@ export async function fetchLeadshubWebhookSample(
   );
 
   console.log(
-    `[Leadshub:webhook:sample] ◀ END  returned=${enriched.length}  duration=${Date.now() - t0}ms\n`
+    `[Leadshub:webhook:sample] ◀ END  returned=${enriched.length}  duration=${Date.now() - startedAtMs}ms\n`
   );
   return enriched;
 }

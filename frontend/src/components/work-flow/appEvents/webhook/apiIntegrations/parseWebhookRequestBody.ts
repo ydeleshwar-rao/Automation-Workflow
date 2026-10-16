@@ -4,27 +4,27 @@
  */
 export function parseRequestBodyFromWebhookRow(row: unknown): Record<string, unknown> | undefined {
   if (!row || typeof row !== "object" || Array.isArray(row)) return undefined;
-  const r = row as Record<string, unknown>;
+  const record = row as Record<string, unknown>;
   const candidates: unknown[] = [
-    r.request_body,
-    r.requestBody,
-    r.body,
-    r.payload,
-    r.data,
+    record.request_body,
+    record.requestBody,
+    record.body,
+    record.payload,
+    record.data,
   ];
-  const nested = r.request;
+  const nested = record.request;
   if (nested && typeof nested === "object" && !Array.isArray(nested)) {
-    const nr = nested as Record<string, unknown>;
-    candidates.push(nr.body, nr.payload, nr.data, nr.request_body, nr.requestBody);
+    const nestedRecord = nested as Record<string, unknown>;
+    candidates.push(nestedRecord.body, nestedRecord.payload, nestedRecord.data, nestedRecord.request_body, nestedRecord.requestBody);
   }
 
-  for (const c of candidates) {
-    if (c === undefined || c === null) continue;
-    if (typeof c === "string") {
-      const t = c.trim();
-      if (!t) continue;
+  for (const candidate of candidates) {
+    if (candidate === undefined || candidate === null) continue;
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      if (!trimmed) continue;
       try {
-        const parsed = JSON.parse(t) as unknown;
+        const parsed = JSON.parse(trimmed) as unknown;
         if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
           return parsed as Record<string, unknown>;
         }
@@ -32,8 +32,8 @@ export function parseRequestBodyFromWebhookRow(row: unknown): Record<string, unk
         continue;
       }
     }
-    if (typeof c === "object" && !Array.isArray(c)) {
-      return c as Record<string, unknown>;
+    if (typeof candidate === "object" && !Array.isArray(candidate)) {
+      return candidate as Record<string, unknown>;
     }
   }
   return undefined;

@@ -54,7 +54,7 @@ export class AccessController {
   /**
    * POST /access/developers  (admin only)
    * Body: { email, full_name, permissions: [{ page_key, can_view, can_edit?, can_delete? }] }
-   * Creates Supabase auth user + profile + page permissions.
+   * Creates login account + profile + page permissions.
    * Returns profile + temp_password for initial login.
    */
   static createDeveloper = catchAsync(async (req: Request, res: Response) => {
@@ -99,7 +99,7 @@ export class AccessController {
 
   /**
    * DELETE /access/developers/:id  (admin only)
-   * Permanently deletes Supabase auth user + all data (cascades).
+   * Permanently deletes the login account + all data (cascades).
    */
   static deleteDeveloper = catchAsync(async (req: Request, res: Response) => {
     const devId = getParam(req.params.id, "Developer ID");

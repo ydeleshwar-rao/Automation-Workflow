@@ -66,16 +66,16 @@ export class LeadshubPollingAdapter implements PollingAdapter {
     }
 
     const enriched = await Promise.all(
-      filtered.map((r) => this.enrichRecord(r, headers, locationId))
+      filtered.map((record) => this.enrichRecord(record, headers, locationId))
     );
     console.log(
       `[Leadhub:poll] step 3b/4 ✓ enriched ${enriched.length} record(s) (opp + contact + customFields)`
     );
 
     const sorted = enriched
-      .map((r) => this.normalize(r, eventKey))
-      .filter((r) => r.externalId && r.cursorValue)
-      .sort((a, b) => a.cursorValue.localeCompare(b.cursorValue));
+      .map((record) => this.normalize(record, eventKey))
+      .filter((normalizedRecord) => normalizedRecord.externalId && normalizedRecord.cursorValue)
+      .sort((firstRecord, secondRecord) => firstRecord.cursorValue.localeCompare(secondRecord.cursorValue));
 
     const dropped = enriched.length - sorted.length;
     if (dropped > 0) {
@@ -85,7 +85,7 @@ export class LeadshubPollingAdapter implements PollingAdapter {
     }
 
     const afterCursor = cursorValue
-      ? sorted.filter((r) => r.cursorValue.localeCompare(cursorValue) > 0)
+      ? sorted.filter((normalizedRecord) => normalizedRecord.cursorValue.localeCompare(cursorValue) > 0)
       : sorted;
 
     console.log(
@@ -140,21 +140,21 @@ export class LeadshubPollingAdapter implements PollingAdapter {
 
     const samples = filtered
       .slice()
-      .sort((a, b) => {
+      .sort((firstRecord, secondRecord) => {
         const keyA =
           eventKey === "pipeline_stage_changed"
-            ? a.lastStageChangeAt ?? a.updatedAt ?? a.createdAt
-            : a.updatedAt ?? a.createdAt;
+            ? firstRecord.lastStageChangeAt ?? firstRecord.updatedAt ?? firstRecord.createdAt
+            : firstRecord.updatedAt ?? firstRecord.createdAt;
         const keyB =
           eventKey === "pipeline_stage_changed"
-            ? b.lastStageChangeAt ?? b.updatedAt ?? b.createdAt
-            : b.updatedAt ?? b.createdAt;
+            ? secondRecord.lastStageChangeAt ?? secondRecord.updatedAt ?? secondRecord.createdAt
+            : secondRecord.updatedAt ?? secondRecord.createdAt;
         return String(keyB ?? "").localeCompare(String(keyA ?? ""));
       })
       .slice(0, limit);
 
     const enriched = await Promise.all(
-      samples.map((r) => this.enrichRecord(r, headers, locationId))
+      samples.map((record) => this.enrichRecord(record, headers, locationId))
     );
 
     console.log(
@@ -218,9 +218,9 @@ export class LeadshubPollingAdapter implements PollingAdapter {
     // Only keep opportunities that actually changed stage (lastStageChangeAt present)
     // and — if a target stage was configured — that currently sit in it.
     const targetStageId: string | undefined = config?.pipelineStageId;
-    return records.filter((r) => {
-      if (!r?.lastStageChangeAt) return false;
-      if (targetStageId && r.pipelineStageId !== targetStageId) return false;
+    return records.filter((record) => {
+      if (!record?.lastStageChangeAt) return false;
+      if (targetStageId && record.pipelineStageId !== targetStageId) return false;
       return true;
     });
   }
@@ -357,22 +357,22 @@ export class LeadshubPollingAdapter implements PollingAdapter {
     if (cached && cached.expiresAt > Date.now()) return cached.map;
 
     try {
-      const res = await axios.get(
+      const customFieldsResponse = await axios.get(
         `${GHL_BASE_URL}/locations/${locationId}/customFields`,
         { headers }
       );
-      const fields: CustomFieldEntry[] = Array.isArray(res.data?.customFields)
-        ? res.data.customFields
+      const fields: CustomFieldEntry[] = Array.isArray(customFieldsResponse.data?.customFields)
+        ? customFieldsResponse.data.customFields
         : [];
-      const map = new Map(fields.map((f) => [f.id, f]));
+      const map = new Map(fields.map((field) => [field.id, field]));
       customFieldCache.set(locationId, {
         map,
         expiresAt: Date.now() + CUSTOM_FIELD_TTL_MS,
       });
       return map;
-    } catch (err: any) {
+    } catch (fetchError: any) {
       console.warn(
-        `[Leadhub:enrich] ✖ custom-field map fetch failed  location=${locationId}  status=${err?.response?.status}`
+        `[Leadhub:enrich] ✖ custom-field map fetch failed  location=${locationId}  status=${fetchError?.response?.status}`
       );
       return cached?.map ?? new Map();
     }

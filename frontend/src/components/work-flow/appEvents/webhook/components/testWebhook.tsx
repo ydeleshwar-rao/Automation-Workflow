@@ -33,11 +33,11 @@ function DataField({ label, value, depth = 0, path = "", editedValues, onEdit }:
           <span className="text-[11px] font-semibold text-muted-foreground">{label}</span>
         </div>
         <div className="space-y-2 border-l-2 border-border/40 ml-4 pl-3">
-          {Object.entries(value).map(([k, v]) => (
+          {Object.entries(value).map(([childKey, childValue]) => (
             <DataField
-              key={k}
-              label={k.charAt(0).toUpperCase() + k.slice(1).replace(/([A-Z])/g, " $1").trim()}
-              value={v}
+              key={childKey}
+              label={childKey.charAt(0).toUpperCase() + childKey.slice(1).replace(/([A-Z])/g, " $1").trim()}
+              value={childValue}
               depth={depth + 1}
               path={currentPath}
               editedValues={editedValues}
@@ -70,7 +70,7 @@ function DataField({ label, value, depth = 0, path = "", editedValues, onEdit }:
           <input
             ref={inputRef}
             value={displayValue}
-            onChange={(e) => onEdit?.(currentPath, e.target.value)}
+            onChange={(event) => onEdit?.(currentPath, event.target.value)}
             onBlur={() => setIsEditing(false)}
             className="flex-1 text-[13px] text-foreground font-medium bg-background border border-primary/50 ring-1 ring-primary/20 rounded-md px-2 py-0.5 outline-none"
           />
@@ -151,7 +151,7 @@ export function WebhookTestStep({
       for (let i = 0; i < parts.length - 1; i++) {
         const rawKey =
           Object.keys(cursor).find(
-            (k) => k.charAt(0).toUpperCase() + k.slice(1).replace(/([A-Z])/g, " $1").trim() === parts[i]
+            (key) => key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, " $1").trim() === parts[i]
           ) ?? parts[i];
         cursor = cursor[rawKey];
         if (!cursor || typeof cursor !== "object") break;
@@ -160,7 +160,7 @@ export function WebhookTestStep({
         const lastPart = parts[parts.length - 1];
         const rawKey =
           Object.keys(cursor).find(
-            (k) => k.charAt(0).toUpperCase() + k.slice(1).replace(/([A-Z])/g, " $1").trim() === lastPart
+            (key) => key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, " $1").trim() === lastPart
           ) ?? lastPart;
         cursor[rawKey] = newValue;
       }
@@ -293,7 +293,7 @@ export function WebhookTestStep({
                               value={request.data[key]}
                               path=""
                               editedValues={editedValues}
-                              onEdit={(path, val) => setEditedValues((prev) => ({ ...prev, [path]: val }))}
+                              onEdit={(path, value) => setEditedValues((prev) => ({ ...prev, [path]: value }))}
                             />
                           ))
                         ) : (

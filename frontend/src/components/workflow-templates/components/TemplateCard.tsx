@@ -18,8 +18,8 @@ export function TemplateCard({ template, onApply, onEdit, onArchive, onDelete }:
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+    const handleClick = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setMenuOpen(false);
       }
     };
@@ -69,7 +69,7 @@ export function TemplateCard({ template, onApply, onEdit, onArchive, onDelete }:
 
         <div className="relative" ref={menuRef}>
           <button
-            onClick={() => setMenuOpen((v) => !v)}
+            onClick={() => setMenuOpen((isOpen) => !isOpen)}
             className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted"
             aria-label="More actions"
           >

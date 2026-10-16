@@ -63,10 +63,10 @@ interface ServiceM8ContactBlock {
   jobs?: ServiceM8JobItem[];
 }
 
-const toNumber = (v: unknown): number => {
-  if (v === null || v === undefined || v === "") return 0;
-  const n = parseFloat(String(v));
-  return Number.isFinite(n) ? n : 0;
+const toNumber = (value: unknown): number => {
+  if (value === null || value === undefined || value === "") return 0;
+  const parsed = parseFloat(String(value));
+  return Number.isFinite(parsed) ? parsed : 0;
 };
 
 const buildParams = (filters: JobsFilters): Record<string, string> => {

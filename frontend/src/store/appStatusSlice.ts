@@ -182,15 +182,15 @@ export default appStatusSlice.reducer;
 
 type HasAppStatus = { appStatus: AppStatusState };
 
-export const selectAppStatus           = (s: HasAppStatus) => s.appStatus;
-export const selectIsServiceM8Connected = (s: HasAppStatus) => s.appStatus.servicem8;
-export const selectServiceM8NeedsReauth = (s: HasAppStatus) => s.appStatus.servicem8NeedsReauth;
-export const selectIsCommusoftConnected = (s: HasAppStatus) => s.appStatus.commusoft;
-export const selectIsLeadsHubConnected  = (s: HasAppStatus) => s.appStatus.leadshub;
-export const selectIsSimProConnected    = (s: HasAppStatus) => s.appStatus.simpro;
-export const selectAppStatusLoading     = (s: HasAppStatus) => s.appStatus.isLoading;
-export const selectAppStatusLoaded      = (s: HasAppStatus) => s.appStatus.hasLoadedOnce;
-export const selectActiveApp            = (s: HasAppStatus) => s.appStatus.activeApp;
+export const selectAppStatus           = (state: HasAppStatus) => state.appStatus;
+export const selectIsServiceM8Connected = (state: HasAppStatus) => state.appStatus.servicem8;
+export const selectServiceM8NeedsReauth = (state: HasAppStatus) => state.appStatus.servicem8NeedsReauth;
+export const selectIsCommusoftConnected = (state: HasAppStatus) => state.appStatus.commusoft;
+export const selectIsLeadsHubConnected  = (state: HasAppStatus) => state.appStatus.leadshub;
+export const selectIsSimProConnected    = (state: HasAppStatus) => state.appStatus.simpro;
+export const selectAppStatusLoading     = (state: HasAppStatus) => state.appStatus.isLoading;
+export const selectAppStatusLoaded      = (state: HasAppStatus) => state.appStatus.hasLoadedOnce;
+export const selectActiveApp            = (state: HasAppStatus) => state.appStatus.activeApp;
 
 export const selectConnectedServices = createSelector(
   [

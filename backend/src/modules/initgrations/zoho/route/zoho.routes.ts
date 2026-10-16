@@ -10,14 +10,7 @@ router.get("/callback",   catchAsync(ZohoController.handleCallback));
 router.get("/status",     catchAsync(ZohoController.connectionStatus));
 router.delete("/disconnect", catchAsync(ZohoController.disconnect));
 
-// ─── Sync (Zoho API → Supabase) ───────────────────────────────────────────────
-router.post("/sync",               catchAsync(ZohoController.syncAll));
-router.post("/sync/contacts",      catchAsync(ZohoController.syncContacts));
-router.post("/sync/items",         catchAsync(ZohoController.syncItems));
-router.post("/sync/invoices",      catchAsync(ZohoController.syncInvoices));
-router.post("/sync/salesorders",   catchAsync(ZohoController.syncSalesorders));
-
-// ─── Triggers: GET from DB (Zapier: New Contact, New Item, New Invoice, New Salesorder) ──
+// ─── Triggers: GET live from Zoho (Zapier: New Contact, New Item, New Invoice, New Salesorder) ──
 router.get("/contacts",    catchAsync(ZohoController.getContacts));
 router.get("/items",       catchAsync(ZohoController.getItems));
 router.get("/invoices",    catchAsync(ZohoController.getInvoices));

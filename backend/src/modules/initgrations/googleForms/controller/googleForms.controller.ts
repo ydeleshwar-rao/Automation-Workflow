@@ -69,7 +69,7 @@ export class GoogleFormsController {
   static getFormsFromDb = async (req: Request, res: Response) => {
     const userId = await getUserId(req);
     const data = await GoogleFormsService.getFormsFromDb(userId);
-    return ApiResponse(res, 200, "Forms fetched from DB", data);
+    return ApiResponse(res, 200, "Forms fetched from Google Drive", data);
   };
 
   static getFormDetails = async (req: Request, res: Response) => {
@@ -93,7 +93,7 @@ export class GoogleFormsController {
     const userId = await getUserId(req);
     const formId = req.query.form_id as string | undefined;
     const data = await GoogleFormsService.getResponsesFromDb(userId, formId);
-    return ApiResponse(res, 200, "Responses fetched from DB", data);
+    return ApiResponse(res, 200, "Responses fetched from Google", data);
   };
 
   // ─── Sync (Trigger: New Form Response / New or Updated Form Response) ──

@@ -1,7 +1,12 @@
 import axios, { AxiosInstance } from "axios";
-import { supabase } from "../../../../config/db.config.js";
+import crypto from "crypto";
+import type { GoogleSheetsIntegration } from "@prisma/client";
 import { ApiError } from "../../../../utils/ApiError.js";
 import { refreshGoogleSheetsAccessToken } from "../utils/refreshAccessToken.js";
+import {
+  googleSheetsRepository,
+  type GoogleSheetWatchKey,
+} from "../repositories/googleSheets.repository.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -21,13 +26,7 @@ const refreshLocks = new Map<string, Promise<any>>();
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface GoogleSheetsIntegrationRow {
-  user_id: string;
-  access_token: string;
-  refresh_token: string;
-  expires_at: string;
-  needs_reauth: boolean;
-}
+export type GoogleSheetsIntegrationRow = GoogleSheetsIntegration;
 
 export type TriggerType =
   | "new_row"
@@ -38,19 +37,15 @@ export type TriggerType =
 // ─── Integration row helpers ──────────────────────────────────────────────────
 
 const getIntegrationRaw = async (userId: string): Promise<GoogleSheetsIntegrationRow> => {
-  const { data, error } = await supabase
-    .from("google_sheets_integrations")
-    .select("user_id, access_token, refresh_token, expires_at, needs_reauth")
-    .eq("user_id", userId)
-    .single();
+  const integration = await googleSheetsRepository.findIntegrationByUserId(userId);
 
-  if (error || !data) {
+  if (!integration) {
     throw new ApiError(
       404,
       "Google Sheets integration not found. Please connect your account first."
     );
   }
-  return data as GoogleSheetsIntegrationRow;
+  return integration;
 };
 
 export const getIntegration = async (
@@ -63,8 +58,7 @@ export const getIntegration = async (
     throw new ApiError(401, "Google Sheets requires re-authentication. Please reconnect.");
   }
 
-  const isExpiringSoon =
-    new Date(row.expires_at).getTime() <= Date.now() + REFRESH_BUFFER_MS;
+  const isExpiringSoon = row.expires_at.getTime() <= Date.now() + REFRESH_BUFFER_MS;
 
   if (!isExpiringSoon && !forceRefresh) return row;
 
@@ -129,12 +123,20 @@ function rowsToObjects(
   rows: string[][]
 ): Array<Record<string, string>> {
   return rows.map((row) => {
-    const obj: Record<string, string> = {};
-    headers.forEach((h, i) => {
-      obj[h || `column_${i + 1}`] = row[i] ?? "";
+    const rowObject: Record<string, string> = {};
+    headers.forEach((header, columnIndex) => {
+      rowObject[header || `column_${columnIndex + 1}`] = row[columnIndex] ?? "";
     });
-    return obj;
+    return rowObject;
   });
+}
+
+// Row 1 holds the headers, so data rows start at sheet row 2
+const FIRST_DATA_ROW_NUMBER = 2;
+
+/** sha256 of the row's JSON — lets us detect changes without storing row contents. */
+function hashRow(rowObject: Record<string, string>): string {
+  return crypto.createHash("sha256").update(JSON.stringify(rowObject)).digest("hex");
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
@@ -198,53 +200,40 @@ export class GoogleSheetsService {
     const expiresAt = new Date();
     expiresAt.setSeconds(expiresAt.getSeconds() + (body.expires_in || 3600));
 
-    const { error } = await supabase.from("google_sheets_integrations").upsert({
-      user_id:       userId,
+    await googleSheetsRepository.saveTokens(userId, {
       access_token:  body.access_token,
       refresh_token: body.refresh_token,
-      expires_at:    expiresAt.toISOString(),
-      needs_reauth:  false,
+      expires_at:    expiresAt,
     });
 
-    if (error) throw new ApiError(500, `Failed to save tokens: ${error.message}`);
     console.log(`[GoogleSheets] ✅ Connected user=${userId}`);
   }
 
   static async getConnectionStatus(userId: string) {
-    const { data } = await supabase
-      .from("google_sheets_integrations")
-      .select("user_id, needs_reauth, expires_at")
-      .eq("user_id", userId)
-      .maybeSingle();
+    const integration = await googleSheetsRepository.findIntegrationByUserId(userId);
 
-    if (!data) return { connected: false };
+    if (!integration) return { connected: false };
     return {
       connected:    true,
-      needs_reauth: data.needs_reauth,
-      expires_at:   data.expires_at,
+      needs_reauth: integration.needs_reauth,
+      expires_at:   integration.expires_at,
     };
   }
 
   static async disconnect(userId: string) {
-    const { data: row } = await supabase
-      .from("google_sheets_integrations")
-      .select("access_token")
-      .eq("user_id", userId)
-      .maybeSingle();
+    const integration = await googleSheetsRepository.findIntegrationByUserId(userId);
 
-    if (row?.access_token) {
+    // Revoke token at Google; a failed revoke must not block disconnecting locally
+    if (integration?.access_token) {
       await fetch(
-        `https://oauth2.googleapis.com/revoke?token=${row.access_token}`,
+        `https://oauth2.googleapis.com/revoke?token=${integration.access_token}`,
         { method: "POST" }
       ).catch(() => {});
     }
 
-    await Promise.allSettled([
-      supabase.from("google_sheets_integrations").delete().eq("user_id", userId),
-      supabase.from("google_sheets_list").delete().eq("user_id", userId),
-      supabase.from("google_sheet_rows").delete().eq("user_id", userId),
-      supabase.from("google_sheet_watches").delete().eq("user_id", userId),
-    ]);
+    // Row fingerprints go with their watches (ON DELETE CASCADE)
+    await googleSheetsRepository.deleteIntegration(userId);
+    await googleSheetsRepository.deleteWatchesForUser(userId);
 
     return { disconnected: true };
   }
@@ -284,13 +273,6 @@ export class GoogleSheetsService {
       } while (pageToken);
     });
 
-    if (spreadsheets.length) {
-      await supabase.from("google_sheets_list").upsert(
-        spreadsheets.map((s) => ({ ...s, user_id: userId, google_id: s.spreadsheet_id })),
-        { onConflict: "user_id,google_id" }
-      );
-    }
-
     return spreadsheets;
   }
 
@@ -302,11 +284,11 @@ export class GoogleSheetsService {
         params: { fields: "sheets(properties(sheetId,title,index,sheetType))" },
       });
 
-      return (data.sheets ?? []).map((s: any) => ({
-        sheet_id:   s.properties.sheetId,
-        title:      s.properties.title,
-        index:      s.properties.index,
-        sheet_type: s.properties.sheetType,
+      return (data.sheets ?? []).map((sheet: any) => ({
+        sheet_id:   sheet.properties.sheetId,
+        title:      sheet.properties.title,
+        index:      sheet.properties.index,
+        sheet_type: sheet.properties.sheetType,
       }));
     });
   }
@@ -332,31 +314,20 @@ export class GoogleSheetsService {
       const dataRows = allRows.slice(1);
 
       // Fetch last known row count from watch
-      const { data: watch } = await supabase
-        .from("google_sheet_watches")
-        .select("last_row_count")
-        .eq("user_id", userId)
-        .eq("spreadsheet_id", spreadsheetId)
-        .eq("sheet_name", sheetName)
-        .eq("trigger_type", "new_row")
-        .maybeSingle();
+      const watch = await googleSheetsRepository.findWatch({
+        user_id:        userId,
+        spreadsheet_id: spreadsheetId,
+        sheet_name:     sheetName,
+        trigger_type:   "new_row",
+      });
 
       const lastCount = watch?.last_row_count ?? 0;
       const newDataRows = dataRows.slice(lastCount);
       const newRows = rowsToObjects(headers, newDataRows);
 
       // Update row count in watch
-      if (newRows.length > 0) {
-        await supabase
-          .from("google_sheet_watches")
-          .update({
-            last_row_count: dataRows.length,
-            last_synced_at: new Date().toISOString(),
-          })
-          .eq("user_id", userId)
-          .eq("spreadsheet_id", spreadsheetId)
-          .eq("sheet_name", sheetName)
-          .eq("trigger_type", "new_row");
+      if (watch && newRows.length > 0) {
+        await googleSheetsRepository.markWatchSynced(watch.id, dataRows.length);
       }
 
       return { headers, new_rows: newRows, total_rows: dataRows.length };
@@ -364,7 +335,9 @@ export class GoogleSheetsService {
   }
 
   // ── Trigger: New or Updated Row ───────────────────────────────────────────────
-  // Compares current data against cached snapshot and returns changed rows.
+  // Compares a sha256 fingerprint of every row against the fingerprints stored
+  // for the new_or_updated_row watch and returns changed rows. Row contents are
+  // never stored. Without a watch every row is reported and nothing is persisted.
 
   static async getUpdatedRows(
     userId: string,
@@ -384,52 +357,34 @@ export class GoogleSheetsService {
       const dataRows = allRows.slice(1);
       const currentObjects = rowsToObjects(headers, dataRows);
 
-      // Compare against cached rows
-      const { data: cachedRows } = await supabase
-        .from("google_sheet_rows")
-        .select("row_number, row_data")
-        .eq("user_id", userId)
-        .eq("spreadsheet_id", spreadsheetId)
-        .eq("sheet_name", sheetName)
-        .order("row_number", { ascending: true });
-
-      const cacheMap = new Map<number, Record<string, string>>(
-        (cachedRows ?? []).map((r) => [r.row_number, r.row_data])
+      const watch = await googleSheetsRepository.findWatch({
+        user_id:        userId,
+        spreadsheet_id: spreadsheetId,
+        sheet_name:     sheetName,
+        trigger_type:   "new_or_updated_row",
+      });
+      const storedFingerprints = watch
+        ? await googleSheetsRepository.findRowFingerprints(watch.id)
+        : [];
+      const storedHashByRowNumber = new Map(
+        storedFingerprints.map((fingerprint) => [fingerprint.row_number, fingerprint.content_hash])
       );
 
       const changedRows: Array<{ row_number: number; data: Record<string, string> }> = [];
+      const changedFingerprints: Array<{ row_number: number; content_hash: string }> = [];
 
-      for (let i = 0; i < currentObjects.length; i++) {
-        const rowNum = i + 2; // row 1 is header
-        const current = currentObjects[i];
-        const cached  = cacheMap.get(rowNum);
+      currentObjects.forEach((rowObject, rowIndex) => {
+        const rowNumber = rowIndex + FIRST_DATA_ROW_NUMBER;
+        const contentHash = hashRow(rowObject);
+        if (storedHashByRowNumber.get(rowNumber) === contentHash) return;
 
-        if (current && (!cached || JSON.stringify(current) !== JSON.stringify(cached))) {
-          changedRows.push({ row_number: rowNum, data: current });
-        }
-      }
+        changedRows.push({ row_number: rowNumber, data: rowObject });
+        changedFingerprints.push({ row_number: rowNumber, content_hash: contentHash });
+      });
 
-      // Upsert cache
-      if (currentObjects.length > 0) {
-        await supabase.from("google_sheet_rows").upsert(
-          currentObjects.map((row, i) => ({
-            user_id:        userId,
-            spreadsheet_id: spreadsheetId,
-            sheet_name:     sheetName,
-            row_number:     i + 2,
-            row_data:       row,
-            updated_at:     new Date().toISOString(),
-          })),
-          { onConflict: "user_id,spreadsheet_id,sheet_name,row_number" }
-        );
-
-        await supabase
-          .from("google_sheet_watches")
-          .update({ last_synced_at: new Date().toISOString() })
-          .eq("user_id", userId)
-          .eq("spreadsheet_id", spreadsheetId)
-          .eq("sheet_name", sheetName)
-          .eq("trigger_type", "new_or_updated_row");
+      if (watch && currentObjects.length > 0) {
+        await googleSheetsRepository.saveRowFingerprints(watch.id, changedFingerprints);
+        await googleSheetsRepository.markWatchSynced(watch.id);
       }
 
       return { headers, changed_rows: changedRows };
@@ -474,14 +429,14 @@ export class GoogleSheetsService {
     return sheetsRequest(userId, async (sheets) => {
       // Get headers first to order values correctly
       const headerRange = `${sheetName}!1:1`;
-      const { data: hData } = await sheets.get(
+      const { data: headerData } = await sheets.get(
         `/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(headerRange)}`
       );
-      const headers: string[] = hData.values?.[0]?.map(String) ?? [];
+      const headers: string[] = headerData.values?.[0]?.map(String) ?? [];
 
       // Build row in header order; unknown keys appended at end
       const values = headers.length
-        ? headers.map((h) => rowData[h] ?? "")
+        ? headers.map((header) => rowData[header] ?? "")
         : Object.values(rowData);
 
       const range = `${sheetName}!A:A`;
@@ -510,13 +465,13 @@ export class GoogleSheetsService {
   ) {
     return sheetsRequest(userId, async (sheets) => {
       const headerRange = `${sheetName}!1:1`;
-      const { data: hData } = await sheets.get(
+      const { data: headerData } = await sheets.get(
         `/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(headerRange)}`
       );
-      const headers: string[] = hData.values?.[0]?.map(String) ?? [];
+      const headers: string[] = headerData.values?.[0]?.map(String) ?? [];
 
       const values = headers.length
-        ? headers.map((h) => rowData[h] ?? "")
+        ? headers.map((header) => rowData[header] ?? "")
         : Object.values(rowData);
 
       const range = `${sheetName}!A${rowNumber}`;
@@ -586,7 +541,7 @@ export class GoogleSheetsService {
         params: { fields: "sheets(properties(sheetId,title))" },
       });
       const sheet = (meta.sheets ?? []).find(
-        (s: any) => s.properties.title === sheetName
+        (sheetEntry: any) => sheetEntry.properties.title === sheetName
       );
       if (!sheet) throw new ApiError(404, `Sheet "${sheetName}" not found`);
 
@@ -648,9 +603,9 @@ export class GoogleSheetsService {
         spreadsheet_id: data.spreadsheetId,
         title:          data.properties?.title,
         url:            data.spreadsheetUrl,
-        sheets:         (data.sheets ?? []).map((s: any) => ({
-          sheet_id: s.properties.sheetId,
-          title:    s.properties.title,
+        sheets:         (data.sheets ?? []).map((sheet: any) => ({
+          sheet_id: sheet.properties.sheetId,
+          title:    sheet.properties.title,
         })),
       };
     });
@@ -685,19 +640,9 @@ export class GoogleSheetsService {
     sheetName: string,
     triggerType: TriggerType
   ) {
-    const { error } = await supabase.from("google_sheet_watches").upsert(
-      {
-        user_id:        userId,
-        spreadsheet_id: spreadsheetId,
-        sheet_name:     sheetName,
-        trigger_type:   triggerType,
-        last_row_count: 0,
-        last_synced_at: null,
-        active:         true,
-      },
-      { onConflict: "user_id,spreadsheet_id,sheet_name,trigger_type" }
+    await googleSheetsRepository.saveWatch(
+      buildWatchKey(userId, spreadsheetId, sheetName, triggerType)
     );
-    if (error) throw new ApiError(500, error.message);
     return { watched: true, spreadsheet_id: spreadsheetId, sheet_name: sheetName, trigger_type: triggerType };
   }
 
@@ -707,54 +652,40 @@ export class GoogleSheetsService {
     sheetName: string,
     triggerType: TriggerType
   ) {
-    await supabase
-      .from("google_sheet_watches")
-      .delete()
-      .eq("user_id", userId)
-      .eq("spreadsheet_id", spreadsheetId)
-      .eq("sheet_name", sheetName)
-      .eq("trigger_type", triggerType);
+    await googleSheetsRepository.deleteWatch(
+      buildWatchKey(userId, spreadsheetId, sheetName, triggerType)
+    );
     return { unwatched: true };
   }
 
-  static async listWatches(userId: string) {
-    const { data, error } = await supabase
-      .from("google_sheet_watches")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
-    if (error) throw new ApiError(500, error.message);
-    return data ?? [];
+  static listWatches(userId: string) {
+    return googleSheetsRepository.findWatchesByUserId(userId);
   }
 
   // ── Sync: Poll all active watches (called by polling engine) ─────────────────
 
   static async syncAllWatches(userId: string) {
-    const { data: watches } = await supabase
-      .from("google_sheet_watches")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("active", true);
+    const watches = await googleSheetsRepository.findActiveWatchesByUserId(userId);
 
-    if (!watches?.length) return { message: "No active watches", results: {} };
+    if (!watches.length) return { message: "No active watches", results: {} };
 
     const results: Record<string, any> = {};
 
-    for (const w of watches) {
-      const key = `${w.spreadsheet_id}:${w.sheet_name}:${w.trigger_type}`;
+    for (const watch of watches) {
+      const key = `${watch.spreadsheet_id}:${watch.sheet_name}:${watch.trigger_type}`;
       try {
-        if (w.trigger_type === "new_row") {
-          const res = await GoogleSheetsService.getNewRows(userId, w.spreadsheet_id, w.sheet_name);
-          results[key] = { new_rows: res.new_rows.length };
-        } else if (w.trigger_type === "new_or_updated_row") {
-          const res = await GoogleSheetsService.getUpdatedRows(userId, w.spreadsheet_id, w.sheet_name);
-          results[key] = { changed_rows: res.changed_rows.length };
-        } else if (w.trigger_type === "new_spreadsheet") {
-          const sheets = await GoogleSheetsService.listSpreadsheets(userId);
-          results[key] = { total_spreadsheets: sheets.length };
-        } else if (w.trigger_type === "new_worksheet") {
-          const tabs = await GoogleSheetsService.listWorksheets(userId, w.spreadsheet_id);
-          results[key] = { total_worksheets: tabs.length };
+        if (watch.trigger_type === "new_row") {
+          const newRowsResult = await GoogleSheetsService.getNewRows(userId, watch.spreadsheet_id, watch.sheet_name);
+          results[key] = { new_rows: newRowsResult.new_rows.length };
+        } else if (watch.trigger_type === "new_or_updated_row") {
+          const updatedRowsResult = await GoogleSheetsService.getUpdatedRows(userId, watch.spreadsheet_id, watch.sheet_name);
+          results[key] = { changed_rows: updatedRowsResult.changed_rows.length };
+        } else if (watch.trigger_type === "new_spreadsheet") {
+          const spreadsheets = await GoogleSheetsService.listSpreadsheets(userId);
+          results[key] = { total_spreadsheets: spreadsheets.length };
+        } else if (watch.trigger_type === "new_worksheet") {
+          const worksheets = await GoogleSheetsService.listWorksheets(userId, watch.spreadsheet_id);
+          results[key] = { total_worksheets: worksheets.length };
         }
       } catch (err: any) {
         results[key] = { error: err.message };
@@ -764,34 +695,45 @@ export class GoogleSheetsService {
     return results;
   }
 
-  // ── DB reads ──────────────────────────────────────────────────────────────────
+  // ── Live reads in the shape of the former "cached" endpoints ──────────────────
+  // Vendor data is not copied into our database (credentials/config only), so
+  // these fetch from Google and keep the response keys the frontend already uses.
 
   static async getSpreadsheetsFromDb(userId: string) {
-    const { data, error } = await supabase
-      .from("google_sheets_list")
-      .select("*")
-      .eq("user_id", userId)
-      .order("modified_time", { ascending: false });
-    if (error) throw new ApiError(500, error.message);
-    return data ?? [];
+    const spreadsheets = await GoogleSheetsService.listSpreadsheets(userId);
+    return spreadsheets.map((spreadsheet) => ({
+      ...spreadsheet,
+      user_id:   userId,
+      google_id: spreadsheet.spreadsheet_id,
+    }));
   }
 
   static async getCachedRows(
     userId: string,
     spreadsheetId: string,
-    sheetName?: string
+    sheetName: string = "Sheet1"
   ) {
-    let query = supabase
-      .from("google_sheet_rows")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("spreadsheet_id", spreadsheetId)
-      .order("row_number", { ascending: true });
-
-    if (sheetName) query = query.eq("sheet_name", sheetName);
-
-    const { data, error } = await query;
-    if (error) throw new ApiError(500, error.message);
-    return data ?? [];
+    const { rows } = await GoogleSheetsService.getRows(userId, spreadsheetId, sheetName);
+    return rows.map((rowData, rowIndex) => ({
+      user_id:        userId,
+      spreadsheet_id: spreadsheetId,
+      sheet_name:     sheetName,
+      row_number:     rowIndex + FIRST_DATA_ROW_NUMBER,
+      row_data:       rowData,
+    }));
   }
+}
+
+function buildWatchKey(
+  userId: string,
+  spreadsheetId: string,
+  sheetName: string,
+  triggerType: TriggerType
+): GoogleSheetWatchKey {
+  return {
+    user_id:        userId,
+    spreadsheet_id: spreadsheetId,
+    sheet_name:     sheetName,
+    trigger_type:   triggerType,
+  };
 }

@@ -128,8 +128,8 @@ export function AccountSection({
            <Button 
             variant="ghost" 
             size="sm" 
-            onClick={(e) => {
-              e.stopPropagation();
+            onClick={(event) => {
+              event.stopPropagation();
               onChange();
             }}
             className="h-8 px-2 text-slate-600 border border-slate-200 hover:bg-slate-50 font-bold text-[11px] ml-4"
@@ -147,7 +147,7 @@ interface ConfigFieldProps {
   value: string;
   placeholder?: string;
   required?: boolean;
-  onPlusClick: (e: React.MouseEvent) => void;
+  onPlusClick: (event: React.MouseEvent) => void;
   onChange: (val: string) => void;
   info?: string;
   error?: string;
@@ -168,16 +168,16 @@ export function ConfigField({
       <div className="relative group">
         <Input
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder || "Enter text or insert data..."}
           className={cn(
             "h-11 pr-[130px] bg-white border-slate-200 rounded-lg focus-visible:ring-2 focus-visible:ring-[#4f46e5]/10 focus-visible:border-[#4f46e5] transition-all text-sm font-medium text-slate-900 placeholder:text-slate-400 placeholder:font-normal",
             error && "border-red-500 focus-visible:ring-red-500/20"
           )}
-          onKeyDown={(e) => {
-            if (e.key === '/') {
-              e.preventDefault();
-              onPlusClick(e as any);
+          onKeyDown={(event) => {
+            if (event.key === '/') {
+              event.preventDefault();
+              onPlusClick(event as any);
             }
           }}
         />
@@ -218,17 +218,17 @@ export function ConfigTextArea({
       <div className="relative group">
         <textarea
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder || "Enter text or insert data..."}
           rows={rows}
           className={cn(
             "w-full p-3 pr-12 bg-white border border-slate-200 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4f46e5]/10 focus-visible:border-[#4f46e5] transition-all text-sm font-medium text-slate-900 placeholder:text-slate-400 placeholder:font-normal resize-none min-h-[100px]",
             error && "border-red-500 focus-visible:ring-red-500/20"
           )}
-          onKeyDown={(e) => {
-            if (e.key === '/') {
-              e.preventDefault();
-              onPlusClick(e as any);
+          onKeyDown={(event) => {
+            if (event.key === '/') {
+              event.preventDefault();
+              onPlusClick(event as any);
             }
           }}
         />

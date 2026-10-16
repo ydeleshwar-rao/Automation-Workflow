@@ -40,8 +40,8 @@ export function BaseNode({
 
   React.useEffect(() => {
     if (!showMenu) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+    const handler = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setShowMenu(false);
       }
     };
@@ -49,8 +49,8 @@ export function BaseNode({
     return () => document.removeEventListener("mousedown", handler);
   }, [showMenu]);
 
-  const handleMenuClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleMenuClick = (event: React.MouseEvent) => {
+    event.stopPropagation();
     setShowMenu(!showMenu);
   };
 
@@ -62,21 +62,21 @@ export function BaseNode({
   const MenuDropdown = () => (
     <div className="absolute left-full top-0 ml-1 w-44 bg-popover border border-border rounded-lg shadow-xl z-50 py-1.5 overflow-hidden">
       <button
-        onClick={(e) => { e.stopPropagation(); handleAction(() => {}); }}
+        onClick={(event) => { event.stopPropagation(); handleAction(() => {}); }}
         className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-popover-foreground hover:bg-muted transition-colors"
       >
         <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
         <span className="font-medium">Rename</span>
       </button>
       <button
-        onClick={(e) => { e.stopPropagation(); handleAction(() => onDuplicate?.()); }}
+        onClick={(event) => { event.stopPropagation(); handleAction(() => onDuplicate?.()); }}
         className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-popover-foreground hover:bg-muted transition-colors"
       >
         <Copy className="w-3.5 h-3.5 text-muted-foreground" />
         <span className="font-medium">Duplicate</span>
       </button>
       <button
-        onClick={(e) => { e.stopPropagation(); handleAction(() => {}); }}
+        onClick={(event) => { event.stopPropagation(); handleAction(() => {}); }}
         className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-popover-foreground hover:bg-muted transition-colors"
       >
         <ClipboardPaste className="w-3.5 h-3.5 text-muted-foreground" />
@@ -85,7 +85,7 @@ export function BaseNode({
       <div className="my-1 border-t border-border" />
       {type !== 'trigger' && (
         <button
-          onClick={(e) => { e.stopPropagation(); handleAction(() => onDelete?.()); }}
+          onClick={(event) => { event.stopPropagation(); handleAction(() => onDelete?.()); }}
           className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-popover-foreground hover:bg-destructive/10 hover:text-destructive transition-colors group/delete"
         >
           <Trash2 className="w-3.5 h-3.5 text-muted-foreground group-hover/delete:text-destructive" />

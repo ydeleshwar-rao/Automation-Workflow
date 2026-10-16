@@ -10,9 +10,8 @@ import { API_ROUTES } from "@/src/constants/api.constants";
 import { Switch } from "@/src/components/ui/switch";
 import { GoogleLogo, MicrosoftLogo } from "@/src/components/onboarding/shared/SsoButtons";
 import {
-  COMPANY_SSO_ENABLED,
   PROVIDER_LABEL,
-  SSO_ENABLED,
+  SSO_PROVIDERS,
   startSsoSignIn,
   type SsoProvider,
 } from "@/src/lib/auth/provider";
@@ -43,7 +42,6 @@ export default function CompanySsoPage() {
   }, []);
 
   useEffect(() => {
-    if (!COMPANY_SSO_ENABLED) return;
     load();
     if (new URLSearchParams(window.location.search).get("connected")) {
       toast.success("Company sign-in connected");
@@ -88,8 +86,8 @@ export default function CompanySsoPage() {
     }
   };
 
-  const connectedProviders = new Set(settings?.connections.map((c) => c.provider));
-  const available = (["google", "microsoft"] as const).filter((p) => SSO_ENABLED[p] && !connectedProviders.has(p));
+  const connectedProviders = new Set(settings?.connections.map((connection) => connection.provider));
+  const available = SSO_PROVIDERS.filter((provider) => !connectedProviders.has(provider));
 
   return (
     <div className="p-6 space-y-6 max-w-3xl mx-auto">
@@ -106,16 +104,9 @@ export default function CompanySsoPage() {
         </p>
       </div>
 
-      {!COMPANY_SSO_ENABLED && (
-        <div className="rounded-xl border border-border/70 bg-muted/40 p-5 text-sm text-muted-foreground">
-          Company SSO needs <code>NEXT_PUBLIC_AUTH_PROVIDER=postgres</code> and a Google and/or Microsoft client ID
-          (<code>NEXT_PUBLIC_GOOGLE_CLIENT_ID</code>, <code>NEXT_PUBLIC_MICROSOFT_CLIENT_ID</code>).
-        </div>
-      )}
-
       {loadError && <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">{loadError}</div>}
 
-      {COMPANY_SSO_ENABLED && !settings && !loadError && (
+      {!settings && !loadError && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
       )}
 
@@ -146,25 +137,25 @@ export default function CompanySsoPage() {
               <p className="text-sm text-muted-foreground">No company account connected yet.</p>
             )}
 
-            {settings.connections.map((c) => {
-              const Logo = LOGOS[c.provider];
-              const label = `${PROVIDER_LABEL[c.provider].company} (${c.domain})`;
+            {settings.connections.map((connection) => {
+              const Logo = LOGOS[connection.provider];
+              const label = `${PROVIDER_LABEL[connection.provider].company} (${connection.domain})`;
               return (
-                <div key={c.id} className="flex items-center gap-4 rounded-xl border border-border/60 bg-background px-4 py-3">
+                <div key={connection.id} className="flex items-center gap-4 rounded-xl border border-border/60 bg-background px-4 py-3">
                   <Logo className="h-5 w-5" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">{PROVIDER_LABEL[c.provider].company}</p>
+                    <p className="text-sm font-medium">{PROVIDER_LABEL[connection.provider].company}</p>
                     <p className="text-xs text-muted-foreground truncate">
-                      {c.provider === "google" ? `Domain ${c.domain}` : `${c.domain} · tenant ${c.tenantKey}`}
+                      {connection.provider === "google" ? `Domain ${connection.domain}` : `${connection.domain} · tenant ${connection.tenantKey}`}
                     </p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => remove(c.id, label)}
+                    onClick={() => remove(connection.id, label)}
                     disabled={busy !== null}
                     className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors disabled:opacity-50"
                   >
-                    {busy === `remove-${c.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                    {busy === `remove-${connection.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                     Disconnect
                   </button>
                 </div>

@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { supabase } from "../../config/db.config.js";
+import type { IntegrationWebhookSubscription, WebhookEventLog } from "@prisma/client";
 import { webhookLogger as log } from "../../utils/logger.js";
 import { getWebhookAdapter } from "./adapters/adapter.registry.js";
 import {
@@ -12,6 +12,18 @@ import {
 import { enrichServiceM8CompanyWebhook, enrichServiceM8JobWebhook } from "./adapters/serviceM8.webhook.adapter.js";
 import { executeWorkflow } from "../workflow-automation/processor/webhookProcessor.js";
 import { CommusoftService } from "../initgrations/commusoft/service/commusoft.service.js";
+import { readSubscriptionConfig } from "../polling-engine/trigger-payload.js";
+import {
+  findSubscriptionByTargetPath,
+  findLeadshubSubscriptionForLocation,
+  findLeadshubUserIdForLocation,
+  findDuplicateEvent,
+  logReceivedEvent,
+  findInactiveWorkflowReason,
+  markEventSkipped,
+  recordEventProcessed,
+  recordEventFailed,
+} from "./webhook-event.service.js";
 
 function pickFirst(...values: any[]): string {
   for (const value of values) {
@@ -82,17 +94,10 @@ export async function receiveIntegrationWebhook(
   }
 
   // ─── 1. Resolve subscription ─────────────────────────────────────────────
-  let subscription: any = null;
+  let matchedSubscription: IntegrationWebhookSubscription | null = null;
 
   if (targetPath) {
-    // Per-subscription URL path
-    const { data } = await supabase
-      .from("integration_webhook_subscriptions")
-      .select("*")
-      .eq("integration_key", integrationKey)
-      .eq("target_path", targetPath)
-      .maybeSingle();
-    subscription = data;
+    matchedSubscription = await findSubscriptionByTargetPath(integrationKey, targetPath);
   } else if (integrationKey === "leadshub") {
     // OAuth-app-level: dispatch by locationId + event type
     const locationId = getLeadshubLocationIdFromPayload(rawBody);
@@ -102,66 +107,15 @@ export async function receiveIntegrationWebhook(
         .status(400)
         .json({ error: "Missing locationId or event type in payload" });
     }
-
-    // A single GHL location can have multiple active leadshub_integrations
-    // rows (e.g. admin-impersonation flow where different selected users have
-    // independently connected the same location). The "latest updated" row is
-    // not necessarily the one that owns the workflow subscription. So:
-    //   1. Collect ALL active integration users for this location.
-    //   2. Find the active subscription for this event whose user_id is among
-    //      those users — that user is the actual subscription owner.
-    const { data: integrationRows } = await supabase
-      .from("leadshub_integrations")
-      .select("user_id")
-      .eq("location_id", locationId)
-      .eq("is_active", true);
-
-    const userIds = (integrationRows ?? [])
-      .map((r: any) => r.user_id)
-      .filter(Boolean);
-
-    log.info("leadshub lookup", { locationId, eventKey, candidateUsers: userIds.length, userIds });
-
-    if (userIds.length > 0) {
-      const { data: subRow, error: subLookupErr } = await supabase
-        .from("integration_webhook_subscriptions")
-        .select("*")
-        .eq("integration_key", "leadshub")
-        .eq("event_key", eventKey)
-        .in("user_id", userIds)
-        .eq("is_active", true)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (subLookupErr) {
-        log.error("DB error during subscription lookup", { error: subLookupErr.message });
-      }
-      subscription = subRow ?? null;
-
-      if (!subscription) {
-        const { data: allSubs } = await supabase
-          .from("integration_webhook_subscriptions")
-          .select("id, event_key, is_active, user_id, workflow_id, created_at")
-          .eq("integration_key", "leadshub")
-          .in("user_id", userIds);
-
-        log.warn("no subscription matched", {
-          eventKey,
-          userIds,
-          allSubsCount: allSubs?.length ?? 0,
-          allSubs: allSubs ?? [],
-        });
-      }
-    } else {
-      log.warn("no active leadshub_integrations rows", { locationId });
-    }
+    matchedSubscription = await findLeadshubSubscriptionForLocation(locationId, eventKey);
   }
 
-  if (!subscription) {
+  if (!matchedSubscription) {
     log.warn("no matching subscription found — returning 410", { integration: integrationKey, targetPath });
     return res.status(410).json({ error: "Subscription not found or inactive" });
   }
+  // const binding keeps the null-narrowing inside the async callbacks below
+  const subscription = matchedSubscription;
 
   if (!subscription.is_active) {
     log.warn("subscription paused", { sub: subscription.id });
@@ -174,6 +128,7 @@ export async function receiveIntegrationWebhook(
     event: subscription.event_key,
     user: subscription.user_id,
   });
+  const subscriptionConfig = readSubscriptionConfig(subscription.config);
 
   // ─── 2. Verify + normalize ───────────────────────────────────────────────
   const normalized = adapter.verifyAndNormalize(
@@ -200,12 +155,12 @@ export async function receiveIntegrationWebhook(
   if (
     integrationKey === "leadshub" &&
     subscription.event_key === "pipeline_stage_changed" &&
-    !passesPipelineStageFilter(normalized.data, subscription.config)
+    !passesPipelineStageFilter(normalized.data, subscriptionConfig)
   ) {
     log.info("pipeline/stage filter MISMATCH — dropping", {
       sub: subscription.id,
-      cfgPipelineId: subscription.config?.pipelineId,
-      cfgStageId: subscription.config?.pipelineStageId,
+      cfgPipelineId: subscriptionConfig.pipelineId,
+      cfgStageId: subscriptionConfig.pipelineStageId,
       payloadPipelineId: normalized.data?.pipelineId,
       payloadStageId: normalized.data?.pipelineStageId,
     });
@@ -222,8 +177,8 @@ export async function receiveIntegrationWebhook(
   // filters on the trigger node (stored in subscription.config). Drop events
   // that don't match either filter — ack 200 so SM8 stops retrying.
   if (integrationKey === "service_m8") {
-    const cfgQueue    = subscription.config?.queue_uuid    || null;
-    const cfgCategory = subscription.config?.category_uuid || null;
+    const cfgQueue    = subscriptionConfig.queue_uuid    || null;
+    const cfgCategory = subscriptionConfig.category_uuid || null;
 
     if (cfgQueue) {
       const payloadQueue = normalized.data?.queue_uuid;
@@ -245,33 +200,18 @@ export async function receiveIntegrationWebhook(
   }
 
   // ─── 3. Idempotency check ────────────────────────────────────────────────
-  const { data: dup } = await supabase
-    .from("webhook_event_log")
-    .select("id")
-    .eq("subscription_id", subscription.id)
-    .eq("external_event_id", normalized.externalId)
-    .maybeSingle();
-
-  if (dup) {
-    log.info("DUPLICATE event — skipping", { externalId: normalized.externalId, log_id: dup.id, sub: subscription.id });
-    return res.status(200).json({ status: "duplicate", id: dup.id });
+  const duplicateEvent = await findDuplicateEvent(subscription.id, normalized.externalId);
+  if (duplicateEvent) {
+    log.info("DUPLICATE event — skipping", { externalId: normalized.externalId, log_id: duplicateEvent.id, sub: subscription.id });
+    return res.status(200).json({ status: "duplicate", id: duplicateEvent.id });
   }
 
   // ─── 4. Log event (insert FIRST — protects against retry races) ──────────
-  const { data: logRow, error: logErr } = await supabase
-    .from("webhook_event_log")
-    .insert({
-      subscription_id:   subscription.id,
-      external_event_id: normalized.externalId,
-      event_type:        normalized.eventType,
-      payload:           normalized.data,
-      status:            "received",
-    })
-    .select()
-    .single();
-
-  if (logErr || !logRow) {
-    log.error("event log insert failed", { error: logErr?.message, sub: subscription.id });
+  let logRow: WebhookEventLog;
+  try {
+    logRow = await logReceivedEvent(subscription.id, normalized);
+  } catch (error) {
+    log.error("event log insert failed", { error: error instanceof Error ? error.message : String(error), sub: subscription.id });
     return res.status(500).json({ error: "Internal logging error" });
   }
 
@@ -279,26 +219,14 @@ export async function receiveIntegrationWebhook(
   log.info("event accepted", { log_id: logRow.id, sub: subscription.id, externalId: normalized.externalId });
 
   // ─── 6. Verify workflow is active before executing ───────────────────────
-  const { data: workflow } = await supabase
-    .from("workflows")
-    .select("status")
-    .eq("id", subscription.workflow_id)
-    .maybeSingle();
-
-  if (!workflow || workflow.status !== "active") {
+  const inactiveWorkflowReason = await findInactiveWorkflowReason(subscription.workflow_id);
+  if (inactiveWorkflowReason) {
     log.warn("workflow not active — skipping execution", {
       workflow: subscription.workflow_id,
-      status: workflow?.status ?? "missing",
+      reason: inactiveWorkflowReason,
       log_id: logRow.id,
     });
-    await supabase
-      .from("webhook_event_log")
-      .update({
-        status:       "failed",
-        error:        `Workflow not active (status=${workflow?.status ?? "missing"})`,
-        processed_at: new Date().toISOString(),
-      })
-      .eq("id", logRow.id);
+    await markEventSkipped(logRow.id, inactiveWorkflowReason);
     return;
   }
   log.debug("workflow active", { workflow: subscription.workflow_id });
@@ -330,42 +258,42 @@ export async function receiveIntegrationWebhook(
 
   const triggerDataPromise: Promise<Record<string, any>> = needsLeadshubEnrichment
     ? enrichLeadshubOpportunityWebhook(subscription.user_id, normalized.data)
-        .then((flat) => {
-          log.info("enrichment done", { type: "leadshub_opportunity", keys: Object.keys(flat).length, sub: subscription.id });
-          return flat;
+        .then((enrichedData) => {
+          log.info("enrichment done", { type: "leadshub_opportunity", keys: Object.keys(enrichedData).length, sub: subscription.id });
+          return enrichedData;
         })
-        .catch((err: any) => {
-          log.warn("enrichment failed — falling back to raw payload", { type: "leadshub_opportunity", error: err.message, sub: subscription.id });
+        .catch((error: any) => {
+          log.warn("enrichment failed — falling back to raw payload", { type: "leadshub_opportunity", error: error.message, sub: subscription.id });
           return normalized.data;
         })
     : needsLeadshubAppointmentEnrichment
     ? enrichLeadshubAppointmentWebhook(subscription.user_id, normalized.data)
-        .then((flat) => {
-          log.info("enrichment done", { type: "leadshub_appointment", keys: Object.keys(flat).length, sub: subscription.id });
-          return flat;
+        .then((enrichedData) => {
+          log.info("enrichment done", { type: "leadshub_appointment", keys: Object.keys(enrichedData).length, sub: subscription.id });
+          return enrichedData;
         })
-        .catch((err: any) => {
-          log.warn("enrichment failed — falling back to raw payload", { type: "leadshub_appointment", error: err.message, sub: subscription.id });
+        .catch((error: any) => {
+          log.warn("enrichment failed — falling back to raw payload", { type: "leadshub_appointment", error: error.message, sub: subscription.id });
           return normalized.data;
         })
     : needsServiceM8CompanyEnrichment
     ? enrichServiceM8CompanyWebhook(subscription.user_id, normalized.data)
-        .then((flat) => {
-          log.info("enrichment done", { type: "sm8_company", keys: Object.keys(flat).length, sub: subscription.id });
-          return flat;
+        .then((enrichedData) => {
+          log.info("enrichment done", { type: "sm8_company", keys: Object.keys(enrichedData).length, sub: subscription.id });
+          return enrichedData;
         })
-        .catch((err: any) => {
-          log.warn("enrichment failed — falling back to raw payload", { type: "sm8_company", error: err.message, sub: subscription.id });
+        .catch((error: any) => {
+          log.warn("enrichment failed — falling back to raw payload", { type: "sm8_company", error: error.message, sub: subscription.id });
           return normalized.data;
         })
     : needsServiceM8JobEnrichment
     ? enrichServiceM8JobWebhook(subscription.user_id, normalized.data)
-        .then((flat) => {
-          log.info("enrichment done", { type: "sm8_job", keys: Object.keys(flat).length, sub: subscription.id });
-          return flat;
+        .then((enrichedData) => {
+          log.info("enrichment done", { type: "sm8_job", keys: Object.keys(enrichedData).length, sub: subscription.id });
+          return enrichedData;
         })
-        .catch((err: any) => {
-          log.warn("enrichment failed — falling back to raw payload", { type: "sm8_job", error: err.message, sub: subscription.id });
+        .catch((error: any) => {
+          log.warn("enrichment failed — falling back to raw payload", { type: "sm8_job", error: error.message, sub: subscription.id });
           return normalized.data;
         })
     : Promise.resolve(normalized.data);
@@ -375,46 +303,18 @@ export async function receiveIntegrationWebhook(
       log.info("executing workflow", { workflow: subscription.workflow_id, log_id: logRow.id });
       return executeWorkflow(subscription.workflow_id, triggerData);
     })
-    .then(async () => {
-      await supabase
-        .from("webhook_event_log")
-        .update({ status: "processed", processed_at: new Date().toISOString() })
-        .eq("id", logRow.id);
-      await supabase
-        .from("integration_webhook_subscriptions")
-        .update({
-          last_received_at: new Date().toISOString(),
-          total_received: (subscription.total_received || 0) + 1,
-          error_count: 0,
-          last_error: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", subscription.id);
+    .then(() => recordEventProcessed(logRow.id, subscription.id))
+    .then(() => {
       log.info("END — processed", { log_id: logRow.id, workflow: subscription.workflow_id, integration: integrationKey });
     })
-    .catch(async (err: any) => {
+    .catch(async (error: any) => {
       log.error("END — workflow execution failed", {
         log_id: logRow.id,
         workflow: subscription.workflow_id,
         integration: integrationKey,
-        error: err.message,
+        error: error.message,
       });
-      await supabase
-        .from("webhook_event_log")
-        .update({
-          status:       "failed",
-          error:        err.message,
-          processed_at: new Date().toISOString(),
-        })
-        .eq("id", logRow.id);
-      await supabase
-        .from("integration_webhook_subscriptions")
-        .update({
-          error_count: (subscription.error_count || 0) + 1,
-          last_error:  err.message,
-          updated_at:  new Date().toISOString(),
-        })
-        .eq("id", subscription.id);
+      await recordEventFailed(logRow.id, subscription.id, error.message);
     });
 }
 
@@ -449,22 +349,16 @@ export async function receiveLeadshubWorkflowAppointment(
     });
   }
 
-  const { data: integrations, error: integrationError } = await supabase
-    .from("leadshub_integrations")
-    .select("user_id, location_id, updated_at")
-    .eq("location_id", locationId)
-    .eq("is_active", true)
-    .order("updated_at", { ascending: false })
-    .limit(1);
-
-  if (integrationError) {
+  let userId: string | null;
+  try {
+    userId = await findLeadshubUserIdForLocation(locationId);
+  } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `Failed to look up Leadshub integration: ${integrationError.message}`,
+      message: `Failed to look up Leadshub integration: ${error instanceof Error ? error.message : String(error)}`,
     });
   }
 
-  const userId = integrations?.[0]?.user_id;
   if (!userId) {
     return res.status(404).json({
       success: false,
@@ -618,19 +512,19 @@ export async function receiveLeadshubWorkflowAppointment(
         resourceId,
       },
     });
-  } catch (err: any) {
+  } catch (error: any) {
     log.error("LeadshubWorkflowAppointment failed", {
-      status: err?.response?.status,
-      message: err?.message,
-      body: JSON.stringify(err?.response?.data)?.slice(0, 500),
+      status: error?.response?.status,
+      message: error?.message,
+      body: JSON.stringify(error?.response?.data)?.slice(0, 500),
     });
-    return res.status(err?.response?.status || 500).json({
+    return res.status(error?.response?.status || 500).json({
       success: false,
       message:
-        err?.response?.data?.message ||
-        err?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
         "Failed to create Commusoft appointment",
-      errors: err?.response?.data || null,
+      errors: error?.response?.data || null,
     });
   }
 }

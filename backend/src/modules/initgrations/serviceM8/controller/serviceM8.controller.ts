@@ -3,32 +3,30 @@ import { ServiceM8Service } from "../service/serviceM8.service.js";
 import { ApiResponse } from "../../../../utils/ApiResponse.js";
 import { ApiError } from "../../../../utils/ApiError.js";
 import { validateId } from "../../../../utils/CustomFunc.js";
-import { supabase } from "../../../../config/db.config.js";
 import { SummaryService } from "../service/summary.service.js";
 import { StaffSummaryService } from "../service/staff_summary.service.js";
+import { ServiceM8ConnectionService } from "../service/serviceM8Connection.service.js";
 import { getUserId } from "../../../../common/function.js";
 
 
 
-const firstStr = (v: unknown): string | undefined => {
-  const raw = Array.isArray(v) ? v[0] : v;
+const firstStr = (value: unknown): string | undefined => {
+  const raw = Array.isArray(value) ? value[0] : value;
   if (typeof raw !== "string") return undefined;
   const trimmed = raw.trim();
   return trimmed ? trimmed : undefined;
 };
 
+/** Case-insensitive name → uuid lookup against the live ServiceM8 queue / category list. */
 const resolveUuidByName = async (
-  table: "servicem8_queues" | "servicem8_categories",
+  listNamedRecords: (userId: string) => Promise<{ data: { uuid: unknown; name: unknown }[] }>,
   userId: string,
   name: string
 ): Promise<string | null> => {
-  const { data } = await supabase
-    .from(table)
-    .select("uuid")
-    .eq("user_id", userId)
-    .ilike("name", name)
-    .maybeSingle();
-  return data?.uuid ?? null;
+  const { data: namedRecords } = await listNamedRecords(userId);
+  const wantedName = name.toLowerCase();
+  const match = namedRecords.find((record) => String(record.name ?? "").toLowerCase() === wantedName);
+  return typeof match?.uuid === "string" ? match.uuid : null;
 };
 
 type JobFilterSet = {
@@ -46,13 +44,13 @@ const periodToDateRange = (
   period: string
 ): { dateFrom: string; dateTo: string } | undefined => {
   const today = new Date();
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  const formatIsoDate = (date: Date) => date.toISOString().slice(0, 10);
   const from = new Date(today);
   if (period === "week") from.setDate(from.getDate() - 6);
   else if (period === "month") from.setDate(from.getDate() - 29);
   else if (period === "year") from.setFullYear(from.getFullYear() - 1);
   else return undefined;
-  return { dateFrom: fmt(from), dateTo: fmt(today) };
+  return { dateFrom: formatIsoDate(from), dateTo: formatIsoDate(today) };
 };
 
 const resolveJobFilters = async (
@@ -74,13 +72,13 @@ const resolveJobFilters = async (
 
   if (queueUuid) filters.queueUuid = queueUuid;
   else if (queueName) {
-    const uuid = await resolveUuidByName("servicem8_queues", userId, queueName);
+    const uuid = await resolveUuidByName(ServiceM8Service.listQueues, userId, queueName);
     if (uuid) filters.queueUuid = uuid;
   }
 
   if (categoryUuid) filters.categoryUuid = categoryUuid;
   else if (categoryName) {
-    const uuid = await resolveUuidByName("servicem8_categories", userId, categoryName);
+    const uuid = await resolveUuidByName(ServiceM8Service.listCategories, userId, categoryName);
     if (uuid) filters.categoryUuid = uuid;
   }
 
@@ -110,7 +108,7 @@ export class ServiceM8Controller {
     try {
       const userId = await getUserId(req);
       const { data, sm8 } = await ServiceM8Service.listClients(userId);
-      return ApiResponse(res, 200, "Clients retrieved and synced successfully", data, { sm8 });
+      return ApiResponse(res, 200, "Clients retrieved successfully", data, { sm8 });
     } catch (error) {
       next(error);
     }
@@ -143,7 +141,7 @@ export class ServiceM8Controller {
     try {
       const userId = await getUserId(req);
       const { data, sm8 } = await ServiceM8Service.listContacts(userId);
-      return ApiResponse(res, 200, "Contacts retrieved and synced successfully", data, { sm8 });
+      return ApiResponse(res, 200, "Contacts retrieved successfully", data, { sm8 });
     } catch (error) {
       next(error);
     }
@@ -154,7 +152,7 @@ export class ServiceM8Controller {
     try {
       const userId = await getUserId(req);
       const { data, sm8 } = await ServiceM8Service.listLocations(userId);
-      return ApiResponse(res, 200, "Locations retrieved and synced successfully", data, { sm8 });
+      return ApiResponse(res, 200, "Locations retrieved successfully", data, { sm8 });
     } catch (error) {
       next(error);
     }
@@ -175,7 +173,7 @@ export class ServiceM8Controller {
     try {
       const userId = await getUserId(req);
       const { data, sm8 } = await ServiceM8Service.listJobs(userId);
-      return ApiResponse(res, 200, "Jobs retrieved and synced successfully", data, { sm8 });
+      return ApiResponse(res, 200, "Jobs retrieved successfully", data, { sm8 });
     } catch (error) {
       next(error);
     }
@@ -208,7 +206,7 @@ export class ServiceM8Controller {
     try {
       const userId = await getUserId(req);
       const { data, sm8 } = await ServiceM8Service.listStaffMembers(userId);
-      return ApiResponse(res, 200, "Staff members retrieved and synced successfully", data, { sm8 });
+      return ApiResponse(res, 200, "Staff members retrieved successfully", data, { sm8 });
     } catch (error) {
       next(error);
     }
@@ -229,7 +227,7 @@ export class ServiceM8Controller {
     try {
       const userId = await getUserId(req);
       const { data, sm8 } = await ServiceM8Service.listCategories(userId);
-      return ApiResponse(res, 200, "Categories retrieved and synced successfully", data, { sm8 });
+      return ApiResponse(res, 200, "Categories retrieved successfully", data, { sm8 });
     } catch (error) {
       next(error);
     }
@@ -240,7 +238,7 @@ export class ServiceM8Controller {
     try {
       const userId = await getUserId(req);
       const { data, sm8 } = await ServiceM8Service.listQueues(userId);
-      return ApiResponse(res, 200, "Queues retrieved and synced successfully", data, { sm8 });
+      return ApiResponse(res, 200, "Queues retrieved successfully", data, { sm8 });
     } catch (error) {
       next(error);
     }
@@ -324,31 +322,14 @@ export class ServiceM8Controller {
     try {
       const userId = await getUserId(req);
       const { data, sm8 } = await ServiceM8Service.listJobPayments(userId);
-      return ApiResponse(res, 200, "Job payments retrieved and synced successfully", data, { sm8 });
-    } catch (error) {
-      next(error);
-    }
-  };
-
-  // ─── 12. Sync All ─────────────────────────────────────────────────────────
-  static syncAll = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const userId = await getUserId(req);
-      const result = await ServiceM8Service.syncAll(userId);
-      const statusCode = result.overall === "failed" ? 500 : 200;
-      const message =
-        result.overall === "success" ? "Full sync completed successfully" :
-        result.overall === "partial" ? `Partial sync — failed: ${result.failedEntities.join(", ")}` :
-                                       "Sync failed for all entities";
-      return ApiResponse(res, statusCode, message, result);
+      return ApiResponse(res, 200, "Job payments retrieved successfully", data, { sm8 });
     } catch (error) {
       next(error);
     }
   };
 
   // ─── 13. Get All Jobs ─────────────────────────────────────────────────────
-  // Always hits ServiceM8 live API (fresh sync into local DB) so the dashboard
-  // sees up-to-date data. Filters supported via query params:
+  // Always hits the ServiceM8 live API. Filters supported via query params:
   //   queue_uuid | queue_name
   //   category_uuid | category_name
   //   status                              (e.g. "Quote", "Work Order", "Completed")
@@ -528,42 +509,10 @@ export class ServiceM8Controller {
 
   static getConnectUrl = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId      = await getUserId(req);
-      const clientId    = process.env.SERVICEM8_CLIENT_ID;
-      const redirectUri = process.env.SERVICEM8_REDIRECT_URI;
-      const scopes      = process.env.SERVICEM8_SCOPE;
-
-      if (!clientId || !redirectUri) {
-        throw new ApiError(500, "ServiceM8 config missing");
-      }
-
-      // Check if user is already connected and healthy (not flagged for re-auth)
-      const { data: existing } = await supabase
-        .from("servicem8_integrations")
-        .select("user_id, expires_at, scopes, needs_reauth")
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      if (existing && !existing.needs_reauth) {
-        return ApiResponse(res, 200, "ServiceM8 account already connected", {
-          alreadyConnected: true,
-          expires_at:       existing.expires_at,
-          scopes:           existing.scopes,
-        });
-      }
-
-      const statePayload = Buffer.from(JSON.stringify({ userId })).toString("base64url");
-
-      const params = new URLSearchParams({
-        response_type: "code",
-        client_id:     clientId,
-        redirect_uri:  redirectUri,
-        scope:         scopes!,
-        state:         statePayload,
-      });
-
-      const url = `https://go.servicem8.com/oauth/authorize?${params.toString()}`;
-      return ApiResponse(res, 200, "Auth URL generated", { alreadyConnected: false, url });
+      const userId = await getUserId(req);
+      const result = await ServiceM8ConnectionService.getConnectUrl(userId);
+      const message = result.alreadyConnected ? "ServiceM8 account already connected" : "Auth URL generated";
+      return ApiResponse(res, 200, message, result);
     } catch (error) {
       next(error);
     }
@@ -571,73 +520,21 @@ export class ServiceM8Controller {
 
   static handleCallback = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { code, state } = req.query;
+      const code = firstStr(req.query.code);
+      const state = firstStr(req.query.state);
 
       if (!code)  throw new ApiError(400, "No authorization code");
       if (!state) throw new ApiError(400, "State missing");
 
-      let userId: string;
+      let userId: string | undefined;
       try {
-        const decoded = JSON.parse(Buffer.from(state as string, "base64url").toString("utf8"));
-        userId = decoded.userId;
+        userId = JSON.parse(Buffer.from(state, "base64url").toString("utf8")).userId;
       } catch {
         throw new ApiError(400, "Invalid state parameter");
       }
-
       if (!userId) throw new ApiError(400, "User ID missing in state");
 
-      const tokenUrl = process.env.SERVICEM8_TOKEN_URL || "https://go.servicem8.com/oauth/access_token";
-
-      const tokenRes = await fetch(tokenUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          client_id:     process.env.SERVICEM8_CLIENT_ID!,
-          client_secret: process.env.SERVICEM8_CLIENT_SECRET!,
-          grant_type:    "authorization_code",
-          code:          code as string,
-          redirect_uri:  process.env.SERVICEM8_REDIRECT_URI!,
-        }),
-      });
-
-      const tokenData = await tokenRes.json();
-      if (!tokenRes.ok) throw new ApiError(tokenRes.status, tokenData?.error_description || tokenData?.error || "Token exchange failed");
-
-      // Identify the ServiceM8 account UUID so token refreshes can be synced
-      // across all users who share the same ServiceM8 account.
-      let sm8AccountUuid: string | null = null;
-      try {
-        const companyRes = await fetch("https://api.servicem8.com/api_1.0/company.json", {
-          headers: { Authorization: `Bearer ${tokenData.access_token}`, Accept: "application/json" },
-        });
-        if (companyRes.ok) {
-          const companyData = await companyRes.json();
-          const first = Array.isArray(companyData) ? companyData[0] : companyData;
-          sm8AccountUuid = first?.uuid ?? null;
-          console.log(`[ServiceM8 Callback] sm8_account_uuid resolved: ${sm8AccountUuid}`);
-        } else {
-          console.warn(`[ServiceM8 Callback] /company.json returned ${companyRes.status}`);
-        }
-      } catch (e) {
-        console.warn("[ServiceM8 Callback] Could not fetch company UUID:", e);
-      }
-
-      const expiresAt = new Date();
-      expiresAt.setSeconds(expiresAt.getSeconds() + (tokenData.expires_in || 3600));
-
-      const { error: upsertError } = await supabase.from("servicem8_integrations").upsert({
-        user_id:          userId,
-        access_token:     tokenData.access_token,
-        refresh_token:    tokenData.refresh_token,
-        expires_at:       expiresAt.toISOString(),
-        scopes:           tokenData.scope,
-        needs_reauth:     false,
-        ...(sm8AccountUuid ? { sm8_account_uuid: sm8AccountUuid } : {}),
-      }, { onConflict: "user_id" });
-
-      if (upsertError) throw new ApiError(500, `Failed to save ServiceM8 integration: ${upsertError.message}`);
-      console.log(`[ServiceM8 Callback] Integration saved — userId=${userId}  sm8_account_uuid=${sm8AccountUuid ?? "null"}`);
-
+      await ServiceM8ConnectionService.completeOAuthCallback(userId, code);
       return res.send(`<!DOCTYPE html><html><body><script>window.close();</script><p>Connected successfully. You may close this window.</p></body></html>`);
     } catch (error) {
       next(error);
@@ -647,24 +544,7 @@ export class ServiceM8Controller {
   static disconnect = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = await getUserId(req);
-
-      // Check if connection exists before attempting delete
-      const { data: existing } = await supabase
-        .from("servicem8_integrations")
-        .select("user_id")
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      if (!existing) {
-        throw new ApiError(404, "No active ServiceM8 connection found. Account is already disconnected.");
-      }
-
-      const { error } = await supabase
-        .from("servicem8_integrations")
-        .delete()
-        .eq("user_id", userId);
-
-      if (error) throw error;
+      await ServiceM8ConnectionService.disconnect(userId);
       return ApiResponse(res, 200, "ServiceM8 disconnected successfully", { disconnected: true });
     } catch (error) {
       next(error);
@@ -674,70 +554,19 @@ export class ServiceM8Controller {
   static connectionStatus = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = await getUserId(req);
-      const { data } = await supabase
-        .from("servicem8_integrations")
-        .select("expires_at, scopes, needs_reauth")
-        .eq("user_id", userId)
-        .single();
-
-      return ApiResponse(res, 200, "Status fetched", {
-        connected:    !!data,
-        needs_reauth: data?.needs_reauth ?? false,
-      });
+      const status = await ServiceM8ConnectionService.getConnectionStatus(userId);
+      return ApiResponse(res, 200, "Status fetched", status);
     } catch (error) {
       next(error);
     }
   };
 
   // One-time migration: populate sm8_account_uuid for all users where it is NULL.
-  // Call POST /servicem8/backfill-account-uuid once after deploying this fix.
-  static backfillAccountUuid = async (req: Request, res: Response, next: NextFunction) => {
+  static backfillAccountUuid = async (_req: Request, res: Response, next: NextFunction) => {
     try {
-      const { data: rows, error } = await supabase
-        .from("servicem8_integrations")
-        .select("user_id, access_token")
-        .is("sm8_account_uuid", null)
-        .not("access_token", "is", null);
-
-      if (error) throw error;
-      if (!rows || rows.length === 0) {
-        return ApiResponse(res, 200, "No rows need backfill", { updated: 0 });
-      }
-
-      console.log(`[Backfill] sm8_account_uuid missing for ${rows.length} user(s) — starting...`);
-      let updated = 0;
-      let failed  = 0;
-
-      for (const row of rows) {
-        try {
-          const configRes = await fetch("https://api.servicem8.com/api_1.0/CompanyConfig.json", {
-            headers: { Authorization: `Bearer ${row.access_token}`, Accept: "application/json" },
-          });
-          if (!configRes.ok) {
-            console.warn(`[Backfill] user=${row.user_id} CompanyConfig HTTP ${configRes.status} — skipping`);
-            failed++;
-            continue;
-          }
-          const configData = await configRes.json();
-          const record = Array.isArray(configData) ? configData[0] : configData;
-          const uuid = record?.uuid ?? null;
-          console.log(`[Backfill] user=${row.user_id} → sm8_account_uuid=${uuid}`);
-
-          if (!uuid) { failed++; continue; }
-
-          await supabase
-            .from("servicem8_integrations")
-            .update({ sm8_account_uuid: uuid })
-            .eq("user_id", row.user_id);
-
-          updated++;
-        } catch (e: any) {
-          console.error(`[Backfill] user=${row.user_id} error:`, e?.message);
-          failed++;
-        }
-      }
-
-      return ApiResponse(res, 200, "Backfill complete", { total: rows.length, updated, failed });
+      const summary = await ServiceM8ConnectionService.backfillAccountUuids();
+      if (summary.total === 0) return ApiResponse(res, 200, "No rows need backfill", { updated: 0 });
+      return ApiResponse(res, 200, "Backfill complete", summary);
     } catch (error) {
       next(error);
     }
@@ -753,7 +582,7 @@ export class ServiceM8Controller {
       if (!password || typeof password !== "string")
         return ApiResponse(res, 400, "Password is required and must be a string");
 
-      const data = await ServiceM8Service.authenticateWithCredentials(userId, username, password);
+      const data = await ServiceM8ConnectionService.authenticateWithCredentials(userId, username, password);
       return ApiResponse(res, 200, "ServiceM8 authenticated successfully", {
         access_token:  data.access_token,
         refresh_token: data.refresh_token,

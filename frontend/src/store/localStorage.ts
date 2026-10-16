@@ -132,7 +132,7 @@ export function loadSelectedClientId(): null {
 
 /**
  * Returns the current logged-in user's ID from the stored session, or "" if not found.
- * In React components, prefer Redux: `useAppSelector(s => s.access.user?.id ?? "")`.
+ * In React components, prefer Redux: `useAppSelector((state) => state.access.user?.id ?? "")`.
  * This helper is for non-React contexts (RTK Query, engines, etc.).
  */
 export function getActiveUserId(): string {

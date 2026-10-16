@@ -85,50 +85,50 @@ export function TemplateLibrary() {
   const allFiltered = useMemo(() => {
     const rows = data?.data ?? [];
     if (!search.trim()) return rows;
-    const q = search.trim().toLowerCase();
+    const normalizedSearch = search.trim().toLowerCase();
     return rows.filter(
-      (t) =>
-        t.name.toLowerCase().includes(q) ||
-        (t.description ?? "").toLowerCase().includes(q) ||
-        (t.category ?? "").toLowerCase().includes(q)
+      (template) =>
+        template.name.toLowerCase().includes(normalizedSearch) ||
+        (template.description ?? "").toLowerCase().includes(normalizedSearch) ||
+        (template.category ?? "").toLowerCase().includes(normalizedSearch)
     );
   }, [data, search]);
 
   // ── Derived: templates after folder filter ─────────────────────────────────
   const templates = useMemo(() => {
     if (selectedFolder === "all") return allFiltered;
-    if (selectedFolder === "unfiled") return allFiltered.filter((t) => !t.template_folder_id);
-    return allFiltered.filter((t) => t.template_folder_id === selectedFolder);
+    if (selectedFolder === "unfiled") return allFiltered.filter((template) => !template.template_folder_id);
+    return allFiltered.filter((template) => template.template_folder_id === selectedFolder);
   }, [allFiltered, selectedFolder]);
 
   // ── Derived: categories for dropdown ──────────────────────────────────────
   const categories = useMemo(() => {
     const set = new Set<string>();
-    (data?.data ?? []).forEach((t) => { if (t.category) set.add(t.category); });
+    (data?.data ?? []).forEach((template) => { if (template.category) set.add(template.category); });
     return Array.from(set).sort();
   }, [data]);
 
   // ── Templates in the currently selected folder (for DeployFolderWizard) ───
   const folderTemplates = useMemo(() => {
     if (!deployingFolder) return [];
-    return (data?.data ?? []).filter((t) => t.template_folder_id === deployingFolder.id);
+    return (data?.data ?? []).filter((template) => template.template_folder_id === deployingFolder.id);
   }, [data, deployingFolder]);
 
   // ── Template handlers ──────────────────────────────────────────────────────
-  const handleArchive = async (tpl: WorkflowTemplate) => {
+  const handleArchive = async (template: WorkflowTemplate) => {
     try {
-      const nextStatus: TemplateStatus = tpl.status === "archived" ? "active" : "archived";
-      await updateTemplate({ id: tpl.id, patch: { status: nextStatus } }).unwrap();
+      const nextStatus: TemplateStatus = template.status === "archived" ? "active" : "archived";
+      await updateTemplate({ id: template.id, patch: { status: nextStatus } }).unwrap();
       toast.success(nextStatus === "archived" ? "Template archived" : "Template restored");
     } catch {
       toast.error("Could not update template");
     }
   };
 
-  const handleDelete = async (tpl: WorkflowTemplate) => {
-    if (!confirm(`Delete "${tpl.name}"? This also removes its nodes and mappings.`)) return;
+  const handleDelete = async (template: WorkflowTemplate) => {
+    if (!confirm(`Delete "${template.name}"? This also removes its nodes and mappings.`)) return;
     try {
-      await deleteTemplate(tpl.id).unwrap();
+      await deleteTemplate(template.id).unwrap();
       toast.success("Template deleted");
     } catch {
       toast.error("Could not delete template");
@@ -264,7 +264,7 @@ export function TemplateLibrary() {
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(event) => setSearch(event.target.value)}
             placeholder="Search by name, description, or category"
             className="pl-8"
           />
@@ -275,17 +275,17 @@ export function TemplateLibrary() {
           <Filter className="h-3.5 w-3.5 text-muted-foreground" />
           <select
             value={category}
-            onChange={(e) => setCategory(e.target.value)}
+            onChange={(event) => setCategory(event.target.value)}
             className="rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="">All categories</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>{c}</option>
+            {categories.map((categoryOption) => (
+              <option key={categoryOption} value={categoryOption}>{categoryOption}</option>
             ))}
           </select>
           <select
             value={status}
-            onChange={(e) => setStatus(e.target.value as TemplateStatus | "all")}
+            onChange={(event) => setStatus(event.target.value as TemplateStatus | "all")}
             className="rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="active">Active</option>
@@ -350,12 +350,12 @@ export function TemplateLibrary() {
             <EmptyState scope={scope} hasFolder={selectedFolder !== "all"} />
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {templates.map((tpl) => (
+              {templates.map((template) => (
                 <TemplateCard
-                  key={tpl.id}
-                  template={tpl}
-                  onApply={(t) => setApplyingId(t.id)}
-                  onEdit={(t) => setEditing(t)}
+                  key={template.id}
+                  template={template}
+                  onApply={(template) => setApplyingId(template.id)}
+                  onEdit={(template) => setEditing(template)}
                   onArchive={handleArchive}
                   onDelete={handleDelete}
                 />
@@ -399,7 +399,7 @@ export function TemplateLibrary() {
         >
           <div
             className="w-full max-w-sm rounded-xl border border-border/60 bg-card p-5 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
           >
             <h3 className="text-base font-semibold text-foreground">Delete this folder?</h3>
             <p className="mt-1 text-sm text-muted-foreground">

@@ -97,7 +97,7 @@ export function CustomersUI({
 
   // Count truthy filter fields so the button can show "Filter (3)".
   const activeFilterCount = (Object.keys(filters) as (keyof JobsFilters)[]).reduce(
-    (n, k) => (filters[k] ? n + 1 : n),
+    (count, filterKey) => (filters[filterKey] ? count + 1 : count),
     0,
   );
 
@@ -311,7 +311,7 @@ export function CustomersUI({
             disabled={currentPage <= 1 && !hasPrevApiPages}
             onClick={() => {
               if (currentPage > 1) {
-                setCurrentPage((p) => Math.max(1, p - 1));
+                setCurrentPage((prev) => Math.max(1, prev - 1));
               } else if (hasPrevApiPages) {
                 onLoadPrevApiPage();
               }
@@ -326,7 +326,7 @@ export function CustomersUI({
             disabled={currentPage >= totalPages && !hasMoreApiPages}
             onClick={() => {
               if (currentPage < totalPages) {
-                setCurrentPage((p) => Math.min(totalPages, p + 1));
+                setCurrentPage((prev) => Math.min(totalPages, prev + 1));
               } else if (hasMoreApiPages) {
                 onLoadNextApiPage();
               }

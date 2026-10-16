@@ -1,34 +1,40 @@
+import { ApiError } from "../../../../utils/ApiError.js";
+import { servicem8IntegrationRepository } from "../repositories/servicem8-integration.repository.js";
 import { refreshAccessToken } from "../utils/refreshAccessToken.js";
-import { supabase } from "../../../../config/db.config.js";
 
+// Refresh proactively when <5 min remain — avoids tokens expiring mid-flight
+const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
+// Prevents concurrent token refreshes for the same user from racing each other
+const refreshLocks = new Map<string, Promise<string>>();
 
+const isTokenFresh = (expiresAt: Date | null) =>
+  expiresAt !== null && Date.now() < expiresAt.getTime() - REFRESH_BUFFER_MS;
 
+const refreshOnce = (userId: string, refreshToken: string | null): Promise<string> => {
+  const pendingRefresh = refreshLocks.get(userId);
+  if (pendingRefresh) return pendingRefresh;
 
-const REFRESH_BUFFER_MS = 5 * 60 * 1000; // refresh 5 min before expiry
+  const refreshPromise = refreshAccessToken(userId, refreshToken)
+    .then((refreshedToken) => refreshedToken.access_token)
+    .finally(() => refreshLocks.delete(userId));
+  refreshLocks.set(userId, refreshPromise);
+  return refreshPromise;
+};
 
-export async function getServiceM8Token(userId: string): Promise<string> {
-  const { data, error } = await supabase
-    .from("servicem8_integrations")
-    .select("access_token, refresh_token, expires_at, needs_reauth")
-    .eq("user_id", userId)
-    .single();
-
-  if (error || !data) {
-    throw new Error("ServiceM8 not connected. Please connect first.");
+/**
+ * Returns a usable ServiceM8 access token, refreshing it when it is expired, about to expire,
+ * flagged for re-auth, or when the caller forces it (e.g. after a 401).
+ */
+export async function getServiceM8Token(userId: string, forceRefresh = false): Promise<string> {
+  const integration = await servicem8IntegrationRepository.findByUserId(userId);
+  if (!integration) {
+    throw new ApiError(404, "ServiceM8 integration not found. Please connect your account first.");
   }
 
-  const now = Date.now();
-  const expiresAt = new Date(data.expires_at).getTime();
-
-  // Token is fresh and healthy — use it as-is
-  if (!data.needs_reauth && now < expiresAt - REFRESH_BUFFER_MS) {
-    return data.access_token;
+  if (!forceRefresh && !integration.needs_reauth && isTokenFresh(integration.expires_at)) {
+    return integration.access_token;
   }
 
-  // Token expired — delegate to the shared refresh utility so there is only
-  // one refresh implementation and the DB update logic stays in one place.
-  console.log("Token expired, refreshing...");
-  const refreshed = await refreshAccessToken(userId, data.refresh_token);
-  return refreshed.access_token;
+  return refreshOnce(userId, integration.refresh_token);
 }

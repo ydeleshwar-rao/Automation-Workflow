@@ -12,8 +12,8 @@ export function Connector({ onClick }: ConnectorProps) {
     <div className="flex flex-col items-center group relative py-2">
       <div className="w-0.5 h-12 bg-primary/25 group-hover:bg-primary/60 transition-colors" />
       <button
-        onClick={(e) => {
-          e.stopPropagation();
+        onClick={(event) => {
+          event.stopPropagation();
           onClick?.();
         }}
         aria-label="Add step"

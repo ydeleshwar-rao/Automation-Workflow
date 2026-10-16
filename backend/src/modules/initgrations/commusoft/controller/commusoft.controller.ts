@@ -1,9 +1,8 @@
 import { Request, Response } from "express";
-import { CommusoftService } from "../service/commusoft.service.js";
+import { CommusoftService, type CommusoftJobFilters } from "../service/commusoft.service.js";
 import { ApiResponse } from "../../../../utils/ApiResponse.js";
 import { ApiError } from "../../../../utils/ApiError.js";
 import { getUserId } from "../../../../common/function.js";
-import { supabase } from "../../../../config/db.config.js";
 import { CommusoftSummaryService } from "../service/summary.service.js";
 import {
   cleanEmptyFields,
@@ -11,7 +10,6 @@ import {
   resolveMapTokens,
   toInt,
 } from "../../../../utils/commusoft-helpers.js";
-import { enqueueSyncJob } from "../../../../queues/sync.queue.js";
 
 export class CommusoftController {
 
@@ -29,11 +27,7 @@ export class CommusoftController {
         }
 
         // Check if user is already connected
-        const { data: existing } = await supabase
-            .from("commusoft_intigrations")
-            .select("user_id, username, updated_at")
-            .eq("user_id", userId)
-            .maybeSingle();
+        const existing = await CommusoftService.findConnection(userId);
 
         if (existing) {
             return ApiResponse(res, 200, "Commusoft account already connected", {
@@ -48,12 +42,7 @@ export class CommusoftController {
     };
 
     /**
-     * GET /commusoft/getjobsbyemail/:email
-     */
-
-
-    /**
-     * GET /commusoft/customers — live Commusoft API list (also upserts commusoft_customers)
+     * GET /commusoft/customers — live Commusoft API list
      */
     static getCustomers = async (req: Request, res: Response) => {
         const userId = await getUserId(req);
@@ -62,30 +51,7 @@ export class CommusoftController {
     };
 
     /**
-     * POST /commusoft/customers/sync — sync all customers from Commusoft into `customers` table
-     */
-    static syncCustomersDirectory = async (req: Request, res: Response) => {
-        try {
-            const userId = await getUserId(req);
-            const result = await CommusoftService.syncCustomers(userId, {
-              source: "api",
-            });
-            return res.status(200).json({
-                success: true,
-                message: "Customers synced successfully",
-                data: result,
-            });
-        } catch (error: any) {
-            console.error("[Controller] Customer directory sync failed:", error);
-            return res.status(500).json({
-                success: false,
-                message: error.message || "Failed to sync customers",
-            });
-        }
-    };
-
-    /**
-     * GET /commusoft/customerdetails — returns nested customer array (no wrapper)
+     * GET /commusoft/customerdetails — returns nested customer array (no wrapper), fetched live
      */
     static getCustomerDetails = async (req: Request, res: Response) => {
         try {
@@ -111,70 +77,27 @@ export class CommusoftController {
     };
 
     /**
-     * POST /commusoft/customerdetails/sync
+     * GET /commusoft/jobs — first page of jobs, live from Commusoft.
+     * Optional query: status, date_from, date_to, customer_id.
      */
-    static syncCustomerDetails = async (req: Request, res: Response) => {
-        try {
-            const userId = await getUserId(req);
-
-            console.log("[Controller] Triggering customer details sync for user:", userId);
-
-            const result = await CommusoftService.syncCustomerDetails(userId);
-
-            return res.status(200).json(result);
-        } catch (error: any) {
-            console.error("[Controller] Sync failed:", error);
-            return res.status(500).json({
-                success: false,
-                message: error.message || "Sync failed",
-            });
-        }
-    };
-
-     static getJobs = async (req: Request, res: Response) => {
+    static getJobs = async (req: Request, res: Response) => {
         const userId = await getUserId(req);
-        const data = await CommusoftService.getJobs(userId);
+        const filters: CommusoftJobFilters = {};
+        const status = firstQueryValue(req.query.status);
+        const dateFrom = firstQueryValue(req.query.date_from);
+        const dateTo = firstQueryValue(req.query.date_to);
+        const customerId = firstQueryValue(req.query.customer_id);
+        if (status) filters.status = status;
+        if (dateFrom) filters.dateFrom = dateFrom;
+        if (dateTo) filters.dateTo = dateTo;
+        if (customerId) filters.customerID = customerId;
+
+        const data = await CommusoftService.listJobsFiltered(userId, filters);
         return ApiResponse(res, 200, "Jobs fetched successfully", data);
     };
-
-      static getJobswithCustomFields = async (req: Request, res: Response) => {
-        const userId = await getUserId(req);
-        const data = await CommusoftSummaryService.getAllJobDetails(userId);
-        return ApiResponse(res, 200, "Jobs fetched successfully", data);
-    };
-
-
-    // /**
-    //  * GET /commusoft/customers/:id
-    //  */
-    // static getCustomerById = async (req: Request, res: Response) => {
-    //     const { id } = req.params;
-    //     const { baseUrl, token } = req.commusoft!;
-    //     const data = await CommusoftService.getCustomerById(baseUrl, token, id);
-    //     return ApiResponse(res, 200, "Customer fetched successfully", data);
-    // };
-
-    // /**
-    //  * GET /commusoft/customers/:id/jobs
-    //  */
-    // static getJobsByCustomerId = async (req: Request, res: Response) => {
-    //     const { id } = req.params;
-    //     const { baseUrl, token } = req.commusoft!;
-    //     const data = await CommusoftService.getJobsByCustomerId(baseUrl, token, id);
-    //     return ApiResponse(res, 200, "Jobs fetched successfully", data);
-    // };
 
     /**
-     * GET /commusoft/engineers
-     */
-    // static getEngineers = async (req: Request, res: Response) => {
-    //    const userId = await getUserId(req);
-    //     const data = await CommusoftService.getEngineers(userId);
-    //     return ApiResponse(res, 200, "Engineers fetched successfully", data);
-    // };
-
-       /**
-     * GET /commusoft/engineers get user preference
+     * GET /commusoft/customertypes
      */
     static getCustomerTypes = async (req: Request, res: Response) => {
         const userId = await getUserId(req);
@@ -332,52 +255,6 @@ static getDiaryEvents = async (req: Request, res: Response) => {
         return ApiResponse(res, 200, "Stage scan completed successfully", data);
     };
 
-static syncAll = async (req: Request, res: Response) => {
-    const userId = await getUserId(req);
-
-    const rawBatch =
-      req.query.no_of_records ?? req.query.batch_size ?? req.body?.no_of_records;
-    const parsed =
-      rawBatch !== undefined && rawBatch !== null && String(rawBatch).trim() !== ""
-        ? parseInt(String(Array.isArray(rawBatch) ? rawBatch[0] : rawBatch), 10)
-        : undefined;
-    const batchSize =
-      parsed !== undefined && Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-
-    console.log(
-      `[Commusoft:Controller] Sync triggered batchSize=${batchSize ?? "default"} query=${JSON.stringify(req.query)}`
-    );
-
-    const force = req.query.force === "true" || req.body?.force === true;
-
-    const result = await enqueueSyncJob({ userId, integration: "commusoft", batchSize, force });
-
-    if (!result.queued) {
-      const mins = Math.ceil(result.remainingMs / 60_000);
-      return ApiResponse(res, 429, `Sync ran recently. Next allowed in ${mins} min.`, {
-        reason:       "cooldown",
-        lastSyncedAt: result.lastSyncedAt,
-        remainingMs:  result.remainingMs,
-        tip:          "Add ?force=true to bypass cooldown",
-      });
-    }
-
-    return ApiResponse(res, 202, "Commusoft sync queued", { jobId: result.jobId });
-};
-
-static getSyncStatus = async (req: Request, res: Response) => {
-    const userId = await getUserId(req);
-
-    const { data, error } = await supabase
-      .from("sync_checkpoints")
-      .select("integration, entity, status, last_page, records_synced, started_at, updated_at, finished_at, error_message")
-      .eq("user_id", userId)
-      .order("updated_at", { ascending: false });
-
-    if (error) throw error;
-    return ApiResponse(res, 200, "Sync status fetched", data ?? []);
-};
-
 static getJobsByEmailOrPhone = async (req: Request, res: Response) => {
     const userId = await getUserId(req);
    console.log("getJobFullDetailsByEmailOrPhone", req.query);
@@ -403,29 +280,29 @@ static getAllJobs = async (req: Request, res: Response) => {
 
     const periodToDateRange = (period: string): { dateFrom: string; dateTo: string } | undefined => {
       const today = new Date();
-      const fmt = (d: Date) => d.toISOString().slice(0, 10);
+      const formatIsoDate = (date: Date) => date.toISOString().slice(0, 10);
       const from = new Date(today);
       if      (period === "week")  from.setDate(from.getDate() - 6);
       else if (period === "month") from.setDate(from.getDate() - 29);
       else if (period === "year")  from.setFullYear(from.getFullYear() - 1);
       else return undefined;
-      return { dateFrom: fmt(from), dateTo: fmt(today) };
+      return { dateFrom: formatIsoDate(from), dateTo: formatIsoDate(today) };
     };
 
-    const q = req.query;
+    const queryParams = req.query;
     const filters: Parameters<typeof CommusoftSummaryService.getJobs>[1] = {};
 
     // Same param names as ServiceM8 so UI sends identical query strings
-    if (firstQueryValue(q.queue_uuid))    filters.queueUuid    = firstQueryValue(q.queue_uuid)!;
-    if (firstQueryValue(q.category_uuid)) filters.categoryUuid = firstQueryValue(q.category_uuid)!;
-    if (firstQueryValue(q.status))        filters.status       = firstQueryValue(q.status)!;
-    if (firstQueryValue(q.staff_uuid))    filters.staffUuid    = firstQueryValue(q.staff_uuid)!;
-    if (firstQueryValue(q.company_uuid))  filters.companyUuid  = firstQueryValue(q.company_uuid)!;
+    if (firstQueryValue(queryParams.queue_uuid))    filters.queueUuid    = firstQueryValue(queryParams.queue_uuid)!;
+    if (firstQueryValue(queryParams.category_uuid)) filters.categoryUuid = firstQueryValue(queryParams.category_uuid)!;
+    if (firstQueryValue(queryParams.status))        filters.status       = firstQueryValue(queryParams.status)!;
+    if (firstQueryValue(queryParams.staff_uuid))    filters.staffUuid    = firstQueryValue(queryParams.staff_uuid)!;
+    if (firstQueryValue(queryParams.company_uuid))  filters.companyUuid  = firstQueryValue(queryParams.company_uuid)!;
 
     // date_from / date_to take priority; period is the fallback shorthand
-    const dateFrom = firstQueryValue(q.date_from);
-    const dateTo   = firstQueryValue(q.date_to);
-    const period   = firstQueryValue(q.period);
+    const dateFrom = firstQueryValue(queryParams.date_from);
+    const dateTo   = firstQueryValue(queryParams.date_to);
+    const period   = firstQueryValue(queryParams.period);
 
     if (dateFrom || dateTo) {
       if (dateFrom) filters.dateFrom = dateFrom;

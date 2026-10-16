@@ -35,7 +35,7 @@ export function Modal({
           maxWidth,
           className
         )}
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
         {/* ── Header ── */}
         {title && (

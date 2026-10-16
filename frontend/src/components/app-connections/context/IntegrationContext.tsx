@@ -7,7 +7,7 @@
  * to the dashboard sidebar and other consumers.
  *
  * Architecture changes:
- *   - Removed all direct Supabase calls
+ *   - All data comes from the backend API
  *   - Removed clientkey concept entirely
  *   - Permissions come from Redux accessSlice (seeded from JWT on login)
  *   - Integration status fetched via JWT-authenticated requests (no clientkey header)
@@ -53,8 +53,8 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
   const dispatch           = useAppDispatch();
   const appStatus          = useAppSelector(selectAppStatus);
   const connectedServices  = useAppSelector(selectConnectedServices);
-  const accessUser         = useAppSelector((s: RootState) => s.access.user);
-  const accessStatus       = useAppSelector((s: RootState) => s.access.status);
+  const accessUser         = useAppSelector((state: RootState) => state.access.user);
+  const accessStatus       = useAppSelector((state: RootState) => state.access.status);
 
   const hasFetchedOnMountRef = useRef(false);
 

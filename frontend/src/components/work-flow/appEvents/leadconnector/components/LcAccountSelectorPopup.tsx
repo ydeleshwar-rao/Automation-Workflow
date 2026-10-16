@@ -69,8 +69,8 @@ export function LcAccountSelectorPopup({
                     <button
                       type="button"
                       title="Disconnect account"
-                      onClick={(e) => {
-                        e.stopPropagation();
+                      onClick={(event) => {
+                        event.stopPropagation();
                         onRemoveAccount(account.id);
                       }}
                       className="p-1.5 rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all shrink-0"

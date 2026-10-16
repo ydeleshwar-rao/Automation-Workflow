@@ -1,8 +1,9 @@
 import axios from "axios";
-import { supabase } from "../../../../config/db.config.js";
+import type { SimproIntegration } from "@prisma/client";
 import { ApiError } from "../../../../utils/ApiError.js";
 import { stripHtml } from "../../../../utils/sanitize.js";
 import { refreshSimproAccessToken } from "../utils/refreshAccessToken.js";
+import { simproIntegrationRepository } from "../repositories/simpro-integration.repository.js";
 
 /**
  * Simpro API integration.
@@ -19,7 +20,7 @@ import { refreshSimproAccessToken } from "../utils/refreshAccessToken.js";
  *
  * companyId on each request: most Simpro builds have a single company with id=0,
  * but multi-company builds expose more. We default to the value stored on the
- * integration row (set during /sync after listing /companies/).
+ * integration row (set at connect time after listing /companies/).
  */
 
 // Concurrency-safe token refresh (one in-flight refresh per user).
@@ -52,83 +53,34 @@ const SIMPRO_EMPLOYEE_LIST_COLUMNS = "ID,Name,Archived";
 const SIMPRO_EMPLOYEES_DETAIL_DELAY_MS = 200;
 
 const SIMPRO_API_TIMEOUT_MS = 30_000;
+const FIRST_PAGE = 1;
+/** Safety stop for list endpoints that never return a short page. */
+const SIMPRO_MAX_PAGES = 200;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export type SimproResourceKey =
-  | "customers"
-  | "sites"
-  | "employees"
-  | "jobs"
-  | "schedules";
+export type SimproIntegrationRow = SimproIntegration;
 
-export type SimproResourceSyncResult = {
-  status: "synced" | "failed";
-  totalRecords?: number;
-  totalPages?: number;
-  syncedCount?: number;
-  failedCount?: number;
-  failedIds?: string[];
-  durationMs?: number;
-  error?: string;
+type SimproPageOptions = {
+  pageSize: number;
+  pageDelayMs: number;
+  params?: Record<string, string>;
 };
-
-export type SimproSyncAllResult = {
-  overall: "success" | "partial" | "failed";
-  failedEntities: SimproResourceKey[];
-  durationMs: number;
-  startedAt: string;
-  completedAt: string;
-  results: {
-    customers?: SimproResourceSyncResult;
-    sites?: SimproResourceSyncResult;
-    employees?: SimproResourceSyncResult;
-    jobs?: SimproResourceSyncResult;
-    schedules?: SimproResourceSyncResult;
-  };
-};
-
-/** Return shape from syncCustomers / syncJobs / syncSites / syncEmployees / syncSchedules */
-type SimproResourceSyncPayload = {
-  totalRecords: number;
-  totalPages?: number;
-  syncedCount: number;
-  failedCount: number;
-  durationMs: number;
-  failedIds?: string[];
-  error?: string;
-};
-
-export interface SimproIntegrationRow {
-  user_id:        string;
-  build_name:     string;       // e.g. "acme" → host = acme.simprosuite.com
-  base_url:       string;       // full host, e.g. "https://acme.simprosuite.com"
-  company_id:     number | null;
-  access_token:   string;
-  refresh_token:  string | null;
-  expires_at:     string | null; // null = API key (never expires)
-  scopes:         string | null;
-  needs_reauth:   boolean;      // TRUE = refresh token revoked, user must reconnect
-}
 
 const getIntegrationRaw = async (
   userId: string
 ): Promise<SimproIntegrationRow> => {
-  const { data, error } = await supabase
-    .from("simpro_integrations")
-    .select("user_id, build_name, base_url, company_id, access_token, refresh_token, expires_at, scopes, needs_reauth")
-    .eq("user_id", userId)
-    .single();
+  const integration = await simproIntegrationRepository.findByUserId(userId);
 
-  if (error || !data) {
+  if (!integration) {
     throw new ApiError(
       404,
       "Simpro integration not found. Please connect your account first."
     );
   }
-  return data as SimproIntegrationRow;
+  return integration;
 };
 
 /**
@@ -172,7 +124,7 @@ export const getIntegration = async (
         ...row,
         access_token:  refreshed.access_token,
         refresh_token: refreshed.refresh_token,
-        expires_at:    new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
+        expires_at:    new Date(Date.now() + refreshed.expires_in * 1000),
         needs_reauth:  false,
       };
     })().finally(() => refreshLocks.delete(userId));
@@ -276,7 +228,7 @@ export class SimproService {
     expiresAt.setSeconds(expiresAt.getSeconds() + (tokenData.expires_in || 3600));
 
     // Try to resolve the first companyId so subsequent calls don't have to.
-    let companyId: number | null = null;
+    let companyId = 0;
     try {
       const companies = await axios.get(`${baseUrl}/api/v1.0/companies/`, {
         headers: { Authorization: `Bearer ${tokenData.access_token}` },
@@ -291,32 +243,64 @@ export class SimproService {
       companyId = 0;
     }
 
-    const { error: upsertErr } = await supabase
-      .from("simpro_integrations")
-      .upsert(
-        {
-          user_id:       userId,
-          build_name:    buildName,
-          base_url:      baseUrl,
-          company_id:    companyId,
-          access_token:  tokenData.access_token,
-          refresh_token: tokenData.refresh_token,
-          expires_at:    expiresAt.toISOString(),
-          scopes:        tokenData.scope,
-        },
-        { onConflict: "user_id" }
-      );
-
-    if (upsertErr) {
-      throw new ApiError(500, `Failed to persist Simpro tokens: ${upsertErr.message}`);
-    }
+    await simproIntegrationRepository.saveConnection({
+      user_id:       userId,
+      build_name:    buildName,
+      base_url:      baseUrl,
+      company_id:    companyId,
+      access_token:  tokenData.access_token,
+      refresh_token: tokenData.refresh_token ?? null,
+      expires_at:    expiresAt,
+      scopes:        tokenData.scope ?? null,
+    });
 
     return { build_name: buildName, company_id: companyId, expires_at: expiresAt.toISOString() };
   }
 
-  // ─── Customers (global list + DB sync) ───────────────────────────────────
+  // ─── Live reads (simPRO data is never stored; every read calls the API) ──
 
-  private static mapCustomerToDbRow(userId: string, customer: Record<string, unknown>) {
+  /** Reads every page of a simPRO list endpoint until a short page or Result-Total is reached. */
+  private static async fetchAllPages(
+    userId: string,
+    resourcePath: string,
+    options: SimproPageOptions
+  ): Promise<Record<string, unknown>[]> {
+    const allRecords: Record<string, unknown>[] = [];
+
+    for (let page = FIRST_PAGE; page <= SIMPRO_MAX_PAGES; page++) {
+      const { batch, totalRecords } = await SimproService.fetchPage(userId, resourcePath, page, options);
+      allRecords.push(...batch);
+
+      const hasReachedTotal = totalRecords > 0 && allRecords.length >= totalRecords;
+      if (batch.length < options.pageSize || hasReachedTotal) break;
+      await sleep(options.pageDelayMs);
+    }
+
+    return allRecords;
+  }
+
+  private static async fetchPage(
+    userId: string,
+    resourcePath: string,
+    page: number,
+    options: SimproPageOptions
+  ): Promise<{ batch: Record<string, unknown>[]; totalRecords: number }> {
+    return withSimproRetry(userId, async (context) => {
+      const url = `${context.baseUrl}/api/v1.0/companies/${context.companyId}/${resourcePath}/`;
+      const response = await axios.get(url, {
+        headers: context.headers,
+        timeout: SIMPRO_API_TIMEOUT_MS,
+        params: { ...options.params, pageSize: options.pageSize, page },
+      });
+
+      const batch = Array.isArray(response.data) ? response.data : [];
+      // axios lower-cases response header names.
+      const totalRecords = parseInt(String(response.headers["result-total"] ?? "0"), 10) || 0;
+      return { batch, totalRecords };
+    });
+  }
+
+  private static toCustomerRecord(userId: string, customer: Record<string, unknown>) {
     const address = customer.Address as Record<string, unknown> | undefined;
     const billing = customer.BillingAddress as Record<string, unknown> | undefined;
 
@@ -344,176 +328,20 @@ export class SimproService {
       archived: customer.Archived ?? false,
       simpro_date_modified: (customer.DateModified as string) || null,
       payload: customer,
-      synced_at: new Date().toISOString(),
     };
   }
 
-  private static async fetchCustomersPage(
-    userId: string,
-    page: number
-  ): Promise<{ batch: Record<string, unknown>[]; totalRecords: number }> {
-    return withSimproRetry(userId, async (ctx) => {
-      const url = `${ctx.baseUrl}/api/v1.0/companies/${ctx.companyId}/customers/`;
-      const res = await axios.get(url, {
-        headers: ctx.headers,
-        params: {
-          pageSize: SIMPRO_CUSTOMERS_PAGE_SIZE,
-          page,
-          columns: SIMPRO_CUSTOMER_COLUMNS,
-        },
-      });
-
-      const batch = Array.isArray(res.data) ? res.data : [];
-      const totalHeader =
-        res.headers["result-total"] ??
-        res.headers["Result-Total"] ??
-        "0";
-      const totalRecords = parseInt(String(totalHeader), 10) || 0;
-
-      return { batch, totalRecords };
-    });
-  }
-
-  /**
-   * simPRO tables use UPDATE triggers that reference NEW.updated_at, but those
-   * columns are not on the table yet — upsert on conflict fails every re-sync.
-   * Delete-by-api-id then insert avoids the broken UPDATE path.
-   * Long-term: run supabase/migrations/20260522120000_simpro_tables_updated_at.sql
-   */
-  private static async replaceSimproRows(
-    table: string,
-    userId: string,
-    apiIdColumn: string,
-    rows: Record<string, unknown>[]
-  ): Promise<{ synced: number; failed: number }> {
-    if (rows.length === 0) {
-      return { synced: 0, failed: 0 };
-    }
-
-    const apiIds = rows
-      .map((r) => r[apiIdColumn])
-      .filter((id): id is string => id != null && id !== "");
-
-    if (apiIds.length > 0) {
-      const { error: delError } = await supabase
-        .from(table)
-        .delete()
-        .eq("user_id", userId)
-        .in(apiIdColumn, apiIds);
-
-      if (delError) {
-        console.error(`[simPRO ${table}] delete failed:`, delError.message);
-        return { synced: 0, failed: rows.length };
-      }
-    }
-
-    const { error } = await supabase.from(table).insert(rows);
-
-    if (error) {
-      console.error(`[simPRO ${table}] insert failed:`, error.message);
-      return { synced: 0, failed: rows.length };
-    }
-
-    return { synced: rows.length, failed: 0 };
-  }
-
-  private static async upsertCustomerRows(
-    userId: string,
-    customers: Record<string, unknown>[]
-  ): Promise<{ synced: number; failed: number }> {
-    if (customers.length === 0) {
-      return { synced: 0, failed: 0 };
-    }
-
-    const rows = customers.map((c) => SimproService.mapCustomerToDbRow(userId, c));
-    return SimproService.replaceSimproRows(
-      "simpro_customers",
-      userId,
-      "customer_api_id",
-      rows
-    );
-  }
-
-  /**
-   * Main sync: paginate through ALL customers and upsert to simpro_customers.
-   */
-  static async syncCustomers(userId: string) {
-    const startTime = Date.now();
-    let syncedCount = 0;
-    let failedCount = 0;
-
-    const { batch: firstBatch, totalRecords } = await SimproService.fetchCustomersPage(userId, 1);
-    const totalPages =
-      totalRecords > 0
-        ? Math.ceil(totalRecords / SIMPRO_CUSTOMERS_PAGE_SIZE)
-        : firstBatch.length < SIMPRO_CUSTOMERS_PAGE_SIZE
-          ? 1
-          : 50;
-
-    console.log(
-      `[simPRO Customers Sync] Total: ${totalRecords || "unknown"} customers across ~${totalPages} pages`
-    );
-
-    const processPage = async (page: number, batch: Record<string, unknown>[]) => {
-      const { synced, failed } = await SimproService.upsertCustomerRows(userId, batch);
-      syncedCount += synced;
-      failedCount += failed;
-      console.log(
-        `[simPRO Customers Sync] Page ${page}/${totalPages} done — ${synced} synced, ${failed} failed`
-      );
-    };
-
-    await processPage(1, firstBatch);
-
-    for (let page = 2; page <= totalPages; page++) {
-      await sleep(SIMPRO_CUSTOMERS_PAGE_DELAY_MS);
-
-      try {
-        const { batch } = await SimproService.fetchCustomersPage(userId, page);
-        if (batch.length === 0) break;
-
-        await processPage(page, batch);
-
-        if (totalRecords === 0 && batch.length < SIMPRO_CUSTOMERS_PAGE_SIZE) {
-          break;
-        }
-      } catch (err: any) {
-        console.error(`[simPRO Customers Sync] Page ${page} error:`, err?.message ?? err);
-        failedCount += SIMPRO_CUSTOMERS_PAGE_SIZE;
-      }
-    }
-
-    const durationMs = Date.now() - startTime;
-    return {
-      totalRecords: totalRecords || syncedCount + failedCount,
-      totalPages,
-      syncedCount,
-      failedCount,
-      durationMs,
-    };
-  }
-
-  /**
-   * Live API — first page only — upsert to simpro_customers.
-   */
-  /** GET /simpro/customers — read from simpro_customers (sync via POST /sync). */
+  /** GET /simpro/customers — every customer, live from simPRO. */
   static async getCustomers(userId: string) {
-    const { data, error } = await supabase
-      .from("simpro_customers")
-      .select("*")
-      .eq("user_id", userId)
-      .order("synced_at", { ascending: false });
-
-    if (error) {
-      throw new ApiError(500, `Database error: ${error.message}`);
-    }
-
-    return data ?? [];
+    const customers = await SimproService.fetchAllPages(userId, "customers", {
+      pageSize: SIMPRO_CUSTOMERS_PAGE_SIZE,
+      pageDelayMs: SIMPRO_CUSTOMERS_PAGE_DELAY_MS,
+      params: { columns: SIMPRO_CUSTOMER_COLUMNS },
+    });
+    return customers.map((customer) => SimproService.toCustomerRecord(userId, customer));
   }
 
-  // ─── Jobs (global list + DB sync) ────────────────────────────────────────
-
-  private static transformJobToRow(job: Record<string, unknown>, userId: string) {
+  private static toJobRecord(job: Record<string, unknown>, userId: string) {
     const customer = job.Customer as Record<string, unknown> | undefined;
     const site = job.Site as Record<string, unknown> | undefined;
     const siteContact = job.SiteContact as Record<string, unknown> | undefined;
@@ -552,138 +380,20 @@ export class SimproService {
       technicians: job.Technicians ?? [],
       tags: job.Tags ?? [],
       payload: job,
-      synced_at: new Date().toISOString(),
     };
   }
 
-  private static async fetchJobsPage(
-    userId: string,
-    page: number
-  ): Promise<{ batch: Record<string, unknown>[]; totalRecords: number }> {
-    return withSimproRetry(userId, async (ctx) => {
-      const url = `${ctx.baseUrl}/api/v1.0/companies/${ctx.companyId}/jobs/`;
-      const res = await axios.get(url, {
-        headers: ctx.headers,
-        timeout: SIMPRO_API_TIMEOUT_MS,
-        params: {
-          pageSize: SIMPRO_JOBS_PAGE_SIZE,
-          page,
-          columns: SIMPRO_JOB_COLUMNS,
-        },
-      });
-
-      const batch = Array.isArray(res.data) ? res.data : [];
-      const totalHeader =
-        res.headers["result-total"] ??
-        res.headers["Result-Total"] ??
-        "0";
-      const totalRecords = parseInt(String(totalHeader), 10) || 0;
-
-      return { batch, totalRecords };
-    });
-  }
-
-  private static async upsertJobRows(
-    userId: string,
-    jobs: Record<string, unknown>[]
-  ): Promise<{ synced: number; failed: number }> {
-    if (jobs.length === 0) {
-      return { synced: 0, failed: 0 };
-    }
-
-    const rows = jobs.map((j) => SimproService.transformJobToRow(j, userId));
-    return SimproService.replaceSimproRows(
-      "simpro_jobs",
-      userId,
-      "job_api_id",
-      rows
-    );
-  }
-
-  /**
-   * Main sync: paginate through ALL jobs and upsert to simpro_jobs.
-   */
-  static async syncJobs(userId: string) {
-    const startTime = Date.now();
-    let syncedCount = 0;
-    let failedCount = 0;
-
-    console.log(`[simPRO Jobs Sync] Starting for user ${userId}`);
-
-    const { batch: firstBatch, totalRecords } = await SimproService.fetchJobsPage(userId, 1);
-    const totalPages =
-      totalRecords > 0
-        ? Math.ceil(totalRecords / SIMPRO_JOBS_PAGE_SIZE)
-        : firstBatch.length < SIMPRO_JOBS_PAGE_SIZE
-          ? 1
-          : 50;
-
-    console.log(
-      `[simPRO Jobs Sync] Total: ${totalRecords || "unknown"} jobs across ~${totalPages} pages`
-    );
-
-    const processPage = async (page: number, batch: Record<string, unknown>[]) => {
-      const { synced, failed } = await SimproService.upsertJobRows(userId, batch);
-      syncedCount += synced;
-      failedCount += failed;
-      console.log(
-        `[simPRO Jobs Sync] Page ${page}/${totalPages} done — ${synced} synced, ${failed} failed`
-      );
-    };
-
-    await processPage(1, firstBatch);
-
-    for (let page = 2; page <= totalPages; page++) {
-      await sleep(SIMPRO_JOBS_PAGE_DELAY_MS);
-
-      try {
-        const { batch } = await SimproService.fetchJobsPage(userId, page);
-        if (batch.length === 0) break;
-
-        await processPage(page, batch);
-
-        if (totalRecords === 0 && batch.length < SIMPRO_JOBS_PAGE_SIZE) {
-          break;
-        }
-      } catch (err: any) {
-        console.error(`[simPRO Jobs Sync] Page ${page} error:`, err?.message ?? err);
-        failedCount += SIMPRO_JOBS_PAGE_SIZE;
-        break;
-      }
-    }
-
-    const durationMs = Date.now() - startTime;
-    console.log(
-      `[simPRO Jobs Sync] DONE — synced=${syncedCount} failed=${failedCount} in ${durationMs}ms`
-    );
-
-    return {
-      totalRecords: totalRecords || syncedCount + failedCount,
-      totalPages,
-      syncedCount,
-      failedCount,
-      durationMs,
-    };
-  }
-
-  /** GET /simpro/jobs — read from simpro_jobs (sync via POST /sync). */
+  /** GET /simpro/jobs — every job, live from simPRO. */
   static async getJobs(userId: string) {
-    const { data, error } = await supabase
-      .from("simpro_jobs")
-      .select("*")
-      .eq("user_id", userId)
-      .order("synced_at", { ascending: false });
-
-    if (error) {
-      throw new ApiError(500, `Database error: ${error.message}`);
-    }
-
-    return data ?? [];
+    const jobs = await SimproService.fetchAllPages(userId, "jobs", {
+      pageSize: SIMPRO_JOBS_PAGE_SIZE,
+      pageDelayMs: SIMPRO_JOBS_PAGE_DELAY_MS,
+      params: { columns: SIMPRO_JOB_COLUMNS },
+    });
+    return jobs.map((job) => SimproService.toJobRecord(job, userId));
   }
 
-  // ─── Sites (global list + DB sync) ───────────────────────────────────────
-
-  private static transformSiteToRow(site: Record<string, unknown>, userId: string) {
+  private static toSiteRecord(site: Record<string, unknown>, userId: string) {
     const address = site.Address as Record<string, unknown> | undefined;
     const customers = Array.isArray(site.Customers) ? site.Customers : [];
     const primaryCustomer = (customers[0] ?? {}) as Record<string, unknown>;
@@ -710,138 +420,20 @@ export class SimproService {
       archived: site.Archived ?? false,
       simpro_date_modified: (site.DateModified as string) || null,
       payload: site,
-      synced_at: new Date().toISOString(),
     };
   }
 
-  private static async fetchSitesPage(
-    userId: string,
-    page: number
-  ): Promise<{ batch: Record<string, unknown>[]; totalRecords: number }> {
-    return withSimproRetry(userId, async (ctx) => {
-      const url = `${ctx.baseUrl}/api/v1.0/companies/${ctx.companyId}/sites/`;
-      const res = await axios.get(url, {
-        headers: ctx.headers,
-        timeout: SIMPRO_API_TIMEOUT_MS,
-        params: {
-          pageSize: SIMPRO_SITES_PAGE_SIZE,
-          page,
-          columns: SIMPRO_SITE_COLUMNS,
-        },
-      });
-
-      const batch = Array.isArray(res.data) ? res.data : [];
-      const totalHeader =
-        res.headers["result-total"] ??
-        res.headers["Result-Total"] ??
-        "0";
-      const totalRecords = parseInt(String(totalHeader), 10) || 0;
-
-      return { batch, totalRecords };
-    });
-  }
-
-  private static async upsertSiteRows(
-    userId: string,
-    sites: Record<string, unknown>[]
-  ): Promise<{ synced: number; failed: number }> {
-    if (sites.length === 0) {
-      return { synced: 0, failed: 0 };
-    }
-
-    const rows = sites.map((s) => SimproService.transformSiteToRow(s, userId));
-    return SimproService.replaceSimproRows(
-      "simpro_sites",
-      userId,
-      "site_api_id",
-      rows
-    );
-  }
-
-  /**
-   * Main sync: paginate through ALL sites and upsert to simpro_sites.
-   */
-  static async syncSites(userId: string) {
-    const startTime = Date.now();
-    let syncedCount = 0;
-    let failedCount = 0;
-
-    console.log(`[simPRO Sites Sync] Starting for user ${userId}`);
-
-    const { batch: firstBatch, totalRecords } = await SimproService.fetchSitesPage(userId, 1);
-    const totalPages =
-      totalRecords > 0
-        ? Math.ceil(totalRecords / SIMPRO_SITES_PAGE_SIZE)
-        : firstBatch.length < SIMPRO_SITES_PAGE_SIZE
-          ? 1
-          : 50;
-
-    console.log(
-      `[simPRO Sites Sync] Total: ${totalRecords || "unknown"} sites across ~${totalPages} pages`
-    );
-
-    const processPage = async (page: number, batch: Record<string, unknown>[]) => {
-      const { synced, failed } = await SimproService.upsertSiteRows(userId, batch);
-      syncedCount += synced;
-      failedCount += failed;
-      console.log(
-        `[simPRO Sites Sync] Page ${page}/${totalPages} done — ${synced} synced, ${failed} failed`
-      );
-    };
-
-    await processPage(1, firstBatch);
-
-    for (let page = 2; page <= totalPages; page++) {
-      await sleep(SIMPRO_SITES_PAGE_DELAY_MS);
-
-      try {
-        const { batch } = await SimproService.fetchSitesPage(userId, page);
-        if (batch.length === 0) break;
-
-        await processPage(page, batch);
-
-        if (totalRecords === 0 && batch.length < SIMPRO_SITES_PAGE_SIZE) {
-          break;
-        }
-      } catch (err: any) {
-        console.error(`[simPRO Sites Sync] Page ${page} error:`, err?.message ?? err);
-        failedCount += SIMPRO_SITES_PAGE_SIZE;
-        break;
-      }
-    }
-
-    const durationMs = Date.now() - startTime;
-    console.log(
-      `[simPRO Sites Sync] DONE — synced=${syncedCount} failed=${failedCount} in ${durationMs}ms`
-    );
-
-    return {
-      totalRecords: totalRecords || syncedCount + failedCount,
-      totalPages,
-      syncedCount,
-      failedCount,
-      durationMs,
-    };
-  }
-
-  /** GET /simpro/sites — read from simpro_sites (sync via POST /sync). */
+  /** GET /simpro/sites — every site, live from simPRO. */
   static async getSites(userId: string) {
-    const { data, error } = await supabase
-      .from("simpro_sites")
-      .select("*")
-      .eq("user_id", userId)
-      .order("synced_at", { ascending: false });
-
-    if (error) {
-      throw new ApiError(500, `Database error: ${error.message}`);
-    }
-
-    return data ?? [];
+    const sites = await SimproService.fetchAllPages(userId, "sites", {
+      pageSize: SIMPRO_SITES_PAGE_SIZE,
+      pageDelayMs: SIMPRO_SITES_PAGE_DELAY_MS,
+      params: { columns: SIMPRO_SITE_COLUMNS },
+    });
+    return sites.map((site) => SimproService.toSiteRecord(site, userId));
   }
 
-  // ─── Employees (list + per-id detail) ────────────────────────────────────
-
-  private static transformEmployeeToRow(
+  private static toEmployeeRecord(
     employee: Record<string, unknown>,
     userId: string
   ) {
@@ -883,7 +475,6 @@ export class SimproService {
       simpro_date_created: (employee.DateCreated as string) || null,
       simpro_date_modified: (employee.DateModified as string) || null,
       payload: employee,
-      synced_at: new Date().toISOString(),
     };
   }
 
@@ -917,133 +508,38 @@ export class SimproService {
     });
   }
 
-  private static async upsertEmployeeRows(
+  /** Full employee records, one detail call per id (the list endpoint only returns ID/Name/Archived). */
+  private static async fetchEmployeeDetails(
     userId: string,
-    employees: Record<string, unknown>[]
-  ): Promise<{ synced: number; failed: number }> {
-    if (employees.length === 0) {
-      return { synced: 0, failed: 0 };
-    }
+    employeeIds: string[]
+  ): Promise<Record<string, unknown>[]> {
+    const employees: Record<string, unknown>[] = [];
 
-    const rows = employees.map((e) =>
-      SimproService.transformEmployeeToRow(e, userId)
-    );
-    return SimproService.replaceSimproRows(
-      "simpro_employees",
-      userId,
-      "employee_api_id",
-      rows
-    );
-  }
-
-  /**
-   * Main sync: GET list (minimal columns) then GET /employees/{id}/ per row.
-   */
-  static async syncEmployees(userId: string) {
-    const startTime = Date.now();
-    let syncedCount = 0;
-    let failedCount = 0;
-    const failedIds: string[] = [];
-
-    console.log(`[simPRO Employees Sync] Starting for user ${userId}`);
-
-    let employeesList: Record<string, unknown>[];
-    try {
-      employeesList = await SimproService.fetchEmployeesList(userId);
-    } catch (err: any) {
-      console.error(
-        `[simPRO Employees Sync] List fetch failed:`,
-        err?.message ?? err
-      );
-      return {
-        totalRecords: 0,
-        syncedCount: 0,
-        failedCount: 0,
-        failedIds: [] as string[],
-        durationMs: Date.now() - startTime,
-        error: err?.message ?? String(err),
-      };
-    }
-
-    const totalRecords = employeesList.length;
-    console.log(
-      `[simPRO Employees Sync] Found ${totalRecords} employees, fetching details...`
-    );
-
-    for (const employeeBasic of employeesList) {
-      const employeeId = String(employeeBasic.ID ?? "");
-      if (!employeeId) {
-        failedCount++;
-        continue;
-      }
-
+    for (const employeeId of employeeIds) {
       try {
-        const employeeDetail = await SimproService.fetchEmployeeDetail(
-          userId,
-          employeeId
-        );
-
-        const { synced, failed } = await SimproService.upsertEmployeeRows(
-          userId,
-          [employeeDetail]
-        );
-
-        if (failed > 0) {
-          failedCount++;
-          failedIds.push(employeeId);
-          console.error(
-            `[simPRO Employees Sync] Employee ${employeeId} upsert failed`
-          );
-        } else {
-          syncedCount += synced;
-          console.log(
-            `[simPRO Employees Sync] ${employeeDetail.Name ?? employeeId} (ID ${employeeId}) ✓`
-          );
-        }
-
-        await sleep(SIMPRO_EMPLOYEES_DETAIL_DELAY_MS);
-      } catch (err: any) {
-        console.error(
-          `[simPRO Employees Sync] Employee ${employeeId} fetch failed:`,
-          err?.message ?? err
-        );
-        failedCount++;
-        failedIds.push(employeeId);
+        employees.push(await SimproService.fetchEmployeeDetail(userId, employeeId));
+      } catch (error: any) {
+        // One unreadable employee must not hide all the others.
+        console.error(`[simPRO Employees] Employee ${employeeId} fetch failed:`, error?.message ?? error);
       }
+      await sleep(SIMPRO_EMPLOYEES_DETAIL_DELAY_MS);
     }
 
-    const durationMs = Date.now() - startTime;
-    console.log(
-      `[simPRO Employees Sync] DONE — synced=${syncedCount} failed=${failedCount} in ${durationMs}ms`
-    );
-
-    return {
-      totalRecords,
-      syncedCount,
-      failedCount,
-      failedIds,
-      durationMs,
-    };
+    return employees;
   }
 
-  /** GET /simpro/employees — read from simpro_employees (sync via POST /sync). */
+  /** GET /simpro/employees — every employee with full details, live from simPRO. */
   static async getEmployees(userId: string) {
-    const { data, error } = await supabase
-      .from("simpro_employees")
-      .select("*")
-      .eq("user_id", userId)
-      .order("synced_at", { ascending: false });
+    const employeesList = await SimproService.fetchEmployeesList(userId);
+    const employeeIds = employeesList
+      .map((employee) => String(employee.ID ?? ""))
+      .filter(Boolean);
 
-    if (error) {
-      throw new ApiError(500, `Database error: ${error.message}`);
-    }
-
-    return data ?? [];
+    const employees = await SimproService.fetchEmployeeDetails(userId, employeeIds);
+    return employees.map((employee) => SimproService.toEmployeeRecord(employee, userId));
   }
 
-  // ─── Schedules (Type=job only) ───────────────────────────────────────────
-
-  private static transformScheduleToRow(schedule: Record<string, unknown>, userId: string) {
+  private static toScheduleRecord(schedule: Record<string, unknown>, userId: string) {
     const staff = (schedule.Staff ?? {}) as Record<string, unknown>;
     const project = (schedule.Project ?? {}) as Record<string, unknown>;
     const blocks = Array.isArray(schedule.Blocks) ? schedule.Blocks : [];
@@ -1075,145 +571,17 @@ export class SimproService {
       end_time: (firstBlock.ISO8601EndTime as string) || null,
 
       payload: schedule,
-      synced_at: new Date().toISOString(),
     };
   }
 
-  private static async fetchSchedulesPage(
-    userId: string,
-    page: number
-  ): Promise<{ batch: Record<string, unknown>[]; totalRecords: number }> {
-    return withSimproRetry(userId, async (ctx) => {
-      const url = `${ctx.baseUrl}/api/v1.0/companies/${ctx.companyId}/schedules/`;
-      const res = await axios.get(url, {
-        headers: ctx.headers,
-        timeout: SIMPRO_API_TIMEOUT_MS,
-        params: {
-          Type: SIMPRO_SCHEDULES_TYPE_FILTER,
-          pageSize: SIMPRO_SCHEDULES_PAGE_SIZE,
-          page,
-        },
-      });
-
-      const batch = Array.isArray(res.data) ? res.data : [];
-      const totalHeader =
-        res.headers["result-total"] ??
-        res.headers["Result-Total"] ??
-        "0";
-      const totalRecords = parseInt(String(totalHeader), 10) || 0;
-
-      return { batch, totalRecords };
-    });
-  }
-
-  private static async upsertScheduleRows(
-    userId: string,
-    schedules: Record<string, unknown>[]
-  ): Promise<{ synced: number; failed: number }> {
-    if (schedules.length === 0) {
-      return { synced: 0, failed: 0 };
-    }
-
-    const rows = schedules.map((s) =>
-      SimproService.transformScheduleToRow(s, userId)
-    );
-    return SimproService.replaceSimproRows(
-      "simpro_schedules",
-      userId,
-      "schedule_api_id",
-      rows
-    );
-  }
-
-  /**
-   * Main sync — paginate job schedules only (Type=job).
-   */
-  static async syncSchedules(userId: string) {
-    const startTime = Date.now();
-    let syncedCount = 0;
-    let failedCount = 0;
-
-    console.log(`[simPRO Schedules Sync] Starting for user ${userId} (Type=job)`);
-
-    const { batch: firstBatch, totalRecords } =
-      await SimproService.fetchSchedulesPage(userId, 1);
-    const totalPages =
-      totalRecords > 0
-        ? Math.ceil(totalRecords / SIMPRO_SCHEDULES_PAGE_SIZE)
-        : firstBatch.length < SIMPRO_SCHEDULES_PAGE_SIZE
-          ? 1
-          : 50;
-
-    console.log(
-      `[simPRO Schedules Sync] Total: ${totalRecords || "unknown"} job schedules across ~${totalPages} pages`
-    );
-
-    const processPage = async (
-      page: number,
-      batch: Record<string, unknown>[]
-    ) => {
-      const { synced, failed } = await SimproService.upsertScheduleRows(
-        userId,
-        batch
-      );
-      syncedCount += synced;
-      failedCount += failed;
-      console.log(
-        `[simPRO Schedules Sync] Page ${page}/${totalPages} ✓ (${synced} synced, ${failed} failed)`
-      );
-    };
-
-    await processPage(1, firstBatch);
-
-    for (let page = 2; page <= totalPages; page++) {
-      await sleep(SIMPRO_SCHEDULES_PAGE_DELAY_MS);
-
-      try {
-        const { batch } = await SimproService.fetchSchedulesPage(userId, page);
-        if (batch.length === 0) break;
-
-        await processPage(page, batch);
-
-        if (totalRecords === 0 && batch.length < SIMPRO_SCHEDULES_PAGE_SIZE) {
-          break;
-        }
-      } catch (err: any) {
-        console.error(
-          `[simPRO Schedules Sync] Page ${page} fetch failed:`,
-          err?.message ?? err
-        );
-        failedCount += SIMPRO_SCHEDULES_PAGE_SIZE;
-        break;
-      }
-    }
-
-    const durationMs = Date.now() - startTime;
-    console.log(
-      `[simPRO Schedules Sync] DONE — synced=${syncedCount} failed=${failedCount} in ${durationMs}ms`
-    );
-
-    return {
-      totalRecords: totalRecords || syncedCount + failedCount,
-      totalPages,
-      syncedCount,
-      failedCount,
-      durationMs,
-    };
-  }
-
-  /** GET /simpro/schedules — read from simpro_schedules (sync via POST /sync). */
+  /** GET /simpro/schedules — every job schedule (Type=job), live from simPRO. */
   static async getSchedules(userId: string) {
-    const { data, error } = await supabase
-      .from("simpro_schedules")
-      .select("*")
-      .eq("user_id", userId)
-      .order("synced_at", { ascending: false });
-
-    if (error) {
-      throw new ApiError(500, `Database error: ${error.message}`);
-    }
-
-    return data ?? [];
+    const schedules = await SimproService.fetchAllPages(userId, "schedules", {
+      pageSize: SIMPRO_SCHEDULES_PAGE_SIZE,
+      pageDelayMs: SIMPRO_SCHEDULES_PAGE_DELAY_MS,
+      params: { Type: SIMPRO_SCHEDULES_TYPE_FILTER },
+    });
+    return schedules.map((schedule) => SimproService.toScheduleRecord(schedule, userId));
   }
 
   /**
@@ -1421,26 +789,16 @@ export class SimproService {
       console.warn(`[Simpro:apiKey] companies lookup failed (${status}) — defaulting to 0`);
     }
 
-    const { error } = await supabase
-      .from("simpro_integrations")
-      .upsert(
-        {
-          user_id:       userId,
-          build_name:    buildName,
-          base_url:      baseUrl,
-          company_id:    companyId,
-          access_token:  apiKey,
-          refresh_token: null,   // API keys have no refresh token
-          expires_at:    null,   // null = never expires, refresh logic skipped
-          scopes:        "api_key",
-          needs_reauth:  false,
-        },
-        { onConflict: "user_id" }
-      );
-
-    if (error) {
-      throw new ApiError(500, `Failed to store Simpro API key: ${error.message}`);
-    }
+    await simproIntegrationRepository.saveConnection({
+      user_id:       userId,
+      build_name:    buildName,
+      base_url:      baseUrl,
+      company_id:    companyId,
+      access_token:  apiKey,
+      refresh_token: null,   // API keys have no refresh token
+      expires_at:    null,   // null = never expires, refresh logic skipped
+      scopes:        "api_key",
+    });
 
     return { build_name: buildName, company_id: companyId, auth_type: "api_key" };
   }
@@ -1741,10 +1099,11 @@ export class SimproService {
   }
 
   /**
-   * Build Commusoft-shape getalljobs response from synced DB data.
+   * Build the Commusoft-shape getalljobs response, live from simPRO.
    *
    * Paginates by distinct customers that have jobs (not all customers), so the
    * first page always returns groups with at least one job when data exists.
+   * The cursor is the last customer id of the previous page.
    */
   static async getAllJobsCommusoftShape(
     userId: string,
@@ -1758,32 +1117,19 @@ export class SimproService {
       total_returned: number;
     };
   }> {
-    let customerIdsQuery = supabase
-      .from("simpro_jobs")
-      .select("customer_api_id")
-      .eq("user_id", userId)
-      .not("customer_api_id", "is", null);
+    const allJobs = await SimproService.getJobs(userId);
 
-    if (cursor) {
-      customerIdsQuery = customerIdsQuery.gt("customer_api_id", cursor);
-    }
-
-    const { data: jobsCustomerIds, error: idsErr } = await customerIdsQuery.order(
-      "customer_api_id",
-      { ascending: true }
-    );
-
-    if (idsErr) {
-      throw new ApiError(500, `Customer IDs fetch failed: ${idsErr.message}`);
-    }
-
-    const uniqueCustomerIds = [
+    const sortedCustomerIds = [
       ...new Set(
-        (jobsCustomerIds ?? [])
-          .map((r) => r.customer_api_id as string)
-          .filter(Boolean)
+        allJobs
+          .map((job) => job.customer_api_id)
+          .filter((customerId): customerId is string => Boolean(customerId))
       ),
-    ].slice(0, limit);
+    ].sort();
+    const remainingCustomerIds = cursor
+      ? sortedCustomerIds.filter((customerId) => customerId > cursor)
+      : sortedCustomerIds;
+    const uniqueCustomerIds = remainingCustomerIds.slice(0, limit);
 
     if (uniqueCustomerIds.length === 0) {
       return {
@@ -1792,94 +1138,67 @@ export class SimproService {
       };
     }
 
-    const { data: customers, error: custErr } = await supabase
-      .from("simpro_customers")
-      .select("*")
-      .eq("user_id", userId)
-      .in("customer_api_id", uniqueCustomerIds);
+    const pageCustomerIds = new Set(uniqueCustomerIds);
+    const jobRows = allJobs
+      .filter((job) => job.customer_api_id !== null && pageCustomerIds.has(job.customer_api_id))
+      .sort((first, second) => String(second.date_issued ?? "").localeCompare(String(first.date_issued ?? "")));
+    const jobIds = new Set(jobRows.map((job) => job.job_api_id));
+    const siteIds = new Set(
+      jobRows.map((job) => job.site_api_id).filter((siteId): siteId is string => Boolean(siteId))
+    );
 
-    if (custErr) {
-      throw new ApiError(500, `Customer fetch failed: ${custErr.message}`);
-    }
+    // Sequential on purpose: simPRO rate-limits parallel list scans.
+    const customers = (await SimproService.getCustomers(userId)).filter((customer) =>
+      pageCustomerIds.has(customer.customer_api_id)
+    );
+    const sites =
+      siteIds.size > 0
+        ? (await SimproService.getSites(userId)).filter((site) => siteIds.has(site.site_api_id))
+        : [];
+    const schedules = (await SimproService.getSchedules(userId))
+      .filter((schedule) => schedule.project_id !== null && jobIds.has(schedule.project_id))
+      .sort((first, second) => String(second.start_time ?? "").localeCompare(String(first.start_time ?? "")));
 
-    const { data: jobs, error: jobsErr } = await supabase
-      .from("simpro_jobs")
-      .select("*")
-      .eq("user_id", userId)
-      .in("customer_api_id", uniqueCustomerIds)
-      .order("date_issued", { ascending: false });
-
-    if (jobsErr) {
-      throw new ApiError(500, `Jobs fetch failed: ${jobsErr.message}`);
-    }
-
-    const jobRows = jobs ?? [];
-    const jobIds = jobRows.map((j) => j.job_api_id);
-    const siteIds = [
+    const scheduledStaffIds = [
       ...new Set(
-        jobRows.map((j) => j.site_api_id).filter((id): id is string => Boolean(id))
+        schedules
+          .map((schedule) => schedule.staff_api_id)
+          .filter((staffId): staffId is string => Boolean(staffId))
       ),
     ];
-
-    const sites =
-      siteIds.length > 0
-        ? (
-            await supabase
-              .from("simpro_sites")
-              .select("*")
-              .eq("user_id", userId)
-              .in("site_api_id", siteIds)
-          ).data ?? []
-        : [];
-
-    const schedules =
-      jobIds.length > 0
-        ? (
-            await supabase
-              .from("simpro_schedules")
-              .select("*")
-              .eq("user_id", userId)
-              .eq("type", "job")
-              .in("project_id", jobIds)
-              .order("start_time", { ascending: false })
-          ).data ?? []
-        : [];
-
-    const { data: employees } = await supabase
-      .from("simpro_employees")
-      .select("*")
-      .eq("user_id", userId);
-
-    const sitesById = new Map(sites.map((s) => [s.site_api_id, s]));
+    const employees = (await SimproService.fetchEmployeeDetails(userId, scheduledStaffIds)).map(
+      (employee) => SimproService.toEmployeeRecord(employee, userId)
+    );
+    const sitesById = new Map(sites.map((site) => [site.site_api_id, site]));
     const employeesById = new Map(
-      (employees ?? []).map((e) => [e.employee_api_id, e])
+      employees.map((employee) => [employee.employee_api_id, employee])
     );
     const employeesByName = new Map(
-      (employees ?? []).map((e) => [e.name, e])
+      employees.map((employee) => [employee.name, employee])
     );
 
     const schedulesByJobId = new Map<string, typeof schedules>();
-    for (const sch of schedules) {
-      const jobId = sch.project_id as string;
+    for (const schedule of schedules) {
+      const jobId = schedule.project_id as string;
       if (!jobId) continue;
       if (!schedulesByJobId.has(jobId)) {
         schedulesByJobId.set(jobId, []);
       }
-      schedulesByJobId.get(jobId)!.push(sch);
+      schedulesByJobId.get(jobId)!.push(schedule);
     }
 
     const jobsByCustomerId = new Map<string, typeof jobRows>();
-    for (const j of jobRows) {
-      const custId = j.customer_api_id as string;
-      if (!custId) continue;
-      if (!jobsByCustomerId.has(custId)) {
-        jobsByCustomerId.set(custId, []);
+    for (const job of jobRows) {
+      const customerId = job.customer_api_id as string;
+      if (!customerId) continue;
+      if (!jobsByCustomerId.has(customerId)) {
+        jobsByCustomerId.set(customerId, []);
       }
-      jobsByCustomerId.get(custId)!.push(j);
+      jobsByCustomerId.get(customerId)!.push(job);
     }
 
     const customersMap = new Map(
-      (customers ?? []).map((c) => [c.customer_api_id, c])
+      customers.map((customer) => [customer.customer_api_id, customer])
     );
 
     const orderedCustomers = uniqueCustomerIds
@@ -1900,12 +1219,12 @@ export class SimproService {
           billing_address_line: null,
         };
       })
-      .filter((c): c is NonNullable<typeof c> => c !== null);
+      .filter((customer): customer is NonNullable<typeof customer> => customer !== null);
 
     const result = orderedCustomers.map((customer) => {
         const customerJobs = jobsByCustomerId.get(customer.customer_api_id) ?? [];
         const firstJob = customerJobs[0];
-        const primarySite = firstJob
+        const primarySite = firstJob?.site_api_id
           ? sitesById.get(firstJob.site_api_id)
           : null;
 
@@ -1962,11 +1281,11 @@ export class SimproService {
               jobSite?.postal_code,
             ].filter(Boolean);
 
-            const formatDiaryEvent = (sch: (typeof schedules)[0]) => {
-              const start = SimproService.timeFromIso(sch.start_time);
-              const end = SimproService.timeFromIso(sch.end_time);
-              const date = SimproService.formatDateDDMMYY(sch.schedule_date);
-              const hrs = sch.total_hours ?? "";
+            const formatDiaryEvent = (schedule: (typeof schedules)[0]) => {
+              const start = SimproService.timeFromIso(schedule.start_time);
+              const end = SimproService.timeFromIso(schedule.end_time);
+              const date = SimproService.formatDateDDMMYY(schedule.schedule_date);
+              const hrs = schedule.total_hours ?? "";
               return `${date} ${hrs} hr(${start} to ${end})`;
             };
 
@@ -2018,8 +1337,8 @@ export class SimproService {
               },
               activities:
                 jobSchedules.length > 0
-                  ? jobSchedules.map((sch) => ({
-                      start_date: formatDiaryEvent(sch),
+                  ? jobSchedules.map((schedule) => ({
+                      start_date: formatDiaryEvent(schedule),
                       end_date: "",
                       scheduled: String(jobSchedules.length),
                       last_diary_event: latestSchedule
@@ -2047,17 +1366,7 @@ export class SimproService {
     const lastCustomerId =
       uniqueCustomerIds[uniqueCustomerIds.length - 1] ?? null;
 
-    const { data: moreCheck } = lastCustomerId
-      ? await supabase
-          .from("simpro_jobs")
-          .select("customer_api_id")
-          .eq("user_id", userId)
-          .not("customer_api_id", "is", null)
-          .gt("customer_api_id", lastCustomerId)
-          .limit(1)
-      : { data: [] };
-
-    const hasMore = (moreCheck ?? []).length > 0;
+    const hasMore = remainingCustomerIds.length > uniqueCustomerIds.length;
 
     return {
       data: result,
@@ -2071,109 +1380,12 @@ export class SimproService {
 
   // ─── Connect / disconnect helpers ──────────────────────────────────────
   static async getConnectionStatus(userId: string) {
-    const { data } = await supabase
-      .from("simpro_integrations")
-      .select("build_name, base_url, company_id, expires_at, scopes")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    return { connected: !!data, ...(data || {}) };
+    const connection = await simproIntegrationRepository.findConnectionStatus(userId);
+    return { connected: Boolean(connection), ...(connection ?? {}) };
   }
 
   static async disconnect(userId: string) {
-    const { error } = await supabase
-      .from("simpro_integrations")
-      .delete()
-      .eq("user_id", userId);
-    if (error) throw new ApiError(500, `Failed to disconnect Simpro: ${error.message}`);
+    await simproIntegrationRepository.deleteByUserId(userId);
     return { disconnected: true };
-  }
-
-  /**
-   * Master sync — orchestrates all resource syncs in dependency order.
-   *
-   * Pattern: Commusoft sequential + try/catch per step + ServiceM8 return shape.
-   *
-   * Order: customers → sites → employees → jobs → schedules
-   */
-  static async syncAll(userId: string): Promise<SimproSyncAllResult> {
-    const masterStartTime = Date.now();
-    const startedAt = new Date(masterStartTime).toISOString();
-
-    console.log(`[simPRO:syncAll] ▶ START user=${userId}`);
-
-    const steps: Array<{
-      key: SimproResourceKey;
-      run: () => Promise<SimproResourceSyncPayload>;
-    }> = [
-      { key: "customers", run: () => SimproService.syncCustomers(userId) },
-      { key: "sites", run: () => SimproService.syncSites(userId) },
-      { key: "employees", run: () => SimproService.syncEmployees(userId) },
-      { key: "jobs", run: () => SimproService.syncJobs(userId) },
-      { key: "schedules", run: () => SimproService.syncSchedules(userId) },
-    ];
-
-    const results: SimproSyncAllResult["results"] = {};
-    const failedEntities: SimproResourceKey[] = [];
-
-    for (const step of steps) {
-      const stepStart = Date.now();
-      console.log(`[simPRO:syncAll] ▶ ${step.key}...`);
-
-      try {
-        const data = await step.run();
-        results[step.key] = {
-          status: "synced",
-          ...data,
-        };
-
-        if (data.failedCount > 0) {
-          console.warn(
-            `[simPRO:syncAll] ⚠ ${step.key} had ${data.failedCount} failures`
-          );
-        }
-
-        console.log(
-          `[simPRO:syncAll] ✓ ${step.key} synced=${data.syncedCount}/${data.totalRecords} in ${data.durationMs}ms`
-        );
-      } catch (err: any) {
-        const stepDuration = Date.now() - stepStart;
-        const errorMessage = err?.message ?? String(err);
-
-        results[step.key] = {
-          status: "failed",
-          error: errorMessage,
-          durationMs: stepDuration,
-        };
-        failedEntities.push(step.key);
-
-        console.error(`[simPRO:syncAll] ✖ ${step.key} FAILED: ${errorMessage}`);
-      }
-    }
-
-    const totalDurationMs = Date.now() - masterStartTime;
-
-    const overall: SimproSyncAllResult["overall"] =
-      failedEntities.length === 0
-        ? "success"
-        : failedEntities.length === steps.length
-          ? "failed"
-          : "partial";
-
-    const completedAt = new Date().toISOString();
-
-    console.log(
-      `[simPRO:syncAll] ◀ DONE overall=${overall} durationMs=${totalDurationMs}` +
-        (failedEntities.length > 0 ? ` failed=[${failedEntities.join(",")}]` : "")
-    );
-
-    return {
-      overall,
-      failedEntities,
-      durationMs: totalDurationMs,
-      startedAt,
-      completedAt,
-      results,
-    };
   }
 }

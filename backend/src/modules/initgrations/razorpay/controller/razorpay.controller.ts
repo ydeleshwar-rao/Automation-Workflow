@@ -3,7 +3,6 @@ import { RazorpayService } from "../service/razorpay.service.js";
 import { ApiResponse } from "../../../../utils/ApiResponse.js";
 import { ApiError } from "../../../../utils/ApiError.js";
 import { getUserId } from "../../../../common/function.js";
-import { supabase } from "../../../../config/db.config.js";
 
 export class RazorpayController {
   // ─── Connect (API Key auth — no OAuth needed) ─────────────────────────
@@ -52,14 +51,9 @@ export class RazorpayController {
     const userId = Array.isArray(rawUserId) ? rawUserId[0] : rawUserId;
     if (!userId) return res.status(400).json({ success: false, message: "userId required" });
 
-    // Fetch webhook secret
-    const { data: creds } = await supabase
-      .from("razorpay_integrations")
-      .select("webhook_secret")
-      .eq("user_id", userId)
-      .maybeSingle();
+    const webhookSecret = await RazorpayService.getWebhookSecret(userId);
 
-    if (!creds?.webhook_secret) {
+    if (!webhookSecret) {
       return res.status(200).json({ success: false, message: "Integration not found" });
     }
 
@@ -71,7 +65,7 @@ export class RazorpayController {
 
     // req.body must be raw Buffer — ensure express raw body parser is used for this route
     const rawBody = (req as any).rawBody ?? JSON.stringify(req.body);
-    const isValid = RazorpayService.verifySignature(rawBody, signature, creds.webhook_secret);
+    const isValid = RazorpayService.verifySignature(rawBody, signature, webhookSecret);
 
     if (!isValid) {
       console.warn(`[Razorpay] ❌ Invalid signature for user=${userId}`);
@@ -90,33 +84,7 @@ export class RazorpayController {
     }
   };
 
-  // ─── Sync (pull from Razorpay API → DB) ──────────────────────────────
-
-  static syncAll = async (req: Request, res: Response) => {
-    const userId = await getUserId(req);
-    const data = await RazorpayService.syncAll(userId);
-    return ApiResponse(res, 200, "Sync complete", data);
-  };
-
-  static syncPayments = async (req: Request, res: Response) => {
-    const userId = await getUserId(req);
-    const data = await RazorpayService.syncPayments(userId);
-    return ApiResponse(res, 200, "Payments synced", data);
-  };
-
-  static syncInvoices = async (req: Request, res: Response) => {
-    const userId = await getUserId(req);
-    const data = await RazorpayService.syncInvoices(userId);
-    return ApiResponse(res, 200, "Invoices synced", data);
-  };
-
-  static syncPaymentLinks = async (req: Request, res: Response) => {
-    const userId = await getUserId(req);
-    const data = await RazorpayService.syncPaymentLinks(userId);
-    return ApiResponse(res, 200, "Payment links synced", data);
-  };
-
-  // ─── DB reads ─────────────────────────────────────────────────────────
+  // ─── Triggers: live reads from Razorpay ──────────────────────────────
 
   // Trigger: Payment Captured / Payment Failed
   static getPayments = async (req: Request, res: Response) => {
@@ -137,13 +105,5 @@ export class RazorpayController {
     const userId = await getUserId(req);
     const data = await RazorpayService.getPaymentLinks(userId);
     return ApiResponse(res, 200, "Payment links fetched", data);
-  };
-
-  // All raw events log
-  static getEvents = async (req: Request, res: Response) => {
-    const userId = await getUserId(req);
-    const eventType = req.query.event_type as string | undefined;
-    const data = await RazorpayService.getEvents(userId, eventType);
-    return ApiResponse(res, 200, "Events fetched", data);
   };
 }

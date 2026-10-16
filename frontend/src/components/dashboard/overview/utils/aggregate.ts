@@ -19,14 +19,14 @@ const STATUS_COLORS: Record<string, string> = {
   Unsuccessful: "#94a3b8",
 };
 
-const isCompleted = (j: NormalizedJob) => j.status.toLowerCase() === "completed";
+const isCompleted = (job: NormalizedJob) => job.status.toLowerCase() === "completed";
 
 const initials = (name: string): string =>
   name
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? "")
+    .map((namePart) => namePart[0]?.toUpperCase() ?? "")
     .join("") || "??";
 
 /**
@@ -39,73 +39,73 @@ export function aggregate(
 ): DashboardAggregates {
   // ── KPIs ────────────────────────────────────────────────────────────────
   const total_jobs = jobs.length;
-  const total_revenue = jobs.reduce((s, j) => s + j.revenue, 0);
+  const total_revenue = jobs.reduce((sum, job) => sum + job.revenue, 0);
   const completedCount = jobs.filter(isCompleted).length;
   const completion_pct =
     total_jobs > 0 ? Math.round((completedCount / total_jobs) * 100) : 0;
   // Count unique engineers when available; fall back to unique customers so
   // the KPI stays meaningful even when engineer data is absent.
-  const engineerKeys = jobs.map((j) => j.engineer_id ?? j.engineer_name).filter(Boolean);
+  const engineerKeys = jobs.map((job) => job.engineer_id ?? job.engineer_name).filter(Boolean);
   const active_teams = engineerKeys.length > 0
     ? new Set(engineerKeys).size
-    : new Set(jobs.map((j) => j.customer_name).filter(Boolean)).size;
+    : new Set(jobs.map((job) => job.customer_name).filter(Boolean)).size;
 
   // ── Activity buckets (X-axis label depends on period) ──────────────────
   const activity = buildActivity(jobs, period);
 
   // ── By category ────────────────────────────────────────────────────────
-  const catMap = new Map<string, { jobs: number; revenue: number; completed: number }>();
-  jobs.forEach((j) => {
-    const name = j.category && j.category.trim() ? j.category : "Uncategorized";
-    const cur = catMap.get(name) ?? { jobs: 0, revenue: 0, completed: 0 };
-    cur.jobs += 1;
-    cur.revenue += j.revenue;
-    if (isCompleted(j)) cur.completed += 1;
-    catMap.set(name, cur);
+  const categoryMap = new Map<string, { jobs: number; revenue: number; completed: number }>();
+  jobs.forEach((job) => {
+    const name = job.category && job.category.trim() ? job.category : "Uncategorized";
+    const categoryTotals = categoryMap.get(name) ?? { jobs: 0, revenue: 0, completed: 0 };
+    categoryTotals.jobs += 1;
+    categoryTotals.revenue += job.revenue;
+    if (isCompleted(job)) categoryTotals.completed += 1;
+    categoryMap.set(name, categoryTotals);
   });
-  const by_category: CategoryRow[] = [...catMap.entries()]
-    .sort((a, b) => b[1].revenue - a[1].revenue)
+  const by_category: CategoryRow[] = [...categoryMap.entries()]
+    .sort((firstEntry, secondEntry) => secondEntry[1].revenue - firstEntry[1].revenue)
     .slice(0, 6)
-    .map(([name, v], i) => ({
+    .map(([name, totals], index) => ({
       name,
-      jobs: v.jobs,
-      revenue: Math.round(v.revenue),
-      pct: v.jobs > 0 ? Math.round((v.completed / v.jobs) * 100) : 0,
-      color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+      jobs: totals.jobs,
+      revenue: Math.round(totals.revenue),
+      pct: totals.jobs > 0 ? Math.round((totals.completed / totals.jobs) * 100) : 0,
+      color: CATEGORY_COLORS[index % CATEGORY_COLORS.length],
     }));
 
   // ── Status counts (donut) ──────────────────────────────────────────────
   const statusMap = new Map<string, number>();
-  jobs.forEach((j) => statusMap.set(j.status, (statusMap.get(j.status) ?? 0) + 1));
-  const job_status: StatusRow[] = [...statusMap.entries()].map(([name, value], i) => ({
+  jobs.forEach((job) => statusMap.set(job.status, (statusMap.get(job.status) ?? 0) + 1));
+  const job_status: StatusRow[] = [...statusMap.entries()].map(([name, value], index) => ({
     name,
     value,
-    color: STATUS_COLORS[name] ?? CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+    color: STATUS_COLORS[name] ?? CATEGORY_COLORS[index % CATEGORY_COLORS.length],
   }));
 
   // ── Top performers ─────────────────────────────────────────────────────
-  const perfMap = new Map<string, { name: string; jobs: number; revenue: number }>();
-  jobs.forEach((j) => {
-    const key = j.engineer_id ?? j.engineer_name;
+  const performerMap = new Map<string, { name: string; jobs: number; revenue: number }>();
+  jobs.forEach((job) => {
+    const key = job.engineer_id ?? job.engineer_name;
     if (!key) return;
-    const cur = perfMap.get(key) ?? {
-      name: j.engineer_name ?? "Unknown",
+    const performerTotals = performerMap.get(key) ?? {
+      name: job.engineer_name ?? "Unknown",
       jobs: 0,
       revenue: 0,
     };
-    cur.jobs += 1;
-    cur.revenue += j.revenue;
-    perfMap.set(key, cur);
+    performerTotals.jobs += 1;
+    performerTotals.revenue += job.revenue;
+    performerMap.set(key, performerTotals);
   });
-  const top_performers: PerformerRow[] = [...perfMap.entries()]
-    .map(([staff_id, v]) => ({
+  const top_performers: PerformerRow[] = [...performerMap.entries()]
+    .map(([staff_id, totals]) => ({
       staff_id,
-      name: v.name,
-      jobs: v.jobs,
-      revenue: Math.round(v.revenue),
-      avatar: initials(v.name),
+      name: totals.name,
+      jobs: totals.jobs,
+      revenue: Math.round(totals.revenue),
+      avatar: initials(totals.name),
     }))
-    .sort((a, b) => b.revenue - a.revenue)
+    .sort((firstPerformer, secondPerformer) => secondPerformer.revenue - firstPerformer.revenue)
     .slice(0, 5);
 
   // ── Pending by weekday (last 7 days) ───────────────────────────────────
@@ -132,42 +132,42 @@ function buildActivity(jobs: NormalizedJob[], period: Period): ActivityBucket[] 
   const now = new Date();
   const buckets = makeBuckets(now, period);
 
-  jobs.forEach((j) => {
-    if (!j.date) return;
-    const d = new Date(j.date);
-    if (isNaN(d.getTime())) return;
-    const idx = bucketIndexFor(d, now, period);
-    if (idx < 0 || idx >= buckets.length) return;
-    const b = buckets[idx];
-    b.jobs += 1;
-    b.revenue += j.revenue;
-    if (isCompleted(j)) b.completed += 1;
-    else b.pending += 1;
+  jobs.forEach((job) => {
+    if (!job.date) return;
+    const jobDate = new Date(job.date);
+    if (isNaN(jobDate.getTime())) return;
+    const bucketIndex = bucketIndexFor(jobDate, now, period);
+    if (bucketIndex < 0 || bucketIndex >= buckets.length) return;
+    const bucket = buckets[bucketIndex];
+    bucket.jobs += 1;
+    bucket.revenue += job.revenue;
+    if (isCompleted(job)) bucket.completed += 1;
+    else bucket.pending += 1;
   });
   // round revenue at the end so intermediate sums stay precise
-  return buckets.map((b) => ({ ...b, revenue: Math.round(b.revenue) }));
+  return buckets.map((bucket) => ({ ...bucket, revenue: Math.round(bucket.revenue) }));
 }
 
 function makeBuckets(now: Date, period: Period): ActivityBucket[] {
   if (period === "week") {
     // Last 7 days, oldest first
-    const out: ActivityBucket[] = [];
+    const dayBuckets: ActivityBucket[] = [];
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      out.push({
-        label: d.toLocaleString("en-US", { weekday: "short" }),
+      const bucketDate = new Date(now);
+      bucketDate.setDate(bucketDate.getDate() - i);
+      dayBuckets.push({
+        label: bucketDate.toLocaleString("en-US", { weekday: "short" }),
         jobs: 0,
         completed: 0,
         revenue: 0,
         pending: 0,
       });
     }
-    return out;
+    return dayBuckets;
   }
   if (period === "month") {
-    return [1, 2, 3, 4].map((n) => ({
-      label: `Week ${n}`,
+    return [1, 2, 3, 4].map((weekNumber) => ({
+      label: `Week ${weekNumber}`,
       jobs: 0,
       completed: 0,
       revenue: 0,
@@ -175,73 +175,73 @@ function makeBuckets(now: Date, period: Period): ActivityBucket[] {
     }));
   }
   // year — last 12 months
-  const out: ActivityBucket[] = [];
+  const monthBuckets: ActivityBucket[] = [];
   for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    out.push({
-      label: d.toLocaleString("en-US", { month: "short" }),
+    const bucketDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    monthBuckets.push({
+      label: bucketDate.toLocaleString("en-US", { month: "short" }),
       jobs: 0,
       completed: 0,
       revenue: 0,
       pending: 0,
     });
   }
-  return out;
+  return monthBuckets;
 }
 
-function bucketIndexFor(d: Date, now: Date, period: Period): number {
+function bucketIndexFor(jobDate: Date, now: Date, period: Period): number {
   if (period === "week") {
     const diffDays = Math.floor(
-      (startOfDay(now).getTime() - startOfDay(d).getTime()) / 86400000,
+      (startOfDay(now).getTime() - startOfDay(jobDate).getTime()) / 86400000,
     );
     return 6 - diffDays;
   }
   if (period === "month") {
     // Bucket within current calendar month: Week 1..4
-    if (d.getFullYear() !== now.getFullYear() || d.getMonth() !== now.getMonth()) {
+    if (jobDate.getFullYear() !== now.getFullYear() || jobDate.getMonth() !== now.getMonth()) {
       return -1;
     }
-    return Math.min(3, Math.floor((d.getDate() - 1) / 7));
+    return Math.min(3, Math.floor((jobDate.getDate() - 1) / 7));
   }
   // year — months back from current month
   const monthsBack =
-    (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
+    (now.getFullYear() - jobDate.getFullYear()) * 12 + (now.getMonth() - jobDate.getMonth());
   if (monthsBack < 0 || monthsBack > 11) return -1;
   return 11 - monthsBack;
 }
 
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
+function startOfDay(date: Date): Date {
+  const dayStart = new Date(date);
+  dayStart.setHours(0, 0, 0, 0);
+  return dayStart;
 }
 
 function buildPendingByDay(jobs: NormalizedJob[]): ActivityBucket[] {
   const now = new Date();
   const buckets: ActivityBucket[] = [];
   for (let i = 6; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
+    const bucketDate = new Date(now);
+    bucketDate.setDate(bucketDate.getDate() - i);
     buckets.push({
-      label: d.toLocaleString("en-US", { weekday: "short" }),
+      label: bucketDate.toLocaleString("en-US", { weekday: "short" }),
       jobs: 0,
       completed: 0,
       revenue: 0,
       pending: 0,
     });
   }
-  jobs.forEach((j) => {
-    if (isCompleted(j)) return;
-    if (!j.date) return;
-    const d = new Date(j.date);
-    if (isNaN(d.getTime())) return;
+  jobs.forEach((job) => {
+    if (isCompleted(job)) return;
+    if (!job.date) return;
+    const jobDate = new Date(job.date);
+    if (isNaN(jobDate.getTime())) return;
     const diffDays = Math.floor(
-      (startOfDay(now).getTime() - startOfDay(d).getTime()) / 86400000,
+      (startOfDay(now).getTime() - startOfDay(jobDate).getTime()) / 86400000,
     );
-    const idx = 6 - diffDays;
-    if (idx < 0 || idx >= 7) return;
-    buckets[idx].jobs += 1;
-    buckets[idx].pending += 1;
+    const bucketIndex = 6 - diffDays;
+    if (bucketIndex < 0 || bucketIndex >= 7) return;
+    buckets[bucketIndex].jobs += 1;
+    buckets[bucketIndex].pending += 1;
   });
   return buckets;
 }

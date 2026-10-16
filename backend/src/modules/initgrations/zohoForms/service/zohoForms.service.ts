@@ -1,7 +1,9 @@
 import axios, { AxiosInstance } from "axios";
-import { supabase } from "../../../../config/db.config.js";
+import type { ZohoFormsIntegration } from "@prisma/client";
+import { buildPublicApiUrl } from "../../../../config/api.config.js";
 import { ApiError } from "../../../../utils/ApiError.js";
 import { refreshZohoFormsAccessToken } from "../utils/refreshAccessToken.js";
+import { zohoFormsRepository } from "../repositories/zohoForms.repository.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -14,13 +16,7 @@ const refreshLocks = new Map<string, Promise<any>>();
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface ZohoFormsIntegrationRow {
-  user_id: string;
-  access_token: string;
-  refresh_token: string;
-  expires_at: string;
-  needs_reauth: boolean;
-}
+export type ZohoFormsIntegrationRow = ZohoFormsIntegration;
 
 export interface ZohoForm {
   form_id: string;
@@ -43,19 +39,15 @@ export interface ZohoFormSubmission {
 // ─── Integration row helpers ──────────────────────────────────────────────────
 
 const getIntegrationRaw = async (userId: string): Promise<ZohoFormsIntegrationRow> => {
-  const { data, error } = await supabase
-    .from("zoho_forms_integrations")
-    .select("user_id, access_token, refresh_token, expires_at, needs_reauth")
-    .eq("user_id", userId)
-    .single();
+  const integration = await zohoFormsRepository.findIntegrationByUserId(userId);
 
-  if (error || !data) {
+  if (!integration) {
     throw new ApiError(
       404,
       "Zoho Forms integration not found. Please connect your account first."
     );
   }
-  return data as ZohoFormsIntegrationRow;
+  return integration;
 };
 
 export const getIntegration = async (
@@ -68,8 +60,7 @@ export const getIntegration = async (
     throw new ApiError(401, "Zoho Forms requires re-authentication. Please reconnect.");
   }
 
-  const isExpiringSoon =
-    new Date(row.expires_at).getTime() <= Date.now() + REFRESH_BUFFER_MS;
+  const isExpiringSoon = row.expires_at.getTime() <= Date.now() + REFRESH_BUFFER_MS;
 
   if (!isExpiringSoon && !forceRefresh) return row;
 
@@ -174,43 +165,29 @@ export class ZohoFormsService {
     const expiresAt = new Date();
     expiresAt.setSeconds(expiresAt.getSeconds() + (body.expires_in || 3600));
 
-    const { error } = await supabase.from("zoho_forms_integrations").upsert({
-      user_id: userId,
+    await zohoFormsRepository.saveTokens(userId, {
       access_token: body.access_token,
-      refresh_token: body.refresh_token,
-      expires_at: expiresAt.toISOString(),
-      needs_reauth: false,
+      refresh_token: body.refresh_token ?? null,
+      expires_at: expiresAt,
     });
 
-    if (error) throw new ApiError(500, `Failed to save Zoho Forms tokens: ${error.message}`);
     console.log(`[ZohoForms] ✅ Connected user=${userId}`);
   }
 
   static async getConnectionStatus(userId: string) {
-    const { data } = await supabase
-      .from("zoho_forms_integrations")
-      .select("user_id, needs_reauth, expires_at")
-      .eq("user_id", userId)
-      .maybeSingle();
+    const integration = await zohoFormsRepository.findIntegrationByUserId(userId);
 
-    if (!data) return { connected: false };
-    return { connected: true, needs_reauth: data.needs_reauth, expires_at: data.expires_at };
+    if (!integration) return { connected: false };
+    return {
+      connected: true,
+      needs_reauth: integration.needs_reauth,
+      expires_at: integration.expires_at,
+    };
   }
 
   static async disconnect(userId: string) {
-    const { error } = await supabase
-      .from("zoho_forms_integrations")
-      .delete()
-      .eq("user_id", userId);
-
-    if (error) throw new ApiError(500, `Failed to disconnect: ${error.message}`);
-
-    // Also clean up synced data
-    await Promise.allSettled([
-      supabase.from("zoho_forms_list").delete().eq("user_id", userId),
-      supabase.from("zoho_form_submissions").delete().eq("user_id", userId),
-      supabase.from("zoho_form_webhooks").delete().eq("user_id", userId),
-    ]);
+    await zohoFormsRepository.deleteIntegration(userId);
+    await zohoFormsRepository.deleteWebhooksForUser(userId);
 
     return { disconnected: true };
   }
@@ -219,34 +196,26 @@ export class ZohoFormsService {
 
   static async listForms(userId: string): Promise<ZohoForm[]> {
     const data = await formsRequest(userId, (client) =>
-      client.get(`/forms`).then((r) => r.data)
+      client.get(`/forms`).then((response) => response.data)
     );
 
-    const forms: ZohoForm[] = (data.forms ?? data ?? []).map((f: any) => ({
-      form_id: String(f.form_id ?? f.id),
-      form_name: f.form_name ?? f.name,
-      form_link_name: f.form_link_name ?? "",
-      report_link_name: f.report_link_name ?? "",
-      description: f.description ?? "",
-      status: f.status ?? "Active",
-      created_time: f.created_time ?? "",
-      modified_time: f.modified_time ?? "",
+    const forms: ZohoForm[] = (data.forms ?? data ?? []).map((form: any) => ({
+      form_id: String(form.form_id ?? form.id),
+      form_name: form.form_name ?? form.name,
+      form_link_name: form.form_link_name ?? "",
+      report_link_name: form.report_link_name ?? "",
+      description: form.description ?? "",
+      status: form.status ?? "Active",
+      created_time: form.created_time ?? "",
+      modified_time: form.modified_time ?? "",
     }));
-
-    // Sync to Supabase
-    if (forms.length) {
-      await supabase.from("zoho_forms_list").upsert(
-        forms.map((f) => ({ ...f, user_id: userId, zoho_id: f.form_id })),
-        { onConflict: "user_id,zoho_id" }
-      );
-    }
 
     return forms;
   }
 
   static async getFormDetails(userId: string, formId: string) {
     const data = await formsRequest(userId, (client) =>
-      client.get(`/forms/${formId}`).then((r) => r.data)
+      client.get(`/forms/${formId}`).then((response) => response.data)
     );
     return data.form ?? data;
   }
@@ -267,46 +236,17 @@ export class ZohoFormsService {
     const data = await formsRequest(userId, (client) =>
       client
         .get(`/forms/${formId}/submissions`, { params: { page, per_page: perPage } })
-        .then((r) => r.data)
+        .then((response) => response.data)
     );
 
-    const submissions: ZohoFormSubmission[] = (data.submissions ?? []).map((s: any) => ({
-      submission_id: String(s.submission_id ?? s.id),
+    const submissions: ZohoFormSubmission[] = (data.submissions ?? []).map((submission: any) => ({
+      submission_id: String(submission.submission_id ?? submission.id),
       form_id: formId,
-      submitted_at: s.submitted_time ?? s.created_time ?? new Date().toISOString(),
-      data: s.data ?? s,
+      submitted_at: submission.submitted_time ?? submission.created_time ?? new Date().toISOString(),
+      data: submission.data ?? submission,
     }));
 
-    if (submissions.length) {
-      await supabase.from("zoho_form_submissions").upsert(
-        submissions.map((s) => ({
-          user_id: userId,
-          zoho_id: s.submission_id,
-          form_id: s.form_id,
-          submitted_at: s.submitted_at,
-          submission_data: s.data,
-        })),
-        { onConflict: "user_id,zoho_id" }
-      );
-    }
-
     return submissions;
-  }
-
-  static async syncAllSubmissions(userId: string) {
-    const forms = await ZohoFormsService.listForms(userId);
-    const results: Record<string, any> = {};
-
-    for (const form of forms) {
-      try {
-        const subs = await ZohoFormsService.getSubmissions(userId, form.form_id);
-        results[form.form_id] = { form_name: form.form_name, count: subs.length };
-      } catch (err: any) {
-        results[form.form_id] = { form_name: form.form_name, error: err.message };
-      }
-    }
-
-    return results;
   }
 
   // ─── Webhook Setup ───────────────────────────────────────────────────────
@@ -314,7 +254,7 @@ export class ZohoFormsService {
   // so we get notified on every new submission.
 
   static async setupWebhook(userId: string, formId: string) {
-    const receiverUrl = `${process.env.BACKEND_URL}/zoho-forms/webhook/${userId}/${formId}`;
+    const receiverUrl = buildPublicApiUrl(`/zoho-forms/webhook/${userId}/${formId}`);
 
     const data = await formsRequest(userId, (client) =>
       client
@@ -322,104 +262,85 @@ export class ZohoFormsService {
           url: receiverUrl,
           content_type: "application/json",
         })
-        .then((r) => r.data)
+        .then((response) => response.data)
     );
 
-    // Persist webhook record
-    await supabase.from("zoho_form_webhooks").upsert(
-      {
-        user_id: userId,
-        form_id: formId,
-        webhook_url: receiverUrl,
-        zoho_webhook_id: String(data.webhook_id ?? ""),
-        active: true,
-      },
-      { onConflict: "user_id,form_id" }
-    );
+    await zohoFormsRepository.saveWebhook(userId, formId, {
+      webhook_url: receiverUrl,
+      zoho_webhook_id: String(data.webhook_id ?? ""),
+    });
 
     return { webhook_url: receiverUrl, zoho_response: data };
   }
 
   static async removeWebhook(userId: string, formId: string) {
-    const { data: row } = await supabase
-      .from("zoho_form_webhooks")
-      .select("zoho_webhook_id")
-      .eq("user_id", userId)
-      .eq("form_id", formId)
-      .maybeSingle();
+    const webhook = await zohoFormsRepository.findWebhook(userId, formId);
 
-    if (row?.zoho_webhook_id) {
+    // A failed remote delete must not block removing our record
+    if (webhook?.zoho_webhook_id) {
       await formsRequest(userId, (client) =>
-        client.delete(`/forms/${formId}/webhooks/${row.zoho_webhook_id}`)
+        client.delete(`/forms/${formId}/webhooks/${webhook.zoho_webhook_id}`)
       ).catch(() => {});
     }
 
-    await supabase
-      .from("zoho_form_webhooks")
-      .delete()
-      .eq("user_id", userId)
-      .eq("form_id", formId);
+    await zohoFormsRepository.deleteWebhook(userId, formId);
 
     return { removed: true };
   }
 
-  static async listWebhooks(userId: string) {
-    const { data } = await supabase
-      .from("zoho_form_webhooks")
-      .select("*")
-      .eq("user_id", userId);
-    return data ?? [];
+  static listWebhooks(userId: string) {
+    return zohoFormsRepository.findWebhooksByUserId(userId);
   }
 
   // ─── Incoming Webhook Handler ────────────────────────────────────────────
-  // Called by our webhook receiver route when Zoho posts a submission
+  // Called by our webhook receiver route when Zoho posts a submission.
+  // The submission is acknowledged but not stored: we keep config, not vendor data.
 
   static async handleIncomingSubmission(
     userId: string,
     formId: string,
     payload: Record<string, any>
   ) {
+    const webhook = await zohoFormsRepository.findWebhook(userId, formId);
+    if (!webhook?.active) {
+      console.warn(`[ZohoForms] Ignored submission for unregistered webhook form=${formId} user=${userId}`);
+      return { received: false, reason: "No active webhook registered for this form" };
+    }
+
     const submissionId = String(
       payload.submission_id ?? payload.id ?? Date.now()
     );
 
-    await supabase.from("zoho_form_submissions").upsert(
-      {
-        user_id: userId,
-        zoho_id: submissionId,
-        form_id: formId,
-        submitted_at: payload.submitted_time ?? new Date().toISOString(),
-        submission_data: payload,
-      },
-      { onConflict: "user_id,zoho_id" }
-    );
-
-    console.log(`[ZohoForms] 📥 Incoming submission saved form=${formId} user=${userId}`);
+    console.log(`[ZohoForms] 📥 Incoming submission received form=${formId} user=${userId}`);
     return { received: true, submission_id: submissionId };
   }
 
-  // ─── DB reads ────────────────────────────────────────────────────────────
+  // ─── Live reads in the shape of the former "from DB" endpoints ───────────
+  // Fetched from Zoho on every call; response keys match the old DB rows.
 
   static async getFormsFromDb(userId: string) {
-    const { data, error } = await supabase
-      .from("zoho_forms_list")
-      .select("*")
-      .eq("user_id", userId);
-    if (error) throw new ApiError(500, error.message);
-    return data ?? [];
+    const forms = await ZohoFormsService.listForms(userId);
+    return forms.map((form) => ({ ...form, user_id: userId, zoho_id: form.form_id }));
   }
 
   static async getSubmissionsFromDb(userId: string, formId?: string) {
-    let query = supabase
-      .from("zoho_form_submissions")
-      .select("*")
-      .eq("user_id", userId)
-      .order("submitted_at", { ascending: false });
+    const formIds = formId
+      ? [formId]
+      : (await ZohoFormsService.listForms(userId)).map((form) => form.form_id);
 
-    if (formId) query = query.eq("form_id", formId);
+    const submissions: ZohoFormSubmission[] = [];
+    for (const currentFormId of formIds) {
+      submissions.push(...(await ZohoFormsService.getSubmissions(userId, currentFormId)));
+    }
 
-    const { data, error } = await query;
-    if (error) throw new ApiError(500, error.message);
-    return data ?? [];
+    return submissions
+      .sort((first, second) => second.submitted_at.localeCompare(first.submitted_at))
+      .map((submission) => ({
+        user_id: userId,
+        zoho_id: submission.submission_id,
+        form_id: submission.form_id,
+        submitted_at: submission.submitted_at,
+        submission_data: submission.data,
+      }));
   }
 }

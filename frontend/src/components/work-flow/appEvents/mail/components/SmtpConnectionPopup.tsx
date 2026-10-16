@@ -42,11 +42,11 @@ function NmSelect<T extends string | number | boolean>({
   placeholder = "Select…",
 }: {
   value: T;
-  onChange: (v: T) => void;
+  onChange: (nextValue: T) => void;
   options: Option<T>[];
   placeholder?: string;
 }) {
-  const selected = options.find((o) => o.value === value);
+  const selected = options.find((option) => option.value === value);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>

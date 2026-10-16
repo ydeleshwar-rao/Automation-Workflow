@@ -193,16 +193,16 @@ export function LivePreview() {
 
       {/* Stat cards */}
       <div className="grid grid-cols-3 gap-3">
-        {statDefs.map((s, i) => (
+        {statDefs.map((stat, index) => (
           <StatCard
-            key={s.key}
-            label={s.label}
-            suffix={s.suffix}
-            liveValue={metrics[s.key as keyof typeof metrics].value}
-            liveDelta={metrics[s.key as keyof typeof metrics].delta}
-            initialValue={s.initial.value}
-            initialDelta={s.initial.delta}
-            delay={i * 120}
+            key={stat.key}
+            label={stat.label}
+            suffix={stat.suffix}
+            liveValue={metrics[stat.key as keyof typeof metrics].value}
+            liveDelta={metrics[stat.key as keyof typeof metrics].delta}
+            initialValue={stat.initial.value}
+            initialDelta={stat.initial.delta}
+            delay={index * 120}
           />
         ))}
       </div>

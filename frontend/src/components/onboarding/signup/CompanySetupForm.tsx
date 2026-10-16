@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Building2, CheckCircle2 } from "lucide-react";
-import { COMPANY_SSO_ENABLED } from "@/src/lib/auth/provider";
 import { SsoButtons } from "../shared/SsoButtons";
 
 const BENEFITS = [
@@ -45,28 +44,20 @@ export function CompanySetupForm() {
           placeholder="Acme Ltd"
           autoComplete="organization"
           value={organizationName}
-          onChange={(e) => setOrganizationName(e.target.value)}
+          onChange={(event) => setOrganizationName(event.target.value)}
           className="w-full bg-background border border-border/70 rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
         />
       </div>
 
-      {COMPANY_SSO_ENABLED ? (
-        <>
-          <p className="mt-5 mb-3 text-xs text-muted-foreground">Sign in with your <span className="font-semibold text-foreground">work</span> account:</p>
-          <SsoButtons
-            intent="company-setup"
-            organizationName={organizationName.trim()}
-            validate={() => (organizationName.trim() ? null : "Enter your company name first.")}
-          />
-          <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-            Personal accounts (gmail.com, outlook.com…) can&apos;t be used to set up a company — they create a personal workspace instead.
-          </p>
-        </>
-      ) : (
-        <p className="mt-5 rounded-lg border border-border/70 bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
-          Company SSO isn&apos;t configured on this server yet. You can still create the company with email and password below.
-        </p>
-      )}
+      <p className="mt-5 mb-3 text-xs text-muted-foreground">Sign in with your <span className="font-semibold text-foreground">work</span> account:</p>
+      <SsoButtons
+        intent="company-setup"
+        organizationName={organizationName.trim()}
+        validate={() => (organizationName.trim() ? null : "Enter your company name first.")}
+      />
+      <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+        Personal accounts (gmail.com, outlook.com…) can&apos;t be used to set up a company — they create a personal workspace instead.
+      </p>
 
       <div className="mt-6 rounded-xl border border-border/70 bg-card px-4 py-3">
         <p className="text-xs text-muted-foreground leading-relaxed">

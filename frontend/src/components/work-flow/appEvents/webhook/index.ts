@@ -119,7 +119,7 @@ function useWebhookStepProps(
     (id: string | null) => {
       setSelectedRequestId(id);
       if (id) {
-        const request = mappedRequests.find((r) => r.id === id);
+        const request = mappedRequests.find((mappedRequest) => mappedRequest.id === id);
         if (request?.data) {
           context.onFormDataChange({ testPayload: request.data });
         }

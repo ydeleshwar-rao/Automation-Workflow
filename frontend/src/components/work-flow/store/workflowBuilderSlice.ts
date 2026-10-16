@@ -100,16 +100,16 @@ const workflowBuilderSlice = createSlice({
     },
 
     updateNode(state, action: PayloadAction<WorkflowNodeData>) {
-      const idx = state.nodes.findIndex((n) => n.id === action.payload.id);
-      if (idx !== -1) {
-        state.nodes[idx] = { ...state.nodes[idx], ...action.payload };
+      const nodeIndex = state.nodes.findIndex((node) => node.id === action.payload.id);
+      if (nodeIndex !== -1) {
+        state.nodes[nodeIndex] = { ...state.nodes[nodeIndex], ...action.payload };
       }
     },
 
     deleteNode(state, action: PayloadAction<string>) {
-      state.nodes = state.nodes.filter((n) => n.id !== action.payload);
-      state.nodes.forEach((n, idx) => {
-        n.index = idx + 1;
+      state.nodes = state.nodes.filter((node) => node.id !== action.payload);
+      state.nodes.forEach((node, index) => {
+        node.index = index + 1;
       });
     },
 

@@ -1,5 +1,11 @@
-import { supabase } from "../../../../config/db.config.js";
 import { ApiError } from "../../../../utils/ApiError.js";
+import {
+  equalsCondition,
+  fetchServiceM8Records,
+  fetchServiceM8RecordsMatching,
+  normalizeServiceM8Record,
+  type ServiceM8Record,
+} from "./serviceM8Api.client.js";
 
 export type JobCustomer = {
   name: string | null;
@@ -44,8 +50,17 @@ export type StaffFilters = {
   phone?: string | undefined;
 };
 
-/** Concatenate address parts from servicem8_site_details into one readable string */
-function buildAddress(site: Record<string, string | null>): string | null {
+const ACTIVE_CONDITION = "active eq 1";
+const PRIMARY_CONTACT_FLAG = "1";
+const UNKNOWN_STAFF_NAME = "Unknown";
+
+const textOrNull = (value: unknown): string | null => (value == null ? null : String(value));
+
+const joinName = (record: ServiceM8Record) =>
+  [record.first, record.last].filter(Boolean).join(" ") || null;
+
+/** Concatenate a ServiceM8 company's address parts into one readable string */
+function buildAddress(site: ServiceM8Record): string | null {
   const parts = [
     site.address,
     site.address_street,
@@ -57,141 +72,122 @@ function buildAddress(site: Record<string, string | null>): string | null {
   return parts.length > 0 ? parts.join(", ") : null;
 }
 
+const findActiveStaffUuid = async (userId: string, field: "email" | "mobile", value: string) => {
+  const matches = await fetchServiceM8Records(userId, "staff", [ACTIVE_CONDITION, equalsCondition(field, value)]);
+  return textOrNull(matches[0]?.uuid);
+};
+
+/** When both email AND phone are given they must identify the same staff member. */
+const assertEmailAndPhoneMatchSameStaff = async (userId: string, email: string, phone: string) => {
+  const [emailStaffUuid, phoneStaffUuid] = await Promise.all([
+    findActiveStaffUuid(userId, "email", email),
+    findActiveStaffUuid(userId, "mobile", phone),
+  ]);
+
+  if (!emailStaffUuid && !phoneStaffUuid) {
+    throw new ApiError(404, "No staff member found matching the provided email or phone");
+  }
+  if (!emailStaffUuid) throw new ApiError(404, `No staff member found with email: ${email}`);
+  if (!phoneStaffUuid) throw new ApiError(404, `No staff member found with phone: ${phone}`);
+  if (emailStaffUuid !== phoneStaffUuid) {
+    throw new ApiError(
+      400,
+      "Email and phone do not belong to the same staff member. Please verify the details and try again."
+    );
+  }
+};
+
+/** Email / phone are narrowed by ServiceM8 `$filter`; the job-title "contains" match is done here. */
+const findMatchingStaff = async (userId: string, filters: StaffFilters) => {
+  const conditions = [ACTIVE_CONDITION];
+  if (filters.email) conditions.push(equalsCondition("email", filters.email));
+  if (filters.phone) conditions.push(equalsCondition("mobile", filters.phone));
+
+  const staffMembers = (await fetchServiceM8Records(userId, "staff", conditions)).map(normalizeServiceM8Record);
+  const jobTitleFilter = filters.jobTitle?.toLowerCase();
+  if (!jobTitleFilter) return staffMembers;
+  return staffMembers.filter((staffMember) =>
+    String(staffMember.job_title ?? "").toLowerCase().includes(jobTitleFilter)
+  );
+};
+
+/** Customer (primary contact first, then any contact) + site address, keyed by company uuid. */
+const loadCustomersByCompany = async (userId: string, companyUuids: string[]) => {
+  const [contacts, sites] = await Promise.all([
+    fetchServiceM8RecordsMatching(userId, "companycontact", "company_uuid", companyUuids),
+    fetchServiceM8RecordsMatching(userId, "company", "uuid", companyUuids),
+  ]);
+  const siteByUuid = new Map(sites.map((site) => [String(site.uuid), normalizeServiceM8Record(site)]));
+  const primaryFirst = [...contacts].sort(
+    (first, second) =>
+      Number(second.is_primary_contact === PRIMARY_CONTACT_FLAG) - Number(first.is_primary_contact === PRIMARY_CONTACT_FLAG)
+  );
+
+  const customerByCompany = new Map<string, JobCustomer>();
+  for (const contact of primaryFirst.map(normalizeServiceM8Record)) {
+    const companyUuid = textOrNull(contact.company_uuid);
+    if (!companyUuid || customerByCompany.has(companyUuid)) continue;
+    const site = siteByUuid.get(companyUuid);
+    customerByCompany.set(companyUuid, {
+      name: joinName(contact),
+      email: textOrNull(contact.email),
+      phone: textOrNull(contact.phone),
+      type: textOrNull(contact.type),
+      address: site ? buildAddress(site) : null,
+    });
+  }
+  return customerByCompany;
+};
+
+const toStaffJobDetail = (job: ServiceM8Record, customer: JobCustomer | null): StaffJobDetail => ({
+  generated_job_id:     textOrNull(job.generated_job_id),
+  status:               textOrNull(job.status),
+  job_address:          textOrNull(job.job_address),
+  billing_address:      textOrNull(job.billing_address),
+  job_description:      textOrNull(job.job_description),
+  quote_date:           textOrNull(job.quote_date),
+  work_order_date:      textOrNull(job.work_order_date),
+  completion_date:      textOrNull(job.completion_date),
+  payment_date:         textOrNull(job.payment_date),
+  payment_method:       textOrNull(job.payment_method),
+  payment_amount:       textOrNull(job.payment_amount),
+  total_invoice_amount: textOrNull(job.total_invoice_amount),
+  customer,
+});
+
 export class StaffSummaryService {
+  /** Active ServiceM8 staff (filtered by job title / email / phone) with the active jobs they created. */
   static async getStaffs(userId: string, filters: StaffFilters = {}): Promise<StaffDetailDataBlock[]> {
-    const { jobTitle, email, phone } = filters;
-
-    // ── When both email AND phone are provided, validate they belong to the same staff ──
-    if (email && phone) {
-      const { data: byEmail } = await supabase
-        .from("servicem8_staff")
-        .select("uuid")
-        .eq("user_id", userId)
-        .eq("email", email)
-        .eq("active", 1)
-        .maybeSingle();
-
-      const { data: byPhone } = await supabase
-        .from("servicem8_staff")
-        .select("uuid")
-        .eq("user_id", userId)
-        .eq("mobile", phone)
-        .eq("active", 1)
-        .maybeSingle();
-
-      if (!byEmail && !byPhone) {
-        throw new ApiError(404, "No staff member found matching the provided email or phone");
-      }
-      if (!byEmail) {
-        throw new ApiError(404, `No staff member found with email: ${email}`);
-      }
-      if (!byPhone) {
-        throw new ApiError(404, `No staff member found with phone: ${phone}`);
-      }
-      if (byEmail.uuid !== byPhone.uuid) {
-        throw new ApiError(
-          400,
-          "Email and phone do not belong to the same staff member. Please verify the details and try again."
-        );
-      }
+    if (filters.email && filters.phone) {
+      await assertEmailAndPhoneMatchSameStaff(userId, filters.email, filters.phone);
     }
 
-    // ── Build main staff query ──
-    let staffQuery = supabase
-      .from("servicem8_staff")
-      .select("uuid, first, last, email, mobile, job_title")
-      .eq("user_id", userId)
-      .eq("active", 1);
+    const staffList = await findMatchingStaff(userId, filters);
+    if (staffList.length === 0) return [];
 
-    if (jobTitle) staffQuery = staffQuery.ilike("job_title", `%${jobTitle}%`);
-    if (email)    staffQuery = staffQuery.eq("email", email);
-    if (phone)    staffQuery = staffQuery.eq("mobile", phone);
+    const staffUuids = staffList.map((staffMember) => String(staffMember.uuid));
+    const jobs = (
+      await fetchServiceM8RecordsMatching(userId, "job", "created_by_staff_uuid", staffUuids, [ACTIVE_CONDITION])
+    ).map(normalizeServiceM8Record);
 
-    const { data: staffList, error: staffError } = await staffQuery;
+    const companyUuids = [
+      ...new Set(jobs.map((job) => textOrNull(job.company_uuid)).filter((uuid): uuid is string => Boolean(uuid))),
+    ];
+    const customerByCompany = await loadCustomersByCompany(userId, companyUuids);
 
-    if (staffError) throw staffError;
-    if (!staffList || staffList.length === 0) return [];
+    return staffList.map((staffMember) => {
+      const jobDetails = jobs
+        .filter((job) => job.created_by_staff_uuid === staffMember.uuid)
+        .map((job) => toStaffJobDetail(job, customerByCompany.get(textOrNull(job.company_uuid) ?? "") ?? null));
 
-    // ── Fetch jobs for each matched staff member ──
-    const results: StaffDetailDataBlock[] = await Promise.all(
-      staffList.map(async (staff) => {
-        const { data: jobs, error: jobsError } = await supabase
-          .from("servicem8_jobs")
-          .select(
-            "generated_job_id, status, job_address, billing_address, job_description, quote_date, work_order_date, completion_date, payment_date, payment_method, payment_amount, total_invoice_amount, company_uuid"
-          )
-          .eq("user_id", userId)
-          .eq("created_by_staff_uuid", staff.uuid)
-          .eq("active", 1);
-
-        if (jobsError) throw jobsError;
-
-        // ── Resolve customer details for each job in parallel ──
-        const jobDetails: StaffJobDetail[] = await Promise.all(
-          (jobs ?? []).map(async (j) => {
-            let customer: JobCustomer | null = null;
-
-            if (j.company_uuid) {
-              // company_uuid is a globally unique ServiceM8 UUID — no user_id filter needed on contacts/site
-              const [{ data: contacts }, { data: site }] = await Promise.all([
-                supabase
-                  .from("servicem8_contacts")
-                  .select("first, last, email, phone, type")
-                  .eq("company_uuid", j.company_uuid)
-                  .order("is_primary_contact", { ascending: false })
-                  .limit(1),
-                supabase
-                  .from("servicem8_site_details")
-                  .select("address, address_street, address_city, address_state, address_postcode, address_country")
-                  .eq("uuid", j.company_uuid)
-                  .maybeSingle(),
-              ]);
-
-              const contact = contacts?.[0] ?? null;
-
-              if (contact) {
-                const contactName = [contact.first ?? "", contact.last ?? ""].filter(Boolean).join(" ") || null;
-                customer = {
-                  name:               contactName,
-                  email:              contact.email ?? null,
-                  phone:              contact.phone ?? null,
-                  type:               contact.type ?? null,
-                  address:            site ? buildAddress(site as Record<string, string | null>) : null,
-                };
-              }
-            }
-
-            return {
-              generated_job_id:     j.generated_job_id ?? null,
-              status:               j.status ?? null,
-              job_address:          j.job_address ?? null,
-              billing_address:      j.billing_address ?? null,
-              job_description:      j.job_description ?? null,
-              quote_date:           j.quote_date ?? null,
-              work_order_date:      j.work_order_date ?? null,
-              completion_date:      j.completion_date ?? null,
-              payment_date:         j.payment_date ?? null,
-              payment_method:       j.payment_method ?? null,
-              payment_amount:       j.payment_amount != null ? String(j.payment_amount) : null,
-              total_invoice_amount: j.total_invoice_amount != null ? String(j.total_invoice_amount) : null,
-              customer,
-            };
-          })
-        );
-
-        const name = [staff.first ?? "", staff.last ?? ""].filter(Boolean).join(" ") || "Unknown";
-
-        return {
-          name,
-          email:      staff.email ?? null,
-          mobile:     staff.mobile ?? null,
-          job_title:  staff.job_title ?? null,
-          total_jobs: jobDetails.length,
-          jobs:       jobDetails,
-        };
-      })
-    );
-
-    return results;
+      return {
+        name:       joinName(staffMember) ?? UNKNOWN_STAFF_NAME,
+        email:      textOrNull(staffMember.email),
+        mobile:     textOrNull(staffMember.mobile),
+        job_title:  textOrNull(staffMember.job_title),
+        total_jobs: jobDetails.length,
+        jobs:       jobDetails,
+      };
+    });
   }
 }

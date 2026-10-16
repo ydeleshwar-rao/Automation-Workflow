@@ -8,7 +8,7 @@ export type UserRole  = "admin" | "developer";
 
 /**
  * Custom JWT payload — signed by this backend, verified by this backend.
- * No Supabase session tokens are passed to the frontend.
+ * Only these backend-issued tokens are passed to the frontend.
  *
  * permissions:
  *   - admin     → ["*"]  (wildcard, all pages)

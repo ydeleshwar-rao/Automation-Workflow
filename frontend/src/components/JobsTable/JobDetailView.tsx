@@ -19,8 +19,8 @@ import type { JobRow } from "./types";
 
 type RawJobBundle = Record<string, unknown>;
 
-function asRecord(v: unknown): Record<string, unknown> | undefined {
-  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
 const formatDate = (iso: string) => {
@@ -54,14 +54,14 @@ function formatTimeOnly(iso: string) {
   return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
-function sameCalendarDay(a: string, b: string) {
-  const da = new Date(a);
-  const db = new Date(b);
-  if (Number.isNaN(da.getTime()) || Number.isNaN(db.getTime())) return false;
+function sameCalendarDay(firstIso: string, secondIso: string) {
+  const firstDate = new Date(firstIso);
+  const secondDate = new Date(secondIso);
+  if (Number.isNaN(firstDate.getTime()) || Number.isNaN(secondDate.getTime())) return false;
   return (
-    da.getFullYear() === db.getFullYear() &&
-    da.getMonth() === db.getMonth() &&
-    da.getDate() === db.getDate()
+    firstDate.getFullYear() === secondDate.getFullYear() &&
+    firstDate.getMonth() === secondDate.getMonth() &&
+    firstDate.getDate() === secondDate.getDate()
   );
 }
 
@@ -460,7 +460,7 @@ export function JobDetailView({ customer, allJobs, integration, onBack, rawGroup
                 variant="outline"
                 size="sm"
                 className="h-9 border-border bg-background text-foreground hover:bg-muted"
-                onClick={() => setShowJson((v) => !v)}
+                onClick={() => setShowJson((prev) => !prev)}
               >
                 JSON
               </Button>

@@ -44,10 +44,6 @@ export const leadshubApi = {
     return [];
   },
 
-  syncContacts: async (): Promise<void> => {
-    await axiosInstance.post(API_ROUTES.GHL.SYNC, {});
-  },
-
   getActionEventTypes: async (): Promise<{ action_key: string; label: string; description?: string }[]> => {
     const { data } = await axiosInstance.get(API_ROUTES.GHL.ACTION_EVENT_TYPES);
     return data?.data ?? [];

@@ -45,11 +45,11 @@ export function SimproJobsView() {
   // Calculate stats
   const stats = {
     total: jobs?.length || 0,
-    active: jobs?.filter(j => j.Status.Name !== "Completed").length || 0,
-    completed: jobs?.filter(j => j.Status.Name === "Completed").length || 0,
-    revenue: jobs?.reduce((sum, j) => sum + (j.Total?.IncTax || 0), 0) || 0,
-    thisMonth: jobs?.filter(j => {
-      const date = new Date(j.DateModified);
+    active: jobs?.filter(job => job.Status.Name !== "Completed").length || 0,
+    completed: jobs?.filter(job => job.Status.Name === "Completed").length || 0,
+    revenue: jobs?.reduce((sum, job) => sum + (job.Total?.IncTax || 0), 0) || 0,
+    thisMonth: jobs?.filter(job => {
+      const date = new Date(job.DateModified);
       const now = new Date();
       return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
     }).length || 0,

@@ -47,8 +47,8 @@ interface TreeNode extends FolderRecord {
 
 function buildTree(folders: FolderRecord[]): TreeNode[] {
   const byId = new Map<string, TreeNode>();
-  for (const f of folders) {
-    byId.set(f.id, { ...f, children: [], depth: 0 });
+  for (const folder of folders) {
+    byId.set(folder.id, { ...folder, children: [], depth: 0 });
   }
   const roots: TreeNode[] = [];
   for (const node of byId.values()) {
@@ -62,15 +62,15 @@ function buildTree(folders: FolderRecord[]): TreeNode[] {
     }
   }
   const sortRecursive = (list: TreeNode[]) => {
-    list.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-    for (const n of list) sortRecursive(n.children);
+    list.sort((firstNode, secondNode) => (firstNode.position ?? 0) - (secondNode.position ?? 0));
+    for (const childNode of list) sortRecursive(childNode.children);
   };
   sortRecursive(roots);
   // Re-stamp depth from roots since position-only sort can keep stale depth on detached nodes
   const stamp = (list: TreeNode[], depth: number) => {
-    for (const n of list) {
-      n.depth = depth;
-      stamp(n.children, depth + 1);
+    for (const childNode of list) {
+      childNode.depth = depth;
+      stamp(childNode.children, depth + 1);
     }
   };
   stamp(roots, 0);
@@ -100,7 +100,7 @@ export function FolderTree({
     });
 
   const allCount = workflows.length;
-  const unfiledCount = workflows.filter((w) => !w.folder_id).length;
+  const unfiledCount = workflows.filter((workflow) => !workflow.folder_id).length;
 
   return (
     <div className="flex h-full flex-col">
@@ -265,7 +265,7 @@ function FolderNode({
 }) {
   const isExpanded = expanded.has(node.id);
   const isSelected = selected === node.id;
-  const childCount = workflows.filter((w) => w.folder_id === node.id).length;
+  const childCount = workflows.filter((workflow) => workflow.folder_id === node.id).length;
   const hasChildren = node.children.length > 0;
 
   // Drop target — accepts both workflows and folders
@@ -306,16 +306,16 @@ function FolderNode({
           isDragging && "opacity-40"
         )}
         style={{ paddingLeft: `${0.5 + node.depth * 0.875}rem` }}
-        onClick={(e) => {
+        onClick={(event) => {
           // Don't select on drag start
-          if (e.detail === 0) return;
+          if (event.detail === 0) return;
           onSelect(node.id);
         }}
       >
         {/* Chevron / spacer */}
         <button
-          onClick={(e) => {
-            e.stopPropagation();
+          onClick={(event) => {
+            event.stopPropagation();
             if (hasChildren) onToggle(node.id);
           }}
           className={cn(
@@ -350,8 +350,8 @@ function FolderNode({
         {/* Name */}
         <span
           className="flex-1 truncate font-medium"
-          onDoubleClick={(e) => {
-            e.stopPropagation();
+          onDoubleClick={(event) => {
+            event.stopPropagation();
             onRename(node.id, node.name);
           }}
           title="Double-click to rename"
@@ -374,7 +374,7 @@ function FolderNode({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                onClick={(e) => e.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
                 className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
                 <MoreVertical className="h-3.5 w-3.5" />
@@ -382,20 +382,20 @@ function FolderNode({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
               <DropdownMenuItem
-                onClick={(e) => { e.stopPropagation(); onCreateChild(node.id); }}
+                onClick={(event) => { event.stopPropagation(); onCreateChild(node.id); }}
               >
                 <FolderPlus className="mr-2 h-3.5 w-3.5" />
                 Add subfolder
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={(e) => { e.stopPropagation(); onRename(node.id, node.name); }}
+                onClick={(event) => { event.stopPropagation(); onRename(node.id, node.name); }}
               >
                 <Pencil className="mr-2 h-3.5 w-3.5" />
                 Rename
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={(e) => { e.stopPropagation(); onDelete(node.id); }}
+                onClick={(event) => { event.stopPropagation(); onDelete(node.id); }}
                 className="text-destructive focus:text-destructive"
               >
                 <Trash2 className="mr-2 h-3.5 w-3.5" />

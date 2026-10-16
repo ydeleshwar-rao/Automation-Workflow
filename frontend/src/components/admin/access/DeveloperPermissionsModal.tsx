@@ -135,10 +135,10 @@ export function DeveloperPermissionsModal({ developer, isOpen, onClose }: Props)
             </div>
           ) : (
             ACCESS_PAGES.map((page) => {
-              const p        = perms[page.key];
-              const canView   = p?.can_view   ?? false;
-              const canEdit   = p?.can_edit   ?? false;
-              const canDelete = p?.can_delete ?? false;
+              const pagePermission        = perms[page.key];
+              const canView   = pagePermission?.can_view   ?? false;
+              const canEdit   = pagePermission?.can_edit   ?? false;
+              const canDelete = pagePermission?.can_delete ?? false;
               const pageBusy  = busy || savingPage === page.key;
 
               return (
@@ -152,8 +152,8 @@ export function DeveloperPermissionsModal({ developer, isOpen, onClose }: Props)
                     <Switch
                       checked={canView}
                       disabled={pageBusy}
-                      onCheckedChange={(v) =>
-                        void handleToggle(page.key, "can_view", v)
+                      onCheckedChange={(isChecked) =>
+                        void handleToggle(page.key, "can_view", isChecked)
                       }
                       aria-label={`${page.label} view`}
                     />
@@ -163,8 +163,8 @@ export function DeveloperPermissionsModal({ developer, isOpen, onClose }: Props)
                     <Switch
                       checked={canEdit}
                       disabled={pageBusy}
-                      onCheckedChange={(v) =>
-                        void handleToggle(page.key, "can_edit", v)
+                      onCheckedChange={(isChecked) =>
+                        void handleToggle(page.key, "can_edit", isChecked)
                       }
                       aria-label={`${page.label} edit`}
                     />
@@ -174,8 +174,8 @@ export function DeveloperPermissionsModal({ developer, isOpen, onClose }: Props)
                     <Switch
                       checked={canDelete}
                       disabled={pageBusy}
-                      onCheckedChange={(v) =>
-                        void handleToggle(page.key, "can_delete", v)
+                      onCheckedChange={(isChecked) =>
+                        void handleToggle(page.key, "can_delete", isChecked)
                       }
                       aria-label={`${page.label} delete`}
                     />

@@ -18,8 +18,8 @@ export function CompanySsoForm({ onBack }: { onBack: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [found, setFound] = useState<SsoDiscovery | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     if (isLoading) return;
     setIsLoading(true);
     setError(null);
@@ -81,7 +81,7 @@ export function CompanySsoForm({ onBack }: { onBack: () => void }) {
             autoFocus
             autoComplete="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(event) => setEmail(event.target.value)}
             className="w-full bg-background border border-border/70 rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
           />
         </div>

@@ -47,8 +47,8 @@ export function CreateWorkflowNameModal({
 
   // Close dropdown on outside click
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsTagDropdownOpen(false);
       }
     };
@@ -56,7 +56,7 @@ export function CreateWorkflowNameModal({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const selectedIds = useMemo(() => new Set(selectedTags.map((t) => t.id)), [selectedTags]);
+  const selectedIds = useMemo(() => new Set(selectedTags.map((selectedTag) => selectedTag.id)), [selectedTags]);
 
   // Filter suggestions: match input and exclude already selected
   const filteredSuggestions = useMemo(() => {
@@ -73,7 +73,7 @@ export function CreateWorkflowNameModal({
     const trimmed = tagInput.trim();
     if (!trimmed || !onCreateTag) return false;
     const lower = trimmed.toLowerCase();
-    return !availableTags.some((t) => t.name.toLowerCase() === lower);
+    return !availableTags.some((availableTag) => availableTag.name.toLowerCase() === lower);
   }, [tagInput, availableTags, onCreateTag]);
 
   const handleSelectTag = (tag: TagOption) => {
@@ -85,7 +85,7 @@ export function CreateWorkflowNameModal({
   };
 
   const handleRemoveTag = (tagId: string) => {
-    setSelectedTags((prev) => prev.filter((t) => t.id !== tagId));
+    setSelectedTags((prev) => prev.filter((tag) => tag.id !== tagId));
   };
 
   const handleCreateAndSelect = async () => {
@@ -104,17 +104,17 @@ export function CreateWorkflowNameModal({
     }
   };
 
-  const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
+  const handleTagKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
       if (canCreateNewTag) {
         handleCreateAndSelect();
       } else if (filteredSuggestions.length === 1) {
         handleSelectTag(filteredSuggestions[0]);
       }
-    } else if (e.key === "Backspace" && tagInput === "" && selectedTags.length > 0) {
+    } else if (event.key === "Backspace" && tagInput === "" && selectedTags.length > 0) {
       setSelectedTags((prev) => prev.slice(0, -1));
-    } else if (e.key === "Escape") {
+    } else if (event.key === "Escape") {
       setIsTagDropdownOpen(false);
     }
   };
@@ -123,7 +123,7 @@ export function CreateWorkflowNameModal({
     if (workflowName.trim()) {
       onCreate(
         workflowName.trim(),
-        selectedTags.map((t) => t.id)
+        selectedTags.map((selectedTag) => selectedTag.id)
       );
       setWorkflowName("");
       setSelectedTags([]);
@@ -131,8 +131,8 @@ export function CreateWorkflowNameModal({
     }
   };
 
-  const handleNameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && workflowName.trim()) {
+  const handleNameKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter" && workflowName.trim()) {
       handleCreate();
     }
   };
@@ -155,7 +155,7 @@ export function CreateWorkflowNameModal({
     >
       <div
         className="bg-popover text-popover-foreground w-full max-w-[450px] rounded-2xl shadow-2xl border border-border overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border">
@@ -181,7 +181,7 @@ export function CreateWorkflowNameModal({
               type="text"
               placeholder="e.g., Send invoice to Xero"
               value={workflowName}
-              onChange={(e) => setWorkflowName(e.target.value)}
+              onChange={(event) => setWorkflowName(event.target.value)}
               onKeyDown={handleNameKeyDown}
               autoFocus
               className="w-full px-3 py-2 rounded-lg focus:ring-2 focus:ring-ring focus:border-transparent"
@@ -219,8 +219,8 @@ export function CreateWorkflowNameModal({
                     {tag.name}
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
+                      onClick={(event) => {
+                        event.stopPropagation();
                         handleRemoveTag(tag.id);
                       }}
                       className="hover:opacity-70 rounded-sm p-0.5 transition-opacity"
@@ -236,8 +236,8 @@ export function CreateWorkflowNameModal({
                     type="text"
                     placeholder={selectedTags.length === 0 ? "Select or create tags..." : "Add more..."}
                     value={tagInput}
-                    onChange={(e) => {
-                      setTagInput(e.target.value);
+                    onChange={(event) => {
+                      setTagInput(event.target.value);
                       setIsTagDropdownOpen(true);
                     }}
                     onFocus={() => setIsTagDropdownOpen(true)}
@@ -248,7 +248,7 @@ export function CreateWorkflowNameModal({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setIsTagDropdownOpen((v) => !v)}
+                  onClick={() => setIsTagDropdownOpen((wasOpen) => !wasOpen)}
                   className="shrink-0 p-0.5 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <ChevronDown className={`w-4 h-4 transition-transform ${isTagDropdownOpen ? "rotate-180" : ""}`} />

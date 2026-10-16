@@ -101,42 +101,7 @@ export class SimproController {
     return ApiResponse(res, 200, "Simpro disconnected successfully", data);
   };
 
-  /**
-   * POST /simpro/sync — master sync (all resources in dependency order)
-   *
-   * HTTP semantics (ServiceM8 pattern):
-   *   - 200: success or partial (at least one resource synced)
-   *   - 500: all resources failed
-   */
-  static syncAll = async (req: Request, res: Response) => {
-    try {
-      const userId = await getUserId(req);
-      const result = await SimproService.syncAll(userId);
-
-      const statusCode = result.overall === "failed" ? 500 : 200;
-
-      const message =
-        result.overall === "success"
-          ? "Full sync completed successfully"
-          : result.overall === "partial"
-            ? `Partial sync — failed: ${result.failedEntities.join(", ")}`
-            : "Sync failed for all resources";
-
-      return res.status(statusCode).json({
-        success: result.overall !== "failed",
-        message,
-        data: result,
-      });
-    } catch (error: any) {
-      console.error("[Controller] simPRO syncAll catastrophic error:", error);
-      return res.status(500).json({
-        success: false,
-        message: error.message || "Failed to execute master sync",
-      });
-    }
-  };
-
-  // ─── DB reads (populate via POST /simpro/sync) ─────────────────────────
+  // ─── Live simPRO reads (nothing is stored) ────────────────────────────
 
   static getCustomers = async (req: Request, res: Response) => {
     const userId = await getUserId(req);

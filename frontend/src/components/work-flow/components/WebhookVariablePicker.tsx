@@ -60,22 +60,22 @@ type NormalizedRecord = {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function flattenBody(
-  obj: Record<string, unknown>,
+  body: Record<string, unknown>,
   prefix = "",
   result: VariableField[] = []
 ): VariableField[] {
-  if (!obj || typeof obj !== "object") return result;
-  for (const [k, v] of Object.entries(obj)) {
-    const path = prefix ? `${prefix}.${k}` : k;
+  if (!body || typeof body !== "object") return result;
+  for (const [key, value] of Object.entries(body)) {
+    const path = prefix ? `${prefix}.${key}` : key;
     const readableLabel = path
       .split(".")
-      .map((s) => s.replace(/_/g, " ").replace(/([A-Z])/g, " $1").trim())
-      .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+      .map((labelPart) => labelPart.replace(/_/g, " ").replace(/([A-Z])/g, " $1").trim())
+      .map((labelPart) => labelPart.charAt(0).toUpperCase() + labelPart.slice(1))
       .join(" › ");
-    if (v !== null && typeof v === "object" && !Array.isArray(v)) {
-      flattenBody(v as Record<string, unknown>, path, result);
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      flattenBody(value as Record<string, unknown>, path, result);
     } else {
-      result.push({ id: path, label: readableLabel, description: String(v ?? "") });
+      result.push({ id: path, label: readableLabel, description: String(value ?? "") });
     }
   }
   return result;
@@ -97,14 +97,14 @@ const PREVIEW_PRIORITY_KEYS = [
 function getRecordHeadline(body: Record<string, unknown>): { key: string; value: string } | null {
   for (const priority of PREVIEW_PRIORITY_KEYS) {
     const hit = Object.entries(body).find(
-      ([k, v]) => k.toLowerCase() === priority && v != null && v !== ""
+      ([key, value]) => key.toLowerCase() === priority && value != null && value !== ""
     );
     if (hit) {
       return { key: hit[0], value: String(hit[1]).slice(0, 48) };
     }
   }
   const firstLeaf = Object.entries(body).find(
-    ([, v]) => v != null && v !== "" && typeof v !== "object"
+    ([, value]) => value != null && value !== "" && typeof value !== "object"
   );
   return firstLeaf ? { key: firstLeaf[0], value: String(firstLeaf[1]).slice(0, 48) } : null;
 }
@@ -113,9 +113,9 @@ function getPreviewPairs(
   body: Record<string, unknown>
 ): Array<{ key: string; value: string }> {
   return Object.entries(body)
-    .filter(([, v]) => v != null && v !== "" && typeof v !== "object")
+    .filter(([, value]) => value != null && value !== "" && typeof value !== "object")
     .slice(0, 2)
-    .map(([k, v]) => ({ key: k, value: String(v).slice(0, 36) }));
+    .map(([key, value]) => ({ key: key, value: String(value).slice(0, 36) }));
 }
 
 const PANEL_MIN_H = 420;
@@ -154,19 +154,19 @@ export function WebhookVariablePicker({
   const records: NormalizedRecord[] = React.useMemo(() => {
     if (hasWebhook) {
       const rows: GetWebhookResponse[] = responseData?.data ?? [];
-      return rows.map((r, i) => ({
-        id: r.id,
-        label: `Request ${i + 1}`,
-        body: (parseRequestBodyFromWebhookRow(r) ?? {}) as Record<string, unknown>,
+      return rows.map((row, index) => ({
+        id: row.id,
+        label: `Request ${index + 1}`,
+        body: (parseRequestBodyFromWebhookRow(row) ?? {}) as Record<string, unknown>,
       }));
     }
     if (hasSampleList) {
       return (triggerTestSamples as unknown[])
-        .filter((s) => s && typeof s === "object" && !Array.isArray(s))
-        .map((s, i) => ({
-          id: `sample-${i}`,
-          label: `Record ${i + 1}`,
-          body: s as Record<string, unknown>,
+        .filter((sample) => sample && typeof sample === "object" && !Array.isArray(sample))
+        .map((sample, index) => ({
+          id: `sample-${index}`,
+          label: `Record ${index + 1}`,
+          body: sample as Record<string, unknown>,
         }));
     }
     if (hasSingleSample) {
@@ -205,14 +205,14 @@ export function WebhookVariablePicker({
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  const selectedRecord = records.find((r) => r.id === selectedRequestId);
-  const selectedIndex = records.findIndex((r) => r.id === selectedRequestId);
+  const selectedRecord = records.find((record) => record.id === selectedRequestId);
+  const selectedIndex = records.findIndex((record) => record.id === selectedRequestId);
   const allFields = selectedRecord ? flattenBody(selectedRecord.body) : [];
   const filteredFields = fieldSearch
     ? allFields.filter(
-        (f) =>
-          f.label.toLowerCase().includes(fieldSearch.toLowerCase()) ||
-          f.description.toLowerCase().includes(fieldSearch.toLowerCase())
+        (field) =>
+          field.label.toLowerCase().includes(fieldSearch.toLowerCase()) ||
+          field.description.toLowerCase().includes(fieldSearch.toLowerCase())
       )
     : allFields;
 
@@ -275,9 +275,9 @@ export function WebhookVariablePicker({
               <Lock className="w-2.5 h-2.5 text-primary" />
               <span className="text-[10px] font-semibold text-primary">
                 {(() => {
-                  const i = records.findIndex((r) => r.id === lockedRequestId);
-                  if (i < 0) return "Pinned";
-                  return hasSample ? `Record ${i + 1} pinned` : `Req ${i + 1} pinned`;
+                  const pinnedIndex = records.findIndex((record) => record.id === lockedRequestId);
+                  if (pinnedIndex < 0) return "Pinned";
+                  return hasSample ? `Record ${pinnedIndex + 1} pinned` : `Req ${pinnedIndex + 1} pinned`;
                 })()}
               </span>
               <button
@@ -374,17 +374,17 @@ export function WebhookVariablePicker({
                 </div>
 
                 <div className="overflow-y-auto no-scrollbar" style={{ maxHeight: `${PANEL_MIN_H - 40}px` }}>
-                  {records.map((rec, idx) => {
-                    const headline = getRecordHeadline(rec.body);
-                    const pairs = getPreviewPairs(rec.body);
-                    const fieldCount = Object.keys(rec.body).length;
-                    const isLocked = lockedRequestId === rec.id;
+                  {records.map((record, index) => {
+                    const headline = getRecordHeadline(record.body);
+                    const pairs = getPreviewPairs(record.body);
+                    const fieldCount = Object.keys(record.body).length;
+                    const isLocked = lockedRequestId === record.id;
                     return (
                       <button
-                        key={rec.id}
+                        key={record.id}
                         onClick={() => {
-                          setSelectedRequestId(rec.id);
-                          setLockedRequestId(rec.id);
+                          setSelectedRequestId(record.id);
+                          setLockedRequestId(record.id);
                           setFieldSearch("");
                         }}
                         className={cn(
@@ -401,12 +401,12 @@ export function WebhookVariablePicker({
                               ? "bg-primary text-primary-foreground"
                               : "bg-primary/15 text-primary"
                           )}>
-                            {isLocked ? <Lock className="w-3.5 h-3.5" /> : idx + 1}
+                            {isLocked ? <Lock className="w-3.5 h-3.5" /> : index + 1}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-[13px] font-semibold text-foreground truncate">
-                                {rec.label}
+                                {record.label}
                               </span>
                               <span className="text-[10px] font-medium text-muted-foreground shrink-0">
                                 {fieldCount} field{fieldCount !== 1 ? "s" : ""}
@@ -466,7 +466,7 @@ export function WebhookVariablePicker({
                 <Input
                   placeholder="Search fields…"
                   value={fieldSearch}
-                  onChange={(e) => setFieldSearch(e.target.value)}
+                  onChange={(event) => setFieldSearch(event.target.value)}
                   className="pl-8 h-8 bg-muted/50 border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:bg-background text-[13px]"
                   autoFocus={!!selectedRequestId}
                 />

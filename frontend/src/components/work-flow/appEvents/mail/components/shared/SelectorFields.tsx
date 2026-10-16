@@ -129,8 +129,8 @@ export function AccountSection({
         <div className="flex items-center gap-2">
           {isConnected && <CheckCircle2 className="w-4 h-4 text-success" />}
           <button
-            onClick={(e) => {
-              e.stopPropagation();
+            onClick={(event) => {
+              event.stopPropagation();
               onChange();
             }}
             className="nm-btn flex h-7 items-center rounded-lg px-2.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-all"

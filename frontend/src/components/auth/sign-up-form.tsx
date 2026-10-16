@@ -1,7 +1,8 @@
 "use client";
 
 import { cn } from "@/src/lib/utils";
-import { createClient } from "@/src/lib/supabase/client";
+import axios from "axios";
+import { API_ROUTES } from "@/src/constants/api.constants";
 import { Button } from "@/src/components/ui/button";
 import {
   Card,
@@ -16,10 +17,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+const MIN_PASSWORD_LENGTH = 8;
+
+function readErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) return error.response?.data?.message ?? error.message;
+  return error instanceof Error ? error.message : "An error occurred";
+}
+
 export function SignUpForm({
   className,
   ...props
 }: React.ComponentPropsWithoutRef<"div">) {
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");
@@ -27,30 +36,29 @@ export function SignUpForm({
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const supabase = createClient();
-    setIsLoading(true);
+  const handleSignUp = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError(null);
 
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+      return;
+    }
     if (password !== repeatPassword) {
       setError("Passwords do not match");
-      setIsLoading(false);
       return;
     }
 
+    setIsLoading(true);
     try {
-      const { error } = await supabase.auth.signUp({
-        email,
+      await axios.post(API_ROUTES.AUTH.REGISTER, {
+        email: email.trim().toLowerCase(),
         password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-        },
+        full_name: fullName.trim(),
       });
-      if (error) throw error;
       router.push("/sign-up-success");
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "An error occurred");
+      setError(readErrorMessage(error));
     } finally {
       setIsLoading(false);
     }
@@ -67,6 +75,17 @@ export function SignUpForm({
           <form onSubmit={handleSignUp}>
             <div className="flex flex-col gap-6">
               <div className="grid gap-2">
+                <Label htmlFor="full-name">Full name</Label>
+                <Input
+                  id="full-name"
+                  type="text"
+                  placeholder="Jane Doe"
+                  required
+                  value={fullName}
+                  onChange={(event) => setFullName(event.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
@@ -74,7 +93,7 @@ export function SignUpForm({
                   placeholder="m@example.com"
                   required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(event) => setEmail(event.target.value)}
                 />
               </div>
               <div className="grid gap-2">
@@ -86,7 +105,7 @@ export function SignUpForm({
                   type="password"
                   required
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(event) => setPassword(event.target.value)}
                 />
               </div>
               <div className="grid gap-2">
@@ -98,7 +117,7 @@ export function SignUpForm({
                   type="password"
                   required
                   value={repeatPassword}
-                  onChange={(e) => setRepeatPassword(e.target.value)}
+                  onChange={(event) => setRepeatPassword(event.target.value)}
                 />
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}

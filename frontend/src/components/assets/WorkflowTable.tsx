@@ -48,22 +48,22 @@ export function WorkflowTable(props: WorkflowTableProps) {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  const sorted = [...workflows].sort((a, b) => {
-    const dir = sortDir === "asc" ? 1 : -1;
+  const sorted = [...workflows].sort((firstWorkflow, secondWorkflow) => {
+    const sortMultiplier = sortDir === "asc" ? 1 : -1;
     if (sortKey === "name") {
-      return a.name.localeCompare(b.name) * dir;
+      return firstWorkflow.name.localeCompare(secondWorkflow.name) * sortMultiplier;
     }
     if (sortKey === "status") {
-      return (a.status || "").localeCompare(b.status || "") * dir;
+      return (firstWorkflow.status || "").localeCompare(secondWorkflow.status || "") * sortMultiplier;
     }
-    const av = a.updated_at ?? a.created_at ?? "";
-    const bv = b.updated_at ?? b.created_at ?? "";
-    return av.localeCompare(bv) * dir;
+    const firstTimestamp = firstWorkflow.updated_at ?? firstWorkflow.created_at ?? "";
+    const secondTimestamp = secondWorkflow.updated_at ?? secondWorkflow.created_at ?? "";
+    return firstTimestamp.localeCompare(secondTimestamp) * sortMultiplier;
   });
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      setSortDir((direction) => (direction === "asc" ? "desc" : "asc"));
     } else {
       setSortKey(key);
       setSortDir(key === "name" ? "asc" : "desc");
@@ -114,16 +114,16 @@ export function WorkflowTable(props: WorkflowTableProps) {
       </div>
 
       <div className="divide-y divide-border/60">
-        {sorted.map((wf) => (
+        {sorted.map((workflow) => (
           <WorkflowRow
-            key={wf.id}
-            workflow={wf}
+            key={workflow.id}
+            workflow={workflow}
             folders={props.folders}
-            isConfirmingDelete={confirmDeleteId === wf.id}
-            onAskDelete={() => setConfirmDeleteId(wf.id)}
+            isConfirmingDelete={confirmDeleteId === workflow.id}
+            onAskDelete={() => setConfirmDeleteId(workflow.id)}
             onCancelDelete={() => setConfirmDeleteId(null)}
             onConfirmDelete={() => {
-              props.onDelete(wf.id);
+              props.onDelete(workflow.id);
               setConfirmDeleteId(null);
             }}
             onRename={props.onRename}
@@ -206,7 +206,7 @@ function WorkflowRow({
     setIsEditing(false);
   };
 
-  const folder = folders.find((f) => f.id === workflow.folder_id);
+  const folder = folders.find((candidateFolder) => candidateFolder.id === workflow.folder_id);
   const updatedDate = workflow.updated_at ?? workflow.created_at;
   const isActive = workflow.status === "active";
 
@@ -267,10 +267,10 @@ function WorkflowRow({
             <Input
               ref={inputRef}
               value={draftName}
-              onChange={(e) => setDraftName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commitEdit();
-                if (e.key === "Escape") cancelEdit();
+              onChange={(event) => setDraftName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") commitEdit();
+                if (event.key === "Escape") cancelEdit();
               }}
               className="h-7 text-sm"
             />
@@ -292,8 +292,8 @@ function WorkflowRow({
         ) : (
           <button
             onClick={() => onOpen(workflow.id)}
-            onDoubleClick={(e) => {
-              e.stopPropagation();
+            onDoubleClick={(event) => {
+              event.stopPropagation();
               startEditing();
             }}
             className="flex-1 truncate text-left text-sm font-medium text-foreground hover:text-primary"
@@ -332,7 +332,7 @@ function WorkflowRow({
       <div className="flex items-center">
         <Switch
           checked={isActive}
-          onCheckedChange={(v) => onToggleStatus(workflow.id, v ? "active" : "paused")}
+          onCheckedChange={(isChecked) => onToggleStatus(workflow.id, isChecked ? "active" : "paused")}
         />
       </div>
 
@@ -373,13 +373,13 @@ function WorkflowRow({
             {folders.length > 0 && (
               <>
                 <DropdownMenuSeparator />
-                {folders.map((f) => (
+                {folders.map((folder) => (
                   <DropdownMenuItem
-                    key={f.id}
-                    onClick={() => onMoveTo(workflow.id, f.id)}
-                    disabled={f.id === workflow.folder_id}
+                    key={folder.id}
+                    onClick={() => onMoveTo(workflow.id, folder.id)}
+                    disabled={folder.id === workflow.folder_id}
                   >
-                    Move to {f.name}
+                    Move to {folder.name}
                   </DropdownMenuItem>
                 ))}
               </>

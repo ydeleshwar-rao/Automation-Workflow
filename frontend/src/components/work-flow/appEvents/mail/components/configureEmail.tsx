@@ -26,12 +26,12 @@ const variableRegex = /\{\{.*?\}\}/;
 function resolveFormValues(values: Partial<MailFormData>): Partial<MailFormData> {
   const resolved: Partial<MailFormData> = {};
   for (const key in values) {
-    const k = key as keyof MailFormData;
-    const val = values[k];
+    const formKey = key as keyof MailFormData;
+    const value = values[formKey];
     // Don't resolve {{map:...}} tokens — they match variableRegex as-is, so
     // emailOrVariable fields accept them regardless of the sample value.
     // Only trim leading/trailing whitespace from plain static text.
-    resolved[k] = typeof val === "string" ? val.trim() : (val as any);
+    resolved[formKey] = typeof value === "string" ? value.trim() : (value as any);
   }
   return resolved;
 }
@@ -41,14 +41,14 @@ function resolveFormValues(values: Partial<MailFormData>): Partial<MailFormData>
 const emailOrVariable = z
   .string()
   .min(1, "Required")
-  .refine((val) => variableRegex.test(val) || emailRegex.test(val), {
+  .refine((value) => variableRegex.test(value) || emailRegex.test(value), {
     message: "Invalid email address or variable",
   });
 
 const optionalEmailOrVariable = z
   .string()
   .optional()
-  .refine((val) => !val || variableRegex.test(val) || emailRegex.test(val), {
+  .refine((value) => !value || variableRegex.test(value) || emailRegex.test(value), {
     message: "Invalid email address or variable",
   });
 
@@ -142,8 +142,8 @@ function resolveTemplateVars(html: string, payload: Record<string, unknown>): st
 
     const normalizedKey = keyPart.toLowerCase().replace(/[^a-z0-9]/g, "_");
 
-    const found = Object.entries(payload).find(([k]) => {
-      const nk = k.toLowerCase().replace(/[^a-z0-9]/g, "_");
+    const found = Object.entries(payload).find(([key]) => {
+      const nk = key.toLowerCase().replace(/[^a-z0-9]/g, "_");
       return (
         nk === normalizedKey ||
         nk.endsWith("__" + normalizedKey) ||
@@ -196,7 +196,7 @@ export function MailConfigureStep({
   const serializedValues = JSON.stringify(formValues);
 
   const fieldKeys = useMemo(
-    () => MAIL_CONFIGURE_FIELD_KEYS.map((k) => String(k)),
+    () => MAIL_CONFIGURE_FIELD_KEYS.map((key) => String(key)),
     []
   );
 
@@ -207,9 +207,9 @@ export function MailConfigureStep({
   }, [triggerTestPayload]);
 
   const cleanedFlat = Object.fromEntries(
-    Object.entries(webhookFlat).map(([k, v]) => [
-      k.replace(/^[\w-]+?__/, ""),
-      v,
+    Object.entries(webhookFlat).map(([key, value]) => [
+      key.replace(/^[\w-]+?__/, ""),
+      value,
     ]),
   );
 
@@ -236,10 +236,10 @@ export function MailConfigureStep({
       let suggested: unknown;
       if (key === "to") {
         suggested = undefined;
-        for (const pk of MAIL_TO_PAYLOAD_KEYS) {
-          const v = cleanedFlat[pk];
-          if (v !== undefined && v !== null && String(v).trim() !== "") {
-            suggested = v;
+        for (const payloadKey of MAIL_TO_PAYLOAD_KEYS) {
+          const payloadValue = cleanedFlat[payloadKey];
+          if (payloadValue !== undefined && payloadValue !== null && String(payloadValue).trim() !== "") {
+            suggested = payloadValue;
             break;
           }
         }
@@ -293,8 +293,8 @@ export function MailConfigureStep({
   const [showPreview, setShowPreview] = useState(false);
 
   const handlePlusClick = useCallback(
-    (e: React.MouseEvent, fieldName: keyof MailFormData) => {
-      const rect = (e.target as HTMLElement).getBoundingClientRect();
+    (event: React.MouseEvent, fieldName: keyof MailFormData) => {
+      const rect = (event.target as HTMLElement).getBoundingClientRect();
       setPopupState({
         isOpen: true,
         fieldName,
@@ -325,7 +325,7 @@ export function MailConfigureStep({
   const fieldLabel = popupState.fieldName
     ? popupState.fieldName
         .replace(/([A-Z])/g, " $1")
-        .replace(/^./, (s) => s.toUpperCase())
+        .replace(/^./, (letter) => letter.toUpperCase())
     : "";
 
   return (
@@ -333,31 +333,31 @@ export function MailConfigureStep({
       <form className="space-y-6">
           <Controller name="fromName" control={control} render={({ field }) => (
             <ConfigField label="From Name" required value={field.value || ""} onChange={field.onChange}
-              onPlusClick={(e) => handlePlusClick(e, "fromName")} error={errors.fromName?.message} />
+              onPlusClick={(event) => handlePlusClick(event, "fromName")} error={errors.fromName?.message} />
           )} />
           <Controller name="fromEmail" control={control} render={({ field }) => (
             <ConfigField label="From Email" required value={field.value || ""} onChange={field.onChange}
-              onPlusClick={(e) => handlePlusClick(e, "fromEmail")} error={errors.fromEmail?.message} />
+              onPlusClick={(event) => handlePlusClick(event, "fromEmail")} error={errors.fromEmail?.message} />
           )} />
           <Controller name="replyTo" control={control} render={({ field }) => (
             <ConfigField label="Reply To" value={field.value || ""} onChange={field.onChange}
-              onPlusClick={(e) => handlePlusClick(e, "replyTo")} error={errors.replyTo?.message} />
+              onPlusClick={(event) => handlePlusClick(event, "replyTo")} error={errors.replyTo?.message} />
           )} />
           <Controller name="to" control={control} render={({ field }) => (
             <ConfigField label="To" required value={field.value || ""} onChange={field.onChange}
-              onPlusClick={(e) => handlePlusClick(e, "to")} error={errors.to?.message} />
+              onPlusClick={(event) => handlePlusClick(event, "to")} error={errors.to?.message} />
           )} />
           <Controller name="cc" control={control} render={({ field }) => (
             <ConfigField label="Cc" value={field.value || ""} onChange={field.onChange}
-              onPlusClick={(e) => handlePlusClick(e, "cc")} error={errors.cc?.message} />
+              onPlusClick={(event) => handlePlusClick(event, "cc")} error={errors.cc?.message} />
           )} />
           <Controller name="bcc" control={control} render={({ field }) => (
             <ConfigField label="Bcc" value={field.value || ""} onChange={field.onChange}
-              onPlusClick={(e) => handlePlusClick(e, "bcc")} error={errors.bcc?.message} />
+              onPlusClick={(event) => handlePlusClick(event, "bcc")} error={errors.bcc?.message} />
           )} />
           <Controller name="subject" control={control} render={({ field }) => (
             <ConfigField label="Subject" required value={field.value || ""} onChange={field.onChange}
-              onPlusClick={(e) => handlePlusClick(e, "subject")} error={errors.subject?.message} />
+              onPlusClick={(event) => handlePlusClick(event, "subject")} error={errors.subject?.message} />
           )} />
           <Controller
             name="body"
@@ -368,7 +368,7 @@ export function MailConfigureStep({
                 required
                 value={field.value || ""}
                 onChange={field.onChange}
-                onPlusClick={(e) => handlePlusClick(e, "body")}
+                onPlusClick={(event) => handlePlusClick(event, "body")}
                 error={errors.body?.message}
               />
             )}
@@ -398,7 +398,7 @@ export function MailConfigureStep({
                       </div>
                     <button
                       type="button"
-                      onClick={(e) => handlePlusClick(e, "htmlBody")}
+                      onClick={(event) => handlePlusClick(event, "htmlBody")}
                       className="nm-btn flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground hover:text-primary transition-all"
                       aria-label="Insert variable"
                     >
@@ -416,7 +416,7 @@ export function MailConfigureStep({
           />
           <Controller name="attachment" control={control} render={({ field }) => (
             <ConfigField label="Attachment" value={field.value || ""} onChange={field.onChange}
-              onPlusClick={(e) => handlePlusClick(e, "attachment")} error={errors.attachment?.message} />
+              onPlusClick={(event) => handlePlusClick(event, "attachment")} error={errors.attachment?.message} />
           )} />
       </form>
 
@@ -467,7 +467,7 @@ export function MailConfigureStep({
             aria-modal="true"
             aria-labelledby="email-preview-title"
             className="z-[1000] flex h-[80vh] w-[800px] max-w-[90vw] flex-col nm-card rounded-2xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
           >
             <header className="flex shrink-0 items-center justify-between border-b border-black/8 dark:border-white/5 px-5 py-3.5">
               <h2 id="email-preview-title" className="text-sm font-bold text-foreground">

@@ -76,18 +76,18 @@ export class ServiceM8PollingAdapter implements PollingAdapter {
     if (!Array.isArray(records)) return [];
 
     const filtered = records
-      .filter((r) => r.uuid && r.edit_date)
-      .sort((a, b) => a.edit_date.localeCompare(b.edit_date));
+      .filter((record) => record.uuid && record.edit_date)
+      .sort((firstRecord, secondRecord) => firstRecord.edit_date.localeCompare(secondRecord.edit_date));
 
     const JOB_EVENTS = ["new_job", "job_completed", "job_queued", "job_quote_sent", "job_quote_accepted"];
     const enriched =
       JOB_EVENTS.includes(eventKey)
         ? await Promise.all(
-            filtered.map((r) => this.enrichWithContacts(r, headers))
+            filtered.map((record) => this.enrichWithContacts(record, headers))
           )
         : eventKey === "new_client"
         ? await Promise.all(
-            filtered.map((r) => this.enrichCompanyWithContact(r, headers))
+            filtered.map((record) => this.enrichCompanyWithContact(record, headers))
           )
         : filtered;
 
@@ -150,18 +150,18 @@ export class ServiceM8PollingAdapter implements PollingAdapter {
     }
 
     const samples = records
-      .sort((a, b) => (b.edit_date || "").localeCompare(a.edit_date || ""))
+      .sort((firstRecord, secondRecord) => (secondRecord.edit_date || "").localeCompare(firstRecord.edit_date || ""))
       .slice(0, limit);
 
     const JOB_EVENTS = ["new_job", "job_completed", "job_queued", "job_quote_sent", "job_quote_accepted"];
     const enriched =
       JOB_EVENTS.includes(eventKey)
         ? await Promise.all(
-            samples.map((r) => this.enrichWithContacts(r, headers))
+            samples.map((record) => this.enrichWithContacts(record, headers))
           )
         : eventKey === "new_client"
         ? await Promise.all(
-            samples.map((r) => this.enrichCompanyWithContact(r, headers))
+            samples.map((record) => this.enrichCompanyWithContact(record, headers))
           )
         : samples;
 

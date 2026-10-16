@@ -37,47 +37,47 @@ export function WorkflowCanvasView({
   const [isPanning, setIsPanning] = React.useState(false);
   const panStateRef = React.useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
 
-  const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+  const clampZoom = (zoomLevel: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoomLevel));
 
   const resetView = React.useCallback(() => {
     setZoom(1);
     setOffset({ x: 0, y: 0 });
   }, []);
 
-  const zoomIn = () => setZoom((z) => clampZoom(parseFloat((z + ZOOM_STEP).toFixed(2))));
-  const zoomOut = () => setZoom((z) => clampZoom(parseFloat((z - ZOOM_STEP).toFixed(2))));
+  const zoomIn = () => setZoom((currentZoom) => clampZoom(parseFloat((currentZoom + ZOOM_STEP).toFixed(2))));
+  const zoomOut = () => setZoom((currentZoom) => clampZoom(parseFloat((currentZoom - ZOOM_STEP).toFixed(2))));
 
   // Wheel: ctrl/meta = zoom around cursor, otherwise vertical pan
-  const handleWheel = (e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
+  const handleWheel = (event: React.WheelEvent) => {
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
       const viewport = viewportRef.current;
       if (!viewport) return;
       const rect = viewport.getBoundingClientRect();
-      const cx = e.clientX - rect.left - rect.width / 2;
-      const cy = e.clientY - rect.top - rect.height / 2;
-      const delta = -e.deltaY * 0.0015;
+      const cursorX = event.clientX - rect.left - rect.width / 2;
+      const cursorY = event.clientY - rect.top - rect.height / 2;
+      const delta = -event.deltaY * 0.0015;
       const next = clampZoom(parseFloat((zoom * (1 + delta)).toFixed(3)));
       const ratio = next / zoom;
-      setOffset((o) => ({
-        x: cx - (cx - o.x) * ratio,
-        y: cy - (cy - o.y) * ratio,
+      setOffset((currentOffset) => ({
+        x: cursorX - (cursorX - currentOffset.x) * ratio,
+        y: cursorY - (cursorY - currentOffset.y) * ratio,
       }));
       setZoom(next);
     } else {
-      setOffset((o) => ({ x: o.x - e.deltaX, y: o.y - e.deltaY }));
+      setOffset((currentOffset) => ({ x: currentOffset.x - event.deltaX, y: currentOffset.y - event.deltaY }));
     }
   };
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handleMouseDown = (event: React.MouseEvent) => {
     // Only pan when starting drag from blank canvas (not a node)
-    if ((e.target as HTMLElement).closest("[data-node-card]")) return;
-    if (e.button !== 0 && e.button !== 1) return;
-    e.preventDefault();
+    if ((event.target as HTMLElement).closest("[data-node-card]")) return;
+    if (event.button !== 0 && event.button !== 1) return;
+    event.preventDefault();
     setIsPanning(true);
     panStateRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
+      startX: event.clientX,
+      startY: event.clientY,
       originX: offset.x,
       originY: offset.y,
     };
@@ -85,12 +85,12 @@ export function WorkflowCanvasView({
 
   React.useEffect(() => {
     if (!isPanning) return;
-    const onMove = (e: MouseEvent) => {
-      const s = panStateRef.current;
-      if (!s) return;
+    const onMove = (event: MouseEvent) => {
+      const panState = panStateRef.current;
+      if (!panState) return;
       setOffset({
-        x: s.originX + (e.clientX - s.startX),
-        y: s.originY + (e.clientY - s.startY),
+        x: panState.originX + (event.clientX - panState.startX),
+        y: panState.originY + (event.clientY - panState.startY),
       });
     };
     const onUp = () => {
@@ -134,7 +134,7 @@ export function WorkflowCanvasView({
         }}
       >
         <div className="flex flex-col items-center w-full max-w-2xl py-12">
-          {nodes.map((node, idx) => (
+          {nodes.map((node, index) => (
             <React.Fragment key={node.id}>
               <div data-node-card>
                 {node.type === "trigger" ? (
@@ -156,7 +156,7 @@ export function WorkflowCanvasView({
                 )}
               </div>
               <div data-node-card>
-                <Connector onClick={() => onAddAction(idx + 1)} />
+                <Connector onClick={() => onAddAction(index + 1)} />
               </div>
             </React.Fragment>
           ))}

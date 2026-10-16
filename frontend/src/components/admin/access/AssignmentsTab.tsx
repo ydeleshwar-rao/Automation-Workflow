@@ -9,7 +9,7 @@
  * Architecture:
  *   - Removed client-assignment logic entirely (no "clients" concept)
  *   - Uses new accessApi: listDevelopers, createDeveloper, deleteDeveloper
- *   - Developer is created in Supabase Auth + profile via backend
+ *   - Developer account + profile are created by the backend
  */
 
 import { useMemo, useState }    from "react";
@@ -30,17 +30,17 @@ import {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function displayName(u: DeveloperRecord): string {
-  return u.full_name?.trim() || u.email;
+function displayName(developer: DeveloperRecord): string {
+  return developer.full_name?.trim() || developer.email;
 }
 
-function initials(u: DeveloperRecord): string {
-  const name = u.full_name?.trim() ?? "";
+function initials(developer: DeveloperRecord): string {
+  const name = developer.full_name?.trim() ?? "";
   if (name) {
     const parts = name.split(" ");
     return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase();
   }
-  return (u.email[0] ?? "?").toUpperCase();
+  return (developer.email[0] ?? "?").toUpperCase();
 }
 
 // ── Create Developer Modal ────────────────────────────────────────────────────
@@ -122,7 +122,7 @@ function CreateDeveloperModal({ isOpen, onClose }: CreateModalProps) {
               type="email"
               placeholder="developer@company.com"
               value={form.email}
-              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+              onChange={(event) => setForm((currentForm) => ({ ...currentForm, email: event.target.value }))}
             />
           </div>
           <div className="space-y-2">
@@ -130,7 +130,7 @@ function CreateDeveloperModal({ isOpen, onClose }: CreateModalProps) {
             <Input
               placeholder="Jane Smith"
               value={form.full_name}
-              onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+              onChange={(event) => setForm((currentForm) => ({ ...currentForm, full_name: event.target.value }))}
             />
           </div>
           <div className="space-y-2">
@@ -144,7 +144,7 @@ function CreateDeveloperModal({ isOpen, onClose }: CreateModalProps) {
               type="password"
               placeholder="••••••••"
               value={form.password}
-              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+              onChange={(event) => setForm((currentForm) => ({ ...currentForm, password: event.target.value }))}
             />
           </div>
           <div className="flex justify-end gap-2 pt-2">
@@ -241,10 +241,10 @@ export function AssignmentsTab() {
   const developers = useMemo(() => devsResp?.data ?? [], [devsResp]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return developers;
-    return developers.filter((d) =>
-      `${displayName(d)} ${d.email}`.toLowerCase().includes(q)
+    const query = search.trim().toLowerCase();
+    if (!query) return developers;
+    return developers.filter((developer) =>
+      `${displayName(developer)} ${developer.email}`.toLowerCase().includes(query)
     );
   }, [developers, search]);
 
@@ -272,7 +272,7 @@ export function AssignmentsTab() {
                 type="search"
                 placeholder="Search developers…"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(event) => setSearch(event.target.value)}
                 className="pl-9"
               />
             </div>

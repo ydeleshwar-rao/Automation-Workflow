@@ -45,11 +45,11 @@ export function GlobalLoader({
 
         {/* Progress Dots */}
         <div className="flex gap-2 pt-2">
-          {[0, 1, 2].map((i) => (
+          {[0, 1, 2].map((dotIndex) => (
             <div 
-              key={i} 
+              key={dotIndex} 
               className="w-2.5 h-2.5 bg-primary/20 rounded-full animate-pulse"
-              style={{ animationDelay: `${i * 200}ms` }}
+              style={{ animationDelay: `${dotIndex * 200}ms` }}
             />
           ))}
         </div>

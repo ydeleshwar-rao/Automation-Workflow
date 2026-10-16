@@ -107,8 +107,8 @@ export function DashboardSidebar() {
   const pathname           = usePathname();
   const { isOpen, toggle } = useSidebar();
 
-  const accessUser         = useAppSelector((s: RootState) => s.access.user);
-  const accessStatus       = useAppSelector((s: RootState) => s.access.status);
+  const accessUser         = useAppSelector((state: RootState) => state.access.user);
+  const accessStatus       = useAppSelector((state: RootState) => state.access.status);
   const appStatusLoading   = useAppSelector(selectAppStatusLoading);
   const appStatusLoaded    = useAppSelector(selectAppStatusLoaded);
 

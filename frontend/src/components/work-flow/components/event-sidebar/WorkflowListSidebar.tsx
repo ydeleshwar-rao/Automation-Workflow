@@ -92,9 +92,9 @@ export function WorkflowListSidebar({
   // Close dropdown on outside click
   useEffect(() => {
     if (!menuOpenId) return;
-    const handler = (e: MouseEvent) => {
-      if (menuDropdownRef.current?.contains(e.target as Node)) return;
-      if (menuTriggerRef.current?.contains(e.target as Node)) return;
+    const handler = (event: MouseEvent) => {
+      if (menuDropdownRef.current?.contains(event.target as Node)) return;
+      if (menuTriggerRef.current?.contains(event.target as Node)) return;
       setMenuOpenId(null);
       setMenuPos(null);
     };
@@ -113,15 +113,15 @@ export function WorkflowListSidebar({
     return () => window.removeEventListener("scroll", handler, true);
   }, [menuOpenId]);
 
-  const openMenu = (e: React.MouseEvent<HTMLButtonElement>, wfId: string) => {
-    e.stopPropagation();
+  const openMenu = (event: React.MouseEvent<HTMLButtonElement>, wfId: string) => {
+    event.stopPropagation();
     if (menuOpenId === wfId) {
       setMenuOpenId(null);
       setMenuPos(null);
       menuTriggerRef.current = null;
       return;
     }
-    const btn = e.currentTarget;
+    const btn = event.currentTarget;
     const aside = asideRef.current;
     if (aside) {
       const btnRect = btn.getBoundingClientRect();
@@ -143,10 +143,10 @@ export function WorkflowListSidebar({
     menuTriggerRef.current = null;
   };
 
-  const startEditing = (e: React.MouseEvent, wf: Workflow) => {
-    e.stopPropagation();
-    setEditingId(wf.id);
-    setEditValue(wf.name);
+  const startEditing = (event: React.MouseEvent, workflow: Workflow) => {
+    event.stopPropagation();
+    setEditingId(workflow.id);
+    setEditValue(workflow.name);
   };
 
   const commitRename = () => {
@@ -164,13 +164,13 @@ export function WorkflowListSidebar({
     setEditValue("");
   };
 
-  const handleRenameKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") { e.preventDefault(); commitRename(); }
-    if (e.key === "Escape") { e.preventDefault(); cancelRename(); }
+  const handleRenameKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "Enter") { event.preventDefault(); commitRename(); }
+    if (event.key === "Escape") { event.preventDefault(); cancelRename(); }
   };
 
-  const handleConfirmDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleConfirmDelete = (event: React.MouseEvent) => {
+    event.stopPropagation();
     if (!confirmDeleteId) return;
     onDelete(confirmDeleteId);
     setConfirmDeleteId(null);
@@ -186,7 +186,7 @@ export function WorkflowListSidebar({
 
   const toggleFilterTag = (tagId: string) => {
     setSelectedFilterTags((prev) =>
-      prev.includes(tagId) ? prev.filter((t) => t !== tagId) : [...prev, tagId]
+      prev.includes(tagId) ? prev.filter((selectedTagId) => selectedTagId !== tagId) : [...prev, tagId]
     );
   };
 
@@ -197,8 +197,8 @@ export function WorkflowListSidebar({
 
   const filteredWorkflows = useMemo(() => workflows, [workflows]);
 
-  const confirmWorkflow = workflows.find((w) => w.id === confirmDeleteId);
-  const activeMenuWorkflow = workflows.find((w) => w.id === menuOpenId);
+  const confirmWorkflow = workflows.find((workflow) => workflow.id === confirmDeleteId);
+  const activeMenuWorkflow = workflows.find((workflow) => workflow.id === menuOpenId);
 
   return (
     <>
@@ -273,7 +273,7 @@ export function WorkflowListSidebar({
               </span>
               {tags.length > 0 && (
                 <button
-                  onClick={() => setIsFilterOpen((v) => !v)}
+                  onClick={() => setIsFilterOpen((wasOpen) => !wasOpen)}
                   className={cn(
                     "flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium transition-colors",
                     selectedFilterTags.length > 0
@@ -334,7 +334,7 @@ export function WorkflowListSidebar({
             {selectedFilterTags.length > 0 && !isFilterOpen && (
               <div className="mt-1.5 flex flex-wrap gap-1">
                 {selectedFilterTags.map((tagId) => {
-                  const tag = tags.find((t) => t.id === tagId);
+                  const tag = tags.find((candidateTag) => candidateTag.id === tagId);
                   if (!tag) return null;
                   return (
                     <span
@@ -360,24 +360,24 @@ export function WorkflowListSidebar({
 
         {/* ── Workflow list ── */}
         <div className="flex-1 overflow-y-auto px-2 pb-4 flex flex-col gap-1">
-          {filteredWorkflows.map((wf) => (
-            <div key={wf.id} className="relative group/row">
+          {filteredWorkflows.map((workflow) => (
+            <div key={workflow.id} className="relative group/row">
               <div
                 role="button"
                 tabIndex={0}
-                onClick={() => { if (editingId !== wf.id) onSelect(wf.id); }}
-                onKeyDown={(e) => {
-                  if (editingId === wf.id) return;
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onSelect(wf.id);
+                onClick={() => { if (editingId !== workflow.id) onSelect(workflow.id); }}
+                onKeyDown={(event) => {
+                  if (editingId === workflow.id) return;
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelect(workflow.id);
                   }
                 }}
-                title={!isOpen ? wf.name : undefined}
+                title={!isOpen ? workflow.name : undefined}
                 className={cn(
                   "group/btn flex w-full items-center gap-2.5 rounded-xl text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
                   isOpen ? "p-2.5" : "p-1.5 justify-center",
-                  wf.id === currentWorkflowId
+                  workflow.id === currentWorkflowId
                     ? "nm-inset text-primary"
                     : "nm-btn text-muted-foreground hover:text-foreground"
                 )}
@@ -385,20 +385,20 @@ export function WorkflowListSidebar({
                 {/* Icon with status dot */}
                 <div className={cn(
                   "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
-                  wf.id === currentWorkflowId
+                  workflow.id === currentWorkflowId
                     ? "bg-primary/15"
                     : "bg-muted group-hover/btn:bg-primary/10"
                 )}>
                   <Zap className={cn(
                     "h-4 w-4 transition-colors",
-                    wf.id === currentWorkflowId
+                    workflow.id === currentWorkflowId
                       ? "text-primary"
                       : "text-muted-foreground group-hover/btn:text-primary"
                   )} />
                   <span
                     className={cn(
                       "absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-background",
-                      wf.status === "active" ? "bg-primary" : "bg-muted-foreground"
+                      workflow.status === "active" ? "bg-primary" : "bg-muted-foreground"
                     )}
                   />
                 </div>
@@ -407,16 +407,16 @@ export function WorkflowListSidebar({
                 {isOpen && (
                   <>
                     <div className="min-w-0 flex-1">
-                      {editingId === wf.id ? (
+                      {editingId === workflow.id ? (
                         /* ── Inline rename input ── */
                         <div
                           className="flex items-center gap-1"
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={(event) => event.stopPropagation()}
                         >
                           <input
                             ref={editInputRef}
                             value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
+                            onChange={(event) => setEditValue(event.target.value)}
                             onKeyDown={handleRenameKeyDown}
                             onBlur={commitRename}
                             className={cn(
@@ -428,14 +428,14 @@ export function WorkflowListSidebar({
                             placeholder="Workflow name"
                           />
                           <button
-                            onMouseDown={(e) => { e.preventDefault(); commitRename(); }}
+                            onMouseDown={(event) => { event.preventDefault(); commitRename(); }}
                             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
                             title="Save"
                           >
                             <Check className="h-3.5 w-3.5" />
                           </button>
                           <button
-                            onMouseDown={(e) => { e.preventDefault(); cancelRename(); }}
+                            onMouseDown={(event) => { event.preventDefault(); cancelRename(); }}
                             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:bg-muted transition-colors text-muted-foreground"
                             title="Cancel"
                           >
@@ -447,35 +447,35 @@ export function WorkflowListSidebar({
                         <>
                           <div
                             className="truncate text-sm font-medium text-foreground"
-                            onDoubleClick={(e) => startEditing(e, wf)}
-                            title={wf.name}
+                            onDoubleClick={(event) => startEditing(event, workflow)}
+                            title={workflow.name}
                           >
-                            {wf.name}
+                            {workflow.name}
                           </div>
                           <span
                             className={cn(
                               "text-[10px] font-semibold",
-                              wf.status === "active" ? "text-primary" : "text-muted-foreground"
+                              workflow.status === "active" ? "text-primary" : "text-muted-foreground"
                             )}
                           >
-                            {wf.status === "active" ? "Active" : "Paused"}
+                            {workflow.status === "active" ? "Active" : "Paused"}
                           </span>
                         </>
                       )}
                     </div>
 
                     {/* 3-dot menu button — hidden while editing */}
-                    {editingId !== wf.id && (
+                    {editingId !== workflow.id && (
                       <div className="shrink-0">
                         <button
                           type="button"
-                          onClick={(e) => openMenu(e, wf.id)}
+                          onClick={(event) => openMenu(event, workflow.id)}
                           title="More options"
                           className={cn(
                             "flex h-6 w-6 items-center justify-center rounded-md transition-colors",
                             "text-muted-foreground hover:bg-muted hover:text-foreground",
                             "opacity-0 group-hover/btn:opacity-100",
-                            menuOpenId === wf.id && "opacity-100 bg-muted text-foreground"
+                            menuOpenId === workflow.id && "opacity-100 bg-muted text-foreground"
                           )}
                         >
                           <MoreVertical className="h-4 w-4" />
@@ -503,11 +503,11 @@ export function WorkflowListSidebar({
             {onRename && (
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const wf = activeMenuWorkflow;
+                onClick={(event) => {
+                  event.stopPropagation();
+                  const menuWorkflow = activeMenuWorkflow;
                   closeMenu();
-                  startEditing(e, wf);
+                  startEditing(event, menuWorkflow);
                 }}
                 className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted"
               >
@@ -518,8 +518,8 @@ export function WorkflowListSidebar({
             <div className="mx-2 border-t border-border/60" />
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
+              onClick={(event) => {
+                event.stopPropagation();
                 const wfId = menuOpenId;
                 closeMenu();
                 setConfirmDeleteId(wfId);
@@ -537,11 +537,11 @@ export function WorkflowListSidebar({
       {confirmDeleteId && confirmWorkflow && (
         <div
           className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm"
-          onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
+          onClick={(event) => { event.stopPropagation(); setConfirmDeleteId(null); }}
         >
           <div
             className="w-[320px] rounded-2xl border border-border bg-background p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
           >
             {/* Icon */}
             <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-destructive/10">
@@ -563,7 +563,7 @@ export function WorkflowListSidebar({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
+                onClick={(event) => { event.stopPropagation(); setConfirmDeleteId(null); }}
               >
                 Cancel
               </Button>

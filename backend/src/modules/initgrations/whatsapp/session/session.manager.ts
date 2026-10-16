@@ -8,9 +8,9 @@ import makeWASocket, {
 import { Boom } from "@hapi/boom";
 import pino from "pino";
 import QRCode from "qrcode";
-import { useSupabaseAuthState } from "../utils/auth.store.js";
+import { useDatabaseAuthState } from "../utils/auth.store.js";
 import { dispatchWebhook } from "../utils/webhook.dispatcher.js";
-import { supabase } from "../../../../config/db.config.js";
+import { whatsappRepository } from "../repository/whatsapp.repository.js";
 import type { WAStatus } from "../types/whatsapp.types.js";
 
 // ─── Session registry (in-memory) ────────────────────────────────────────────
@@ -37,13 +37,8 @@ const logger = pino({ level: "silent" });
 
 // ─── DB helpers ───────────────────────────────────────────────────────────────
 
-async function getWebhookConfig(userId: string) {
-  const { data } = await supabase
-    .from("whatsapp_sessions")
-    .select("webhook_url, webhook_secret")
-    .eq("user_id", userId)
-    .maybeSingle();
-  return data;
+function getWebhookConfig(userId: string) {
+  return whatsappRepository.findWebhookConfig(userId);
 }
 
 async function upsertStatus(
@@ -51,15 +46,12 @@ async function upsertStatus(
   status: WAStatus,
   phoneNumber?: string | null
 ) {
-  await supabase.from("whatsapp_sessions").upsert(
-    {
-      user_id: userId,
-      status,
-      ...(phoneNumber !== undefined ? { phone_number: phoneNumber } : {}),
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "user_id" }
-  );
+  // Runs inside socket event handlers; a failed status write must not crash the connection.
+  try {
+    await whatsappRepository.upsertSessionStatus(userId, status, phoneNumber);
+  } catch (error: any) {
+    console.error("[WA Engine] Failed to save session status:", error?.message);
+  }
 }
 
 // ─── Session lifecycle ────────────────────────────────────────────────────────
@@ -93,7 +85,7 @@ async function doCreateSession(userId: string): Promise<void> {
     sessions.delete(userId);
   }
 
-  const { state, saveCreds } = await useSupabaseAuthState(userId);
+  const { state, saveCreds } = await useDatabaseAuthState(userId);
   const { version } = await fetchLatestBaileysVersion();
   const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   let lastCredsSave: Promise<void> = Promise.resolve();
@@ -332,14 +324,12 @@ export async function terminateSession(userId: string): Promise<void> {
   await clearLocalSession(userId);
 
   // Wipe stored credentials
-  await supabase.from("whatsapp_sessions").delete().eq("user_id", userId);
-  await supabase.from("whatsapp_auth_keys").delete().eq("user_id", userId);
+  await whatsappRepository.deleteSessionAndAuthKeys(userId);
 }
 
 export async function resetSessionForNewQr(userId: string): Promise<void> {
   await clearLocalSession(userId, { logout: false });
-  await supabase.from("whatsapp_sessions").delete().eq("user_id", userId);
-  await supabase.from("whatsapp_auth_keys").delete().eq("user_id", userId);
+  await whatsappRepository.deleteSessionAndAuthKeys(userId);
 }
 
 async function clearLocalSession(
@@ -369,15 +359,11 @@ async function clearLocalSession(
 // ─── Restore persisted sessions on server startup ─────────────────────────────
 
 export async function restoreAllSessions(): Promise<void> {
-  const { data: rows } = await supabase
-    .from("whatsapp_sessions")
-    .select("user_id, status")
-    .neq("status", "disconnected");
+  const sessionsToRestore = await whatsappRepository.findSessionsToRestore();
+  if (!sessionsToRestore.length) return;
 
-  if (!rows?.length) return;
-
-  console.log(`[WA Engine] Restoring ${rows.length} session(s)...`);
-  await Promise.allSettled(rows.map((r) => createSession(r.user_id)));
+  console.log(`[WA Engine] Restoring ${sessionsToRestore.length} session(s)...`);
+  await Promise.allSettled(sessionsToRestore.map((session) => createSession(session.user_id)));
 }
 
 // ─── JID formatter ────────────────────────────────────────────────────────────

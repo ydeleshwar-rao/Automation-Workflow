@@ -31,17 +31,17 @@ import {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function displayName(u: DeveloperRecord): string {
-  return u.full_name?.trim() || u.email;
+function displayName(developer: DeveloperRecord): string {
+  return developer.full_name?.trim() || developer.email;
 }
 
-function initials(u: DeveloperRecord): string {
-  const name = u.full_name?.trim() ?? "";
+function initials(developer: DeveloperRecord): string {
+  const name = developer.full_name?.trim() ?? "";
   if (name) {
     const parts = name.split(" ");
     return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase();
   }
-  return (u.email[0] ?? "?").toUpperCase();
+  return (developer.email[0] ?? "?").toUpperCase();
 }
 
 // ── Admin Row ─────────────────────────────────────────────────────────────────
@@ -160,15 +160,15 @@ export function AdminsTab() {
   const { data: adminsResp, isLoading, error } = useListAdminsQuery();
   const [search, setSearch] = useState("");
 
-  const { user: currentUser } = useSelector((s: RootState) => s.access);
+  const { user: currentUser } = useSelector((state: RootState) => state.access);
 
   const admins = useMemo(() => adminsResp?.data ?? [], [adminsResp]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return admins;
-    return admins.filter((a) =>
-      `${displayName(a)} ${a.email}`.toLowerCase().includes(q)
+    const query = search.trim().toLowerCase();
+    if (!query) return admins;
+    return admins.filter((admin) =>
+      `${displayName(admin)} ${admin.email}`.toLowerCase().includes(query)
     );
   }, [admins, search]);
 
@@ -195,7 +195,7 @@ export function AdminsTab() {
               type="search"
               placeholder="Search admins…"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(event) => setSearch(event.target.value)}
               className="pl-9"
             />
           </div>

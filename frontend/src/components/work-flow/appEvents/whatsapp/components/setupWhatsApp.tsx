@@ -33,7 +33,7 @@ export function WhatsAppSetupStep({
 
   const events = isTrigger ? WHATSAPP_TRIGGER_EVENTS : WHATSAPP_ACTION_EVENTS;
   const AppIcon = selectedApp.icon || MessageCircle;
-  const displayLabel = events.find((e) => e.id === selectedEvent)?.label ?? selectedEvent;
+  const displayLabel = events.find((event) => event.id === selectedEvent)?.label ?? selectedEvent;
 
   const sections = useMemo(
     () => [{
@@ -57,8 +57,8 @@ export function WhatsAppSetupStep({
       setStatusText(qrData.message ?? qrData.status ?? "Waiting for QR...");
       const latest = await refetch();
       if (latest?.connected) setStatusText("Connected");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start WhatsApp connection");
+    } catch (startError) {
+      setError(startError instanceof Error ? startError.message : "Failed to start WhatsApp connection");
     } finally {
       setIsConnecting(false);
     }
@@ -86,8 +86,8 @@ export function WhatsAppSetupStep({
         const qrData = await getWhatsAppQr().catch(() => null);
         setQr(qrData?.qr ?? qrData?.qrCode ?? qrData?.qr_code ?? null);
         if (qrData?.message) setStatusText(qrData.message);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not check WhatsApp status");
+      } catch (statusError) {
+        setError(statusError instanceof Error ? statusError.message : "Could not check WhatsApp status");
       }
     }, 15000);
     return () => window.clearInterval(timer);

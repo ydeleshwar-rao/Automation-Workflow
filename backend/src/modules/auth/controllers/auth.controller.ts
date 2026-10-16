@@ -164,7 +164,7 @@ export class AuthController {
   });
 
   /**
-   * POST /auth/forgot-password  (DB_PROVIDER=postgres)
+   * POST /auth/forgot-password
    * Body: { email } — emails a reset link; always 200 so emails can't be probed.
    */
   static forgotPassword = catchAsync(async (req: Request, res: Response) => {
@@ -176,7 +176,7 @@ export class AuthController {
   });
 
   /**
-   * POST /auth/reset-password  (DB_PROVIDER=postgres)
+   * POST /auth/reset-password
    * Body: { token, password }
    */
   static resetPassword = catchAsync(async (req: Request, res: Response) => {

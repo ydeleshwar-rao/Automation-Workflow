@@ -90,8 +90,8 @@ export class CommusoftPollingAdapter implements PollingAdapter {
     console.log('[Commusoft] Raw record sample:', JSON.stringify(records[0], null, 2));
     if (records.length === 0) return [];
 
-    const normalized = records.map((r) => this.normalize(r, eventKey));
-    const droppedNoId = normalized.filter((r) => !r.externalId).length;
+    const normalized = records.map((record) => this.normalize(record, eventKey));
+    const droppedNoId = normalized.filter((normalizedRecord) => !normalizedRecord.externalId).length;
     if (droppedNoId > 0) {
       // If this triggers, Commusoft returned records whose id fields don't
       // match any of our normalize() fallbacks — worth adding a new key there.
@@ -101,14 +101,14 @@ export class CommusoftPollingAdapter implements PollingAdapter {
     }
 
     const sorted = normalized
-      .filter((r) => r.externalId)
-      .sort((a, b) => a.cursorValue.localeCompare(b.cursorValue));
+      .filter((normalizedRecord) => normalizedRecord.externalId)
+      .sort((firstRecord, secondRecord) => firstRecord.cursorValue.localeCompare(secondRecord.cursorValue));
 
-    console.log('[Commusoft] Returning records:', sorted.map(r => ({
-      externalId: r.externalId,
-      cursorValue: r.cursorValue,
-      jobNumber: r.data['Job Number'],
-      jobUuid: r.data['Job Uuid'],
+    console.log('[Commusoft] Returning records:', sorted.map((record) => ({
+      externalId: record.externalId,
+      cursorValue: record.cursorValue,
+      jobNumber: record.data['Job Number'],
+      jobUuid: record.data['Job Uuid'],
     })));
 
     return sorted;
@@ -165,7 +165,7 @@ export class CommusoftPollingAdapter implements PollingAdapter {
 
     const samples = records
       .slice()
-      .sort((a, b) => this.compareNewestFirst(a, b))
+      .sort((firstRecord, secondRecord) => this.compareNewestFirst(firstRecord, secondRecord))
       .slice(0, limit);
 
     console.log(
@@ -460,16 +460,16 @@ export class CommusoftPollingAdapter implements PollingAdapter {
       .filter(Boolean);
   }
 
-  private compareNewestFirst(a: any, b: any): number {
-    const aId = Number.parseInt(opportunityIdOf(a) ?? "", 10);
-    const bId = Number.parseInt(opportunityIdOf(b) ?? "", 10);
+  private compareNewestFirst(firstRecord: any, secondRecord: any): number {
+    const aId = Number.parseInt(opportunityIdOf(firstRecord) ?? "", 10);
+    const bId = Number.parseInt(opportunityIdOf(secondRecord) ?? "", 10);
     const aHasId = Number.isFinite(aId);
     const bHasId = Number.isFinite(bId);
 
     if (aHasId && bHasId && aId !== bId) return bId - aId;
 
-    const aTime = Date.parse(this.cursorOf(a));
-    const bTime = Date.parse(this.cursorOf(b));
+    const aTime = Date.parse(this.cursorOf(firstRecord));
+    const bTime = Date.parse(this.cursorOf(secondRecord));
     const aHasTime = Number.isFinite(aTime);
     const bHasTime = Number.isFinite(bTime);
 
@@ -477,7 +477,7 @@ export class CommusoftPollingAdapter implements PollingAdapter {
     if (aHasTime !== bHasTime) return aHasTime ? -1 : 1;
     if (aHasId !== bHasId) return aHasId ? -1 : 1;
 
-    return this.cursorOf(b).localeCompare(this.cursorOf(a));
+    return this.cursorOf(secondRecord).localeCompare(this.cursorOf(firstRecord));
   }
 
   private isProposalSent(record: any): boolean {

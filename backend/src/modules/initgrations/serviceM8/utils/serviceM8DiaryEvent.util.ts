@@ -16,7 +16,7 @@ export function formatServiceM8DateTime(value: string): string {
     throw new Error("Date format must be YYYY-MM-DD HH:MM:SS");
   }
 
-  const pad = (n: number) => String(n).padStart(2, "0");
+  const pad = (datePart: number) => String(datePart).padStart(2, "0");
   return `${parsed.getUTCFullYear()}-${pad(parsed.getUTCMonth() + 1)}-${pad(parsed.getUTCDate())} ${pad(parsed.getUTCHours())}:${pad(parsed.getUTCMinutes())}:${pad(parsed.getUTCSeconds())}`;
 }
 

@@ -236,12 +236,12 @@ export class GoogleSheetsController {
     return ApiResponse(res, 200, "Sync complete", data);
   };
 
-  // ── DB reads ──────────────────────────────────────────────────────────────────
+  // ── Former cache reads (now live from Google) ─────────────────────────────────
 
   static getSpreadsheetsFromDb = async (req: Request, res: Response) => {
     const userId = await getUserId(req);
     const data = await GoogleSheetsService.getSpreadsheetsFromDb(userId);
-    return ApiResponse(res, 200, "Spreadsheets fetched from DB", data);
+    return ApiResponse(res, 200, "Spreadsheets fetched from Google Drive", data);
   };
 
   static getCachedRows = async (req: Request, res: Response) => {
@@ -249,6 +249,6 @@ export class GoogleSheetsController {
     const spreadsheetId = String(req.params.spreadsheetId);
     const sheetName = req.query.sheet_name ? String(req.query.sheet_name) : undefined;
     const data = await GoogleSheetsService.getCachedRows(userId, spreadsheetId, sheetName);
-    return ApiResponse(res, 200, "Cached rows fetched", data);
+    return ApiResponse(res, 200, "Rows fetched from Google Sheets", data);
   };
 }

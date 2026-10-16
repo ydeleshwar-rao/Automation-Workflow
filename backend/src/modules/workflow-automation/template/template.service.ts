@@ -1,12 +1,27 @@
 // template.service.ts
 
-import { supabase } from "../../../config/db.config.js";
+import { randomUUID } from "crypto";
+import type { Prisma, WorkflowFieldMapping, WorkflowNode, WorkflowTemplateMapping, WorkflowTemplateNode } from "@prisma/client";
 import {
   ApplyTemplateDTO,
   CreateTemplateFromWorkflowDTO,
   ListTemplatesQuery,
   UpdateTemplateDTO,
 } from "./template.dto.js";
+import {
+  workflowTemplateRepository,
+  type NewTemplateMapping,
+  type NewTemplateNode,
+  type NewWorkflowFieldMapping,
+  type NewWorkflowNode,
+  type TemplateListFilter,
+  type UpdateTemplateInput,
+} from "./template.repository.js";
+import { asJsonArray, asJsonObject } from "../shared/json-object.js";
+import { ApiError } from "../../../utils/ApiError.js";
+
+const ACTIVE_STATUS = "active";
+const DRAFT_STATUS = "draft";
 
 // ---------- credential stripping ----------
 
@@ -25,29 +40,73 @@ const SECRET_KEY_PATTERNS = [/_token$/i, /_secret$/i, /_key$/i, /password/i];
 
 function isCredentialKey(key: string): boolean {
   if (CREDENTIAL_KEYS.includes(key)) return true;
-  return SECRET_KEY_PATTERNS.some((re) => re.test(key));
+  return SECRET_KEY_PATTERNS.some((pattern) => pattern.test(key));
 }
 
-function stripCredentials(config: Record<string, any> | null | undefined): {
+function stripCredentials(config: Record<string, any>): {
   config_schema: Record<string, any>;
   required_credentials: Array<{ type: string; field: string }>;
 } {
-  const source = config ?? {};
-  const required: Array<{ type: string; field: string }> = [];
-  const clean: Record<string, any> = {};
+  const requiredCredentials: Array<{ type: string; field: string }> = [];
+  const cleanConfig: Record<string, any> = {};
 
-  for (const [key, value] of Object.entries(source)) {
+  for (const [key, value] of Object.entries(config)) {
     if (isCredentialKey(key)) {
-      required.push({ type: key.replace(/_id$/, ""), field: key });
+      requiredCredentials.push({ type: key.replace(/_id$/, ""), field: key });
     } else {
-      clean[key] = value;
+      cleanConfig[key] = value;
     }
   }
 
-  return { config_schema: clean, required_credentials: required };
+  return { config_schema: cleanConfig, required_credentials: requiredCredentials };
+}
+
+function toInputJson(value: Prisma.JsonValue | null, fallback: Prisma.InputJsonValue = {}): Prisma.InputJsonValue {
+  return (value ?? fallback) as Prisma.InputJsonValue;
 }
 
 // ---------- create template from an existing workflow ----------
+
+function buildTemplateNodes(sourceNodes: WorkflowNode[], nodeIdMap: Record<string, string>): NewTemplateNode[] {
+  return sourceNodes.map((node) => {
+    const { config_schema, required_credentials } = stripCredentials(asJsonObject(node.config));
+    const templateNodeId = randomUUID();
+    nodeIdMap[node.id] = templateNodeId;
+    return {
+      id: templateNodeId,
+      type: node.type,
+      node_category: node.node_category ?? node.type,
+      integration_key: node.integration_key,
+      action_key: node.action_key ?? null,
+      config_schema,
+      required_credentials,
+      output_schema: toInputJson(node.output_schema),
+      position: node.position,
+    };
+  });
+}
+
+/** Rewrites source_node_id → source_template_node_id so mappings point at the template's nodes. */
+function buildTemplateMappings(
+  sourceMappings: WorkflowFieldMapping[],
+  nodeIdMap: Record<string, string>
+): NewTemplateMapping[] {
+  return sourceMappings.flatMap((row) => {
+    const templateNodeId = nodeIdMap[row.workflow_node_id];
+    if (!templateNodeId) return [];
+
+    const rewritten = asJsonArray(row.mappings).map((mapping) => ({
+      mapping_type: mapping.mapping_type,
+      destination_field: mapping.destination_field,
+      source_template_node_id: mapping.source_node_id ? nodeIdMap[mapping.source_node_id] ?? null : null,
+      source_field: mapping.source_field ?? null,
+      static_value: mapping.static_value ?? null,
+      transformation: mapping.transformation ?? null,
+    }));
+
+    return [{ template_node_id: templateNodeId, mappings: rewritten }];
+  });
+}
 
 export async function createTemplateFromWorkflowService(
   payload: CreateTemplateFromWorkflowDTO
@@ -56,176 +115,66 @@ export async function createTemplateFromWorkflowService(
     `[TemplateService] Creating template from workflow | source=${payload.source_workflow_id} name=${payload.name}`
   );
 
-  // 1. Verify source workflow exists
-  const { data: sourceWf, error: wfErr } = await supabase
-    .from("workflows")
-    .select("id, tag")
-    .eq("id", payload.source_workflow_id)
-    .single();
+  const sourceWorkflow = await workflowTemplateRepository.findSourceWorkflow(payload.source_workflow_id);
+  if (!sourceWorkflow) throw new ApiError(404, "Source workflow not found");
 
-  if (wfErr) throw new Error(`Source workflow not found: ${wfErr.message}`);
-
-  // 2. Fetch source nodes
-  const { data: sourceNodes, error: nodesErr } = await supabase
-    .from("workflow_nodes")
-    .select("*")
-    .eq("workflow_id", payload.source_workflow_id)
-    .order("position", { ascending: true });
-
-  if (nodesErr) throw new Error(nodesErr.message);
-  if (!sourceNodes || sourceNodes.length === 0) {
-    throw new Error("Source workflow has no nodes to template");
+  const sourceNodes = await workflowTemplateRepository.findWorkflowNodes(payload.source_workflow_id);
+  if (sourceNodes.length === 0) {
+    throw new ApiError(400, "Source workflow has no nodes to template");
   }
 
-  // 3. Fetch source mappings (one row per node)
-  const nodeIds = sourceNodes.map((n) => n.id);
-  const { data: sourceMappings, error: mapErr } = await supabase
-    .from("workflow_field_mappings")
-    .select("*")
-    .in("workflow_node_id", nodeIds);
+  const sourceMappings = await workflowTemplateRepository.findFieldMappings(sourceNodes.map((node) => node.id));
 
-  if (mapErr) throw new Error(mapErr.message);
+  const nodeIdMap: Record<string, string> = {};
+  const templateNodes = buildTemplateNodes(sourceNodes, nodeIdMap);
+  const templateMappings = buildTemplateMappings(sourceMappings, nodeIdMap);
 
-  // 4. Insert template row
-  const { data: template, error: tplErr } = await supabase
-    .from("workflow_templates")
-    .insert({
+  const { template, nodes } = await workflowTemplateRepository.createWithParts(
+    {
       name: payload.name,
       description: payload.description ?? null,
       category: payload.category ?? null,
-      tag: payload.tag ?? sourceWf.tag ?? null,
+      tag: payload.tag ?? sourceWorkflow.tag ?? null,
       source_workflow_id: payload.source_workflow_id,
       created_by: payload.created_by,
       is_public: payload.is_public ?? false,
-      status: "active",
-    })
-    .select()
-    .single();
+      status: ACTIVE_STATUS,
+    },
+    templateNodes,
+    templateMappings
+  );
 
-  if (tplErr) throw new Error(tplErr.message);
-
-  // 5. Insert template nodes; build old_node_id -> template_node_id map
-  const nodeIdMap: Record<string, string> = {};
-  const templateNodeRows: any[] = [];
-
-  for (const node of sourceNodes) {
-    const { config_schema, required_credentials } = stripCredentials(node.config);
-
-    const { data: tNode, error: tNodeErr } = await supabase
-      .from("workflow_template_nodes")
-      .insert({
-        template_id: template.id,
-        type: node.type,
-        node_category: node.node_category ?? node.type,
-        integration_key: node.integration_key,
-        action_key: node.action_key ?? null,
-        config_schema,
-        required_credentials,
-        output_schema: node.output_schema ?? {},
-        position: node.position,
-      })
-      .select()
-      .single();
-
-    if (tNodeErr) {
-      await supabase.from("workflow_templates").delete().eq("id", template.id);
-      throw new Error(`Failed to create template node: ${tNodeErr.message}`);
-    }
-
-    nodeIdMap[node.id] = tNode.id;
-    templateNodeRows.push(tNode);
-  }
-
-  // 6. Insert template mappings — rewrite source_node_id -> source_template_node_id
-  for (const row of sourceMappings ?? []) {
-    const templateNodeId = nodeIdMap[row.workflow_node_id];
-    if (!templateNodeId) continue;
-
-    const rewritten = (row.mappings ?? []).map((m: any) => ({
-      mapping_type: m.mapping_type,
-      destination_field: m.destination_field,
-      source_template_node_id: m.source_node_id ? nodeIdMap[m.source_node_id] ?? null : null,
-      source_field: m.source_field ?? null,
-      static_value: m.static_value ?? null,
-      transformation: m.transformation ?? null,
-    }));
-
-    const { error: tMapErr } = await supabase.from("workflow_template_mappings").insert({
-      template_id: template.id,
-      template_node_id: templateNodeId,
-      mappings: rewritten,
-    });
-
-    if (tMapErr) {
-      await supabase.from("workflow_templates").delete().eq("id", template.id);
-      throw new Error(`Failed to create template mapping: ${tMapErr.message}`);
-    }
-  }
-
-  console.log(`[TemplateService] Template created | id=${template.id} nodes=${templateNodeRows.length}`);
-  return { ...template, nodes: templateNodeRows };
+  console.log(`[TemplateService] Template created | id=${template.id} nodes=${nodes.length}`);
+  return { ...template, nodes };
 }
 
 // ---------- list ----------
 
-export async function listTemplatesService(filters: ListTemplatesQuery) {
-  let query = supabase
-    .from("workflow_templates")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (filters.created_by) query = query.eq("created_by", filters.created_by);
-  if (filters.category) query = query.eq("category", filters.category);
-  if (filters.status) query = query.eq("status", filters.status);
-
-  if (filters.template_folder_id) query = query.eq("template_folder_id", filters.template_folder_id);
-
+export function listTemplatesService(filters: ListTemplatesQuery) {
+  const where: TemplateListFilter = {};
+  if (filters.created_by) where.created_by = filters.created_by;
+  if (filters.category) where.category = filters.category;
+  if (filters.status) where.status = filters.status;
+  if (filters.template_folder_id) where.template_folder_id = filters.template_folder_id;
   if (filters.is_public !== undefined) {
-    const boolVal =
-      typeof filters.is_public === "string"
-        ? filters.is_public === "true"
-        : filters.is_public;
-    query = query.eq("is_public", boolVal);
+    where.is_public = typeof filters.is_public === "string" ? filters.is_public === "true" : filters.is_public;
   }
 
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-  return data;
+  return workflowTemplateRepository.findMany(where);
 }
 
 // ---------- get by id (full detail) ----------
 
 export async function getTemplateByIdService(id: string) {
-  const { data: template, error: tErr } = await supabase
-    .from("workflow_templates")
-    .select("*")
-    .eq("id", id)
-    .single();
-
-  if (tErr) throw new Error(tErr.message);
-
-  const { data: nodes, error: nErr } = await supabase
-    .from("workflow_template_nodes")
-    .select("*")
-    .eq("template_id", id)
-    .order("position", { ascending: true });
-
-  if (nErr) throw new Error(nErr.message);
-
-  const { data: mappings, error: mErr } = await supabase
-    .from("workflow_template_mappings")
-    .select("*")
-    .eq("template_id", id);
-
-  if (mErr) throw new Error(mErr.message);
-
-  return { ...template, nodes: nodes ?? [], mappings: mappings ?? [] };
+  const template = await workflowTemplateRepository.findByIdWithParts(id);
+  if (!template) throw new ApiError(404, "Template not found");
+  return template;
 }
 
 // ---------- update (name, description, status, etc.) ----------
 
-export async function updateTemplateService(id: string, payload: UpdateTemplateDTO) {
-  const updates: Record<string, any> = {};
+export function updateTemplateService(id: string, payload: UpdateTemplateDTO) {
+  const updates: UpdateTemplateInput = {};
   if (payload.name !== undefined) updates.name = payload.name;
   if (payload.description !== undefined) updates.description = payload.description;
   if (payload.category !== undefined) updates.category = payload.category;
@@ -235,136 +184,89 @@ export async function updateTemplateService(id: string, payload: UpdateTemplateD
   if (payload.template_folder_id !== undefined) updates.template_folder_id = payload.template_folder_id;
 
   if (Object.keys(updates).length === 0) {
-    throw new Error("No fields to update");
+    throw new ApiError(400, "No fields to update");
   }
 
-  const { data, error } = await supabase
-    .from("workflow_templates")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data;
+  return workflowTemplateRepository.update(id, updates);
 }
 
 // ---------- delete ----------
 
 export async function deleteTemplateService(id: string) {
-  const { error } = await supabase.from("workflow_templates").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  await workflowTemplateRepository.delete(id);
   return { message: "Template deleted successfully" };
 }
 
 // ---------- apply template -> create new workflow ----------
 
+function buildWorkflowNodes(
+  templateNodes: WorkflowTemplateNode[],
+  credentialOverrides: Record<string, Record<string, any>>,
+  nodeIdMap: Record<string, string>
+): NewWorkflowNode[] {
+  return templateNodes.map((templateNode) => {
+    const nodeId = randomUUID();
+    nodeIdMap[templateNode.id] = nodeId;
+    return {
+      id: nodeId,
+      integration_key: templateNode.integration_key,
+      type: templateNode.type,
+      node_category: templateNode.node_category ?? templateNode.type,
+      action_key: templateNode.action_key ?? "",
+      config: { ...asJsonObject(templateNode.config_schema), ...(credentialOverrides[templateNode.id] ?? {}) },
+      sample_payload: {},
+      output_schema: toInputJson(templateNode.output_schema),
+      position: templateNode.position,
+    };
+  });
+}
+
+/** Rewrites source_template_node_id → source_node_id so mappings point at the new workflow's nodes. */
+function buildWorkflowMappings(
+  templateMappings: WorkflowTemplateMapping[],
+  nodeIdMap: Record<string, string>
+): NewWorkflowFieldMapping[] {
+  return templateMappings.flatMap((row) => {
+    const nodeId = nodeIdMap[row.template_node_id];
+    if (!nodeId) return [];
+
+    const rewritten = asJsonArray(row.mappings).map((mapping) => ({
+      mapping_type: mapping.mapping_type,
+      destination_field: mapping.destination_field,
+      source_node_id: mapping.source_template_node_id ? nodeIdMap[mapping.source_template_node_id] ?? null : null,
+      source_field: mapping.source_field ?? null,
+      static_value: mapping.static_value ?? null,
+      transformation: mapping.transformation ?? null,
+    }));
+
+    return [{ workflow_node_id: nodeId, mappings: rewritten }];
+  });
+}
+
 export async function applyTemplateService(templateId: string, payload: ApplyTemplateDTO) {
   console.log(`[TemplateService] Applying template | template=${templateId} user=${payload.user_id}`);
 
-  // 1. Load template, nodes, mappings
-  const { data: template, error: tErr } = await supabase
-    .from("workflow_templates")
-    .select("*")
-    .eq("id", templateId)
-    .single();
+  const template = await workflowTemplateRepository.findByIdWithParts(templateId);
+  if (!template) throw new ApiError(404, "Template not found");
+  if (template.status !== ACTIVE_STATUS) throw new ApiError(400, "Template is not active");
+  if (template.nodes.length === 0) throw new ApiError(400, "Template has no nodes");
 
-  if (tErr) throw new Error(`Template not found: ${tErr.message}`);
-  if (template.status !== "active") throw new Error("Template is not active");
+  const nodeIdMap: Record<string, string> = {};
+  const workflowNodes = buildWorkflowNodes(template.nodes, payload.credential_overrides ?? {}, nodeIdMap);
+  const workflowMappings = buildWorkflowMappings(template.mappings, nodeIdMap);
 
-  const { data: tNodes, error: nErr } = await supabase
-    .from("workflow_template_nodes")
-    .select("*")
-    .eq("template_id", templateId)
-    .order("position", { ascending: true });
-
-  if (nErr) throw new Error(nErr.message);
-  if (!tNodes || tNodes.length === 0) throw new Error("Template has no nodes");
-
-  const { data: tMappings, error: mErr } = await supabase
-    .from("workflow_template_mappings")
-    .select("*")
-    .eq("template_id", templateId);
-
-  if (mErr) throw new Error(mErr.message);
-
-  // 2. Create new workflow
-  const { data: newWf, error: wfErr } = await supabase
-    .from("workflows")
-    .insert({
+  const workflow = await workflowTemplateRepository.createWorkflowFromTemplate(
+    templateId,
+    {
       name: payload.name,
       tag: payload.tag ?? template.tag ?? null,
       user_id: payload.user_id,
-      status: "draft",
-    })
-    .select()
-    .single();
+      status: DRAFT_STATUS,
+    },
+    workflowNodes,
+    workflowMappings
+  );
 
-  if (wfErr) throw new Error(wfErr.message);
-
-  // 3. Create nodes; map template_node_id -> new_node_id
-  const overrides = payload.credential_overrides ?? {};
-  const nodeIdMap: Record<string, string> = {};
-
-  for (const tNode of tNodes) {
-    const nodeOverrides = overrides[tNode.id] ?? {};
-    const mergedConfig = { ...(tNode.config_schema ?? {}), ...nodeOverrides };
-
-    const { data: newNode, error: nInsErr } = await supabase
-      .from("workflow_nodes")
-      .insert({
-        workflow_id: newWf.id,
-        integration_key: tNode.integration_key,
-        type: tNode.type,
-        node_category: tNode.node_category ?? tNode.type,
-        action_key: tNode.action_key,
-        config: mergedConfig,
-        sample_payload: {},
-        output_schema: tNode.output_schema ?? {},
-        position: tNode.position,
-      })
-      .select()
-      .single();
-
-    if (nInsErr) {
-      await supabase.from("workflows").delete().eq("id", newWf.id);
-      throw new Error(`Failed to create node during apply: ${nInsErr.message}`);
-    }
-
-    nodeIdMap[tNode.id] = newNode.id;
-  }
-
-  // 4. Create mappings — rewrite source_template_node_id -> new source_node_id
-  for (const row of tMappings ?? []) {
-    const newNodeId = nodeIdMap[row.template_node_id];
-    if (!newNodeId) continue;
-
-    const rewritten = (row.mappings ?? []).map((m: any) => ({
-      mapping_type: m.mapping_type,
-      destination_field: m.destination_field,
-      source_node_id: m.source_template_node_id ? nodeIdMap[m.source_template_node_id] ?? null : null,
-      source_field: m.source_field ?? null,
-      static_value: m.static_value ?? null,
-      transformation: m.transformation ?? null,
-    }));
-
-    const { error: mInsErr } = await supabase.from("workflow_field_mappings").insert({
-      workflow_node_id: newNodeId,
-      mappings: rewritten,
-    });
-
-    if (mInsErr) {
-      await supabase.from("workflows").delete().eq("id", newWf.id);
-      throw new Error(`Failed to create mapping during apply: ${mInsErr.message}`);
-    }
-  }
-
-  // 5. Bump usage_count
-  await supabase
-    .from("workflow_templates")
-    .update({ usage_count: (template.usage_count ?? 0) + 1 })
-    .eq("id", templateId);
-
-  console.log(`[TemplateService] Applied | template=${templateId} workflow=${newWf.id}`);
-  return { workflow: newWf, nodes_created: Object.keys(nodeIdMap).length };
+  console.log(`[TemplateService] Applied | template=${templateId} workflow=${workflow.id}`);
+  return { workflow, nodes_created: workflowNodes.length };
 }

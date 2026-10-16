@@ -1,135 +1,83 @@
 // ai-workflow.service.ts
 // ─────────────────────────────────────────────────────────────────────────────
 // Business-logic layer for the AI Visual Workflow builder.
-// All persistence is via the Supabase client (same pattern as workflow.service.ts).
+// All persistence goes through ai-workflow.repository.ts.
 
-import { supabase } from "../../config/db.config.js";
+import type { Prisma } from "@prisma/client";
 import {
   CreateAiWorkflowDTO,
   UpdateAiWorkflowDTO,
   CreateExecutionDTO,
   UpdateExecutionDTO,
 } from "./ai-workflow.dto.js";
+import {
+  aiWorkflowRepository,
+  type UpdateAiExecutionInput,
+  type UpdateAiWorkflowInput,
+} from "./ai-workflow.repository.js";
+import { ApiError } from "../../utils/ApiError.js";
+
+const DEFAULT_WORKFLOW_NAME = "Untitled Workflow";
+const DEFAULT_TRIGGER = "manual";
+
+function toInputJson(value: unknown): Prisma.InputJsonValue {
+  return value as Prisma.InputJsonValue;
+}
 
 // ── Workflows ─────────────────────────────────────────────────────────────────
 
-export async function createAiWorkflowService(payload: CreateAiWorkflowDTO) {
-  const { data, error } = await supabase
-    .from("ai_workflows")
-    .insert({
-      user_id: payload.user_id,
-      name: payload.name ?? "Untitled Workflow",
-      description: payload.description ?? null,
-      status: "draft",
-      nodes: [],
-      edges: [],
-    })
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data;
+export function createAiWorkflowService(payload: CreateAiWorkflowDTO) {
+  return aiWorkflowRepository.create({
+    user_id: payload.user_id,
+    name: payload.name ?? DEFAULT_WORKFLOW_NAME,
+    description: payload.description ?? null,
+    status: "draft",
+  });
 }
 
-export async function getAiWorkflowsService(userId: string) {
-  const { data, error } = await supabase
-    .from("ai_workflows")
-    .select("id, name, description, status, created_at, updated_at")
-    .eq("user_id", userId)
-    .order("updated_at", { ascending: false });
-
-  if (error) throw new Error(error.message);
-  return data ?? [];
+export function getAiWorkflowsService(userId: string) {
+  return aiWorkflowRepository.findSummariesByOwner(userId);
 }
 
 export async function getAiWorkflowByIdService(id: string) {
-  const { data, error } = await supabase
-    .from("ai_workflows")
-    .select("*")
-    .eq("id", id)
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data;
+  const workflow = await aiWorkflowRepository.findById(id);
+  if (!workflow) throw new ApiError(404, "AI workflow not found");
+  return workflow;
 }
 
-export async function updateAiWorkflowService(
-  id: string,
-  patch: UpdateAiWorkflowDTO
-) {
-  const { data, error } = await supabase
-    .from("ai_workflows")
-    .update({
-      ...(patch.name !== undefined && { name: patch.name }),
-      ...(patch.description !== undefined && { description: patch.description }),
-      ...(patch.status !== undefined && { status: patch.status }),
-      ...(patch.nodes !== undefined && { nodes: patch.nodes }),
-      ...(patch.edges !== undefined && { edges: patch.edges }),
-      ...(patch.viewport !== undefined && { viewport: patch.viewport }),
-    })
-    .eq("id", id)
-    .select()
-    .single();
+export function updateAiWorkflowService(id: string, patch: UpdateAiWorkflowDTO) {
+  const updates: UpdateAiWorkflowInput = {};
+  if (patch.name !== undefined) updates.name = patch.name;
+  if (patch.description !== undefined) updates.description = patch.description;
+  if (patch.status !== undefined) updates.status = patch.status;
+  if (patch.nodes !== undefined) updates.nodes = toInputJson(patch.nodes);
+  if (patch.edges !== undefined) updates.edges = toInputJson(patch.edges);
+  if (patch.viewport !== undefined) updates.viewport = toInputJson(patch.viewport);
 
-  if (error) throw new Error(error.message);
-  return data;
+  return aiWorkflowRepository.update(id, updates);
 }
 
 export async function deleteAiWorkflowService(id: string) {
-  const { error } = await supabase
-    .from("ai_workflows")
-    .delete()
-    .eq("id", id);
-
-  if (error) throw new Error(error.message);
+  await aiWorkflowRepository.delete(id);
   return { id };
 }
 
 // ── Executions ────────────────────────────────────────────────────────────────
 
-export async function createExecutionService(payload: CreateExecutionDTO) {
-  const { data, error } = await supabase
-    .from("ai_workflow_executions")
-    .insert({
-      workflow_id: payload.workflow_id,
-      trigger: payload.trigger ?? "manual",
-      status: "pending",
-    })
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data;
+export function createExecutionService(payload: CreateExecutionDTO) {
+  return aiWorkflowRepository.createExecution(payload.workflow_id, payload.trigger ?? DEFAULT_TRIGGER);
 }
 
-export async function getExecutionsService(workflowId: string) {
-  const { data, error } = await supabase
-    .from("ai_workflow_executions")
-    .select("*")
-    .eq("workflow_id", workflowId)
-    .order("started_at", { ascending: false })
-    .limit(50);
-
-  if (error) throw new Error(error.message);
-  return data ?? [];
+export function getExecutionsService(workflowId: string) {
+  return aiWorkflowRepository.findRecentExecutions(workflowId);
 }
 
-export async function updateExecutionService(
-  id: string,
-  patch: UpdateExecutionDTO
-) {
-  const { data, error } = await supabase
-    .from("ai_workflow_executions")
-    .update({
-      ...(patch.status && { status: patch.status }),
-      ...(patch.node_results && { node_results: patch.node_results }),
-      ...(patch.error && { error: patch.error }),
-      ...(patch.finished_at && { finished_at: patch.finished_at }),
-    })
-    .eq("id", id)
-    .select()
-    .single();
+export function updateExecutionService(id: string, patch: UpdateExecutionDTO) {
+  const updates: UpdateAiExecutionInput = {};
+  if (patch.status) updates.status = patch.status;
+  if (patch.node_results) updates.node_results = toInputJson(patch.node_results);
+  if (patch.error) updates.error = patch.error;
+  if (patch.finished_at) updates.finished_at = new Date(patch.finished_at);
 
-  if (error) throw new Error(error.message);
-  return data;
+  return aiWorkflowRepository.updateExecution(id, updates);
 }

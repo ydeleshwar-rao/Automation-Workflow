@@ -101,8 +101,8 @@ function useCommusoftStepProps(step: ConfigStep, context: StepContext) {
         } else {
           setTestStatus("failed");
         }
-      } catch (err) {
-        console.error("Commusoft trigger test failed:", err);
+      } catch (error) {
+        console.error("Commusoft trigger test failed:", error);
         setTestStatus("failed");
       }
       return;

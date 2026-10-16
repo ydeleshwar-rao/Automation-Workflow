@@ -1,85 +1,49 @@
-import { supabase, DB_PROVIDER }                 from "../../../config/db.config.js";
+import type { Prisma }                          from "@prisma/client";
 import { issueTokenPair, verifyRefreshToken }   from "../jwt.js";
 import type { UserRole }                        from "../jwt.js";
 import { ApiError }                             from "../../../utils/ApiError.js";
-import { createResetToken, hashResetToken }     from "../../../lib/db/password.js";
 import { sendSystemMail }                       from "../../../utils/system-mail.js";
 import { SsoService }                           from "../../sso/sso.service.js";
+import { hashPassword, verifyPassword }         from "../security/password-hasher.js";
+import { createResetToken, hashResetToken }     from "../security/reset-token.js";
+import { verifyGoogleIdToken, type GoogleAccount } from "../security/google-id-token.js";
+import { authUserRepository, type OrganizationType } from "../repositories/auth-user.repository.js";
+import { profileRepository, type SessionProfile }    from "../repositories/profile.repository.js";
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+const DEFAULT_FRONTEND_URL = "http://localhost:3000";
+const EMAIL_PROVIDER = "email";
+const GOOGLE_PROVIDER = "google";
+const DUPLICATE_EMAIL_MESSAGE = "An account with this email already exists";
+const INVALID_CREDENTIALS_MESSAGE = "Invalid login credentials";
 
-type ProfileRow = {
-  id: string;
+interface PasswordAccountInput {
   email: string;
-  full_name: string | null;
-  role: string;
-  organization_id: string;
-  is_active: boolean | null;
-  avatar_url: string | null;
-  created_at?: string;
-  updated_at?: string;
-};
-
-type PagePermissionRow = {
-  page_key: string;
-  can_view?: boolean;
-  can_edit?: boolean;
-  can_delete?: boolean;
-};
+  password: string;
+  fullName: string;
+  organizationName: string;
+  organizationType: OrganizationType;
+}
 
 export class AuthService {
-  private static async createOrganization(
-    name: string,
-    ownerId?: string,
-    type: "individual" | "company" = "individual",
-  ): Promise<string> {
-    const { data, error } = await supabase
-      .from("organizations")
-      // Workspace type exists from migration 0030 (DB_PROVIDER=postgres)
-      .insert({ name, owner_id: ownerId ?? null, ...(DB_PROVIDER === "postgres" ? { type } : {}) })
-      .select("id")
-      .single();
+  private static async getActiveProfile(userId: string): Promise<SessionProfile> {
+    const profile = await profileRepository.findSessionProfile(userId);
 
-    if (error) throw new ApiError(500, error.message);
-    if (!data?.id) throw new ApiError(500, "Failed to create organization");
-    return data.id as string;
-  }
-
-  private static async getProfileRow(userId: string): Promise<ProfileRow> {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id,email,full_name,role,organization_id,is_active,avatar_url")
-      .eq("id", userId)
-      .maybeSingle();
-
-    if (error) throw new ApiError(500, error.message);
-    if (!data) throw new ApiError(404, "Profile not found. Please contact an administrator.");
-    if (data.is_active === false) {
+    if (!profile) throw new ApiError(404, "Profile not found. Please contact an administrator.");
+    if (profile.is_active === false) {
       throw new ApiError(403, "Your account has been deactivated. Contact an administrator.");
     }
-    if (!data.organization_id) {
+    if (!profile.organization_id) {
       throw new ApiError(403, "Your account is not assigned to an organization.");
     }
-
-    return data as ProfileRow;
-  }
-
-  private static async getViewPermissions(userId: string): Promise<string[]> {
-    const { data, error } = await supabase
-      .from("page_permissions")
-      .select("page_key")
-      .eq("user_id", userId)
-      .eq("can_view", true);
-
-    if (error) throw new ApiError(500, error.message);
-    return ((data ?? []) as PagePermissionRow[]).map((permission) => permission.page_key);
+    return profile;
   }
 
   /** Issues our JWT pair for a user (also used by company SSO sign-in). */
   static async issueAppSession(userId: string) {
-    const profile = await this.getProfileRow(userId);
+    const profile = await this.getActiveProfile(userId);
     const permissions = profile.role === "developer"
-      ? await this.getViewPermissions(userId)
+      ? await profileRepository.findViewablePageKeys(userId)
       : [];
 
     const tokens = issueTokenPair({
@@ -105,120 +69,97 @@ export class AuthService {
   }
 
   static async login(email: string, password: string) {
-    const { data: authData, error: authError } =
-      await supabase.auth.signInWithPassword({ email, password });
-
-    if (authError || !authData.user) {
-      throw new ApiError(401, authError?.message ?? "Invalid email or password");
+    const user = await authUserRepository.findByEmail(email);
+    if (!user || !(await verifyPassword(password, user.password_hash))) {
+      throw new ApiError(401, INVALID_CREDENTIALS_MESSAGE);
     }
 
-    await SsoService.assertPasswordLoginAllowed(authData.user.id);
-    return this.issueAppSession(authData.user.id);
-  }
-
-  static async googleLogin(supabaseAccessToken: string) {
-    const { data, error } = await supabase.auth.getUser(supabaseAccessToken);
-
-    if (error || !data.user) {
-      throw new ApiError(401, error?.message ?? "Invalid Google sign-in session");
-    }
-
-    const user = data.user;
-    const email = user.email?.trim().toLowerCase();
-    if (!email) throw new ApiError(400, "Google account did not return an email address");
-
-    const meta = user.user_metadata as Record<string, unknown>;
-    const fullName =
-      typeof meta.full_name === "string" && meta.full_name.trim()
-        ? meta.full_name.trim()
-        : typeof meta.name === "string" && meta.name.trim()
-          ? meta.name.trim()
-          : email.split("@")[0] ?? "";
-    const avatarUrl =
-      typeof meta.avatar_url === "string"
-        ? meta.avatar_url
-        : typeof meta.picture === "string"
-          ? meta.picture
-          : null;
-
-    const { data: existingProfile, error: existingError } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (existingError) throw new ApiError(500, existingError.message);
-
-    const organizationId =
-      existingProfile?.organization_id ??
-      await this.createOrganization(`${fullName || email}'s Workspace`, user.id);
-
-    const { error: upsertError } = await supabase
-      .from("profiles")
-      .upsert({
-        id: user.id,
-        email,
-        full_name: fullName,
-        avatar_url: avatarUrl,
-        role: existingProfile?.organization_id ? undefined : "admin",
-        organization_id: organizationId,
-        is_active: true,
-      }, { onConflict: "id" });
-
-    if (upsertError) throw new ApiError(500, upsertError.message);
-
+    await authUserRepository.markSignedIn(user.id);
+    await SsoService.assertPasswordLoginAllowed(user.id);
     return this.issueAppSession(user.id);
   }
 
-  static async isSetupRequired(): Promise<boolean> {
-    const { count, error } = await supabase
-      .from("profiles")
-      .select("id", { count: "exact", head: true })
-      .eq("role", "admin");
+  /** Signs in with a Google ID token, creating the login account and a personal workspace when needed. */
+  static async googleLogin(googleIdToken: string) {
+    const googleAccount = await verifyGoogleIdToken(googleIdToken);
+    const fullName = googleAccount.name || googleAccount.email.split("@")[0] || "";
+    const userMetadata = { full_name: googleAccount.name, avatar_url: googleAccount.picture };
+    const existingUser = await authUserRepository.findByEmail(googleAccount.email);
 
-    if (error) throw new ApiError(500, error.message);
-    return (count ?? 0) === 0;
+    if (!existingUser) {
+      const { userId } = await authUserRepository.createAccount({
+        user: { email: googleAccount.email, provider: GOOGLE_PROVIDER, user_metadata: userMetadata, last_sign_in_at: new Date() },
+        organization: { name: `${fullName}'s Workspace`, type: "individual" },
+        profile: { full_name: fullName, avatar_url: googleAccount.picture, role: "admin" },
+      });
+      return this.issueAppSession(userId);
+    }
+
+    const mergedMetadata = { ...this.readMetadata(existingUser.user_metadata), ...userMetadata };
+    await authUserRepository.markSignedIn(existingUser.id, mergedMetadata);
+    await this.syncGoogleProfile(existingUser, googleAccount, fullName);
+    return this.issueAppSession(existingUser.id);
+  }
+
+  private static async syncGoogleProfile(
+    user: { id: string; email: string },
+    googleAccount: GoogleAccount,
+    fullName: string,
+  ) {
+    const existingProfile = await profileRepository.findSessionProfile(user.id);
+    if (existingProfile) {
+      await profileRepository.updateFromSignIn(user.id, {
+        email: googleAccount.email,
+        full_name: fullName,
+        avatar_url: googleAccount.picture,
+      });
+      return;
+    }
+
+    await authUserRepository.createWorkspaceForUser(
+      user,
+      { name: `${fullName}'s Workspace`, type: "individual" },
+      { full_name: fullName, avatar_url: googleAccount.picture, role: "admin" },
+    );
+  }
+
+  private static readMetadata(userMetadata: unknown): Prisma.InputJsonObject {
+    return userMetadata && typeof userMetadata === "object" && !Array.isArray(userMetadata)
+      ? (userMetadata as Prisma.InputJsonObject)
+      : {};
+  }
+
+  static async isSetupRequired(): Promise<boolean> {
+    return !(await profileRepository.hasAnyAdmin());
+  }
+
+  /** Creates login account + workspace + admin profile together (one transaction). */
+  private static async createPasswordAccount(input: PasswordAccountInput) {
+    if (await authUserRepository.findIdByEmail(input.email)) {
+      throw new ApiError(409, DUPLICATE_EMAIL_MESSAGE);
+    }
+
+    return authUserRepository.createAccount({
+      user: {
+        email: input.email,
+        provider: EMAIL_PROVIDER,
+        password_hash: await hashPassword(input.password),
+        user_metadata: { full_name: input.fullName, role: "admin" },
+      },
+      organization: { name: input.organizationName, type: input.organizationType },
+      profile: { full_name: input.fullName, avatar_url: null, role: "admin" },
+    });
   }
 
   static async setupAdmin(email: string, password: string, fullName: string, organizationName?: string) {
     await SsoService.assertEmailSignupAllowed(email);
-    const organizationId = await this.createOrganization(
-      organizationName?.trim() || `${fullName}'s Organization`,
-      undefined,
-      "company",
-    );
-
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+    const { userId, organizationId } = await this.createPasswordAccount({
       email,
       password,
-      email_confirm: true,
-      user_metadata: { full_name: fullName, role: "admin", organization_id: organizationId },
+      fullName,
+      organizationName: organizationName?.trim() || `${fullName}'s Organization`,
+      organizationType: "company",
     });
-
-    if (authError) {
-      if (authError.message.toLowerCase().includes("already registered")) {
-        throw new ApiError(409, "An account with this email already exists");
-      }
-      throw new ApiError(400, authError.message);
-    }
-
-    if (!authData.user?.id) throw new ApiError(500, "Failed to create auth user");
-
-    const userId = authData.user.id;
-    await supabase.from("organizations").update({ owner_id: userId }).eq("id", organizationId);
-
-    const { error: upsertError } = await supabase
-      .from("profiles")
-      .upsert({
-        id: userId,
-        email,
-        full_name: fullName,
-        role: "admin",
-        organization_id: organizationId,
-        is_active: true,
-      }, { onConflict: "id" });
-
-    if (upsertError) throw new ApiError(500, upsertError.message);
 
     const tokens = issueTokenPair({ userId, email, role: "admin", organizationId, permissions: [] });
     return {
@@ -237,39 +178,13 @@ export class AuthService {
 
   static async register(email: string, password: string, fullName: string) {
     await SsoService.assertEmailSignupAllowed(email);
-    const organizationId = await this.createOrganization(`${fullName}'s Workspace`);
-
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+    const { userId, organizationId } = await this.createPasswordAccount({
       email,
       password,
-      email_confirm: true,
-      user_metadata: { full_name: fullName, role: "admin", organization_id: organizationId },
+      fullName,
+      organizationName: `${fullName}'s Workspace`,
+      organizationType: "individual",
     });
-
-    if (authError) {
-      if (authError.message.toLowerCase().includes("already registered")) {
-        throw new ApiError(409, "An account with this email already exists");
-      }
-      throw new ApiError(400, authError.message);
-    }
-
-    if (!authData.user?.id) throw new ApiError(500, "Failed to create user account");
-
-    const userId = authData.user.id;
-    await supabase.from("organizations").update({ owner_id: userId }).eq("id", organizationId);
-
-    const { error: upsertError } = await supabase
-      .from("profiles")
-      .upsert({
-        id: userId,
-        email,
-        full_name: fullName,
-        role: "admin",
-        organization_id: organizationId,
-        is_active: true,
-      }, { onConflict: "id" });
-
-    if (upsertError) throw new ApiError(500, upsertError.message);
 
     return {
       user_id:   userId,
@@ -279,73 +194,37 @@ export class AuthService {
     };
   }
 
-  /**
-   * Postgres provider only — with Supabase the frontend uses Supabase's own
-   * reset-password emails. Always succeeds so emails can't be enumerated.
-   */
+  /** Always succeeds so emails can't be enumerated. */
   static async requestPasswordReset(email: string) {
-    if (DB_PROVIDER !== "postgres") {
-      throw new ApiError(400, "Password reset is handled by Supabase for this deployment");
-    }
-
-    const { data: user, error } = await supabase
-      .from("auth_users")
-      .select("id,email")
-      .eq("email", email.toLowerCase())
-      .maybeSingle();
-
-    if (error) throw new ApiError(500, error.message);
+    const user = await authUserRepository.findByEmail(email);
     if (!user) return;
 
     const { token, tokenHash } = createResetToken();
-    const { error: updateError } = await supabase
-      .from("auth_users")
-      .update({
-        reset_token_hash: tokenHash,
-        reset_token_expires_at: new Date(Date.now() + RESET_TOKEN_TTL_MS).toISOString(),
-      })
-      .eq("id", user.id);
+    await authUserRepository.saveResetToken(user.id, tokenHash, new Date(Date.now() + RESET_TOKEN_TTL_MS));
 
-    if (updateError) throw new ApiError(500, updateError.message);
-
-    const frontendUrl = (process.env.FRONTEND_URL ?? "http://localhost:3000").replace(/\/$/, "");
-    const link = `${frontendUrl}/update-password?token=${token}`;
-    const sent = await sendSystemMail(
+    const frontendUrl = (process.env.FRONTEND_URL ?? DEFAULT_FRONTEND_URL).replace(/\/$/, "");
+    const resetLink = `${frontendUrl}/update-password?token=${token}`;
+    const isSent = await sendSystemMail(
       user.email,
       "Reset your password",
       `<p>We received a request to reset your password.</p>
-       <p><a href="${link}">Choose a new password</a> (link valid for 1 hour).</p>
+       <p><a href="${resetLink}">Choose a new password</a> (link valid for 1 hour).</p>
        <p>If you didn't ask for this, you can ignore this email.</p>`,
     );
 
-    if (!sent) {
-      console.warn(`[Auth] SMTP_HOST not set — password reset link for ${user.email}: ${link}`);
+    if (!isSent) {
+      console.warn(`[Auth] SMTP_HOST not set — password reset link for ${user.email}: ${resetLink}`);
     }
   }
 
   static async resetPassword(token: string, password: string) {
-    if (DB_PROVIDER !== "postgres") {
-      throw new ApiError(400, "Password reset is handled by Supabase for this deployment");
-    }
-
-    const { data: user, error } = await supabase
-      .from("auth_users")
-      .select("id,reset_token_expires_at")
-      .eq("reset_token_hash", hashResetToken(token))
-      .maybeSingle();
-
-    if (error) throw new ApiError(500, error.message);
-    if (!user || !user.reset_token_expires_at || new Date(user.reset_token_expires_at).getTime() < Date.now()) {
+    const user = await authUserRepository.findByResetTokenHash(hashResetToken(token));
+    const isTokenValid = Boolean(user?.reset_token_expires_at && user.reset_token_expires_at.getTime() >= Date.now());
+    if (!user || !isTokenValid) {
       throw new ApiError(400, "Invalid or expired reset link. Please request a new one.");
     }
 
-    const { error: updateError } = await supabase.auth.admin.updateUserById(user.id, { password });
-    if (updateError) throw new ApiError(500, updateError.message);
-
-    await supabase
-      .from("auth_users")
-      .update({ reset_token_hash: null, reset_token_expires_at: null })
-      .eq("id", user.id);
+    await authUserRepository.replacePassword(user.id, await hashPassword(password));
   }
 
   static async refreshTokens(refreshToken: string) {
@@ -354,34 +233,20 @@ export class AuthService {
   }
 
   static async getProfile(userId: string) {
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("id,email,full_name,avatar_url,role,organization_id,is_active,created_at,updated_at")
-      .eq("id", userId)
-      .maybeSingle();
-
-    if (profileError) throw new ApiError(500, profileError.message);
+    const profile = await profileRepository.findWithPermissions(userId);
     if (!profile) throw new ApiError(404, "Profile not found");
 
-    const { data: permissions, error: permissionsError } = await supabase
-      .from("page_permissions")
-      .select("page_key,can_view,can_edit,can_delete")
-      .eq("user_id", userId);
-
-    if (permissionsError) throw new ApiError(500, permissionsError.message);
-
-    const row = profile as ProfileRow;
     return {
-      id: row.id,
-      email: row.email,
-      fullName: row.full_name ?? "",
-      avatarUrl: row.avatar_url,
-      role: row.role,
-      organizationId: row.organization_id,
-      isActive: row.is_active !== false,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      pagePermissions: ((permissions ?? []) as PagePermissionRow[]).map((permission) => ({
+      id: profile.id,
+      email: profile.email,
+      fullName: profile.full_name ?? "",
+      avatarUrl: profile.avatar_url,
+      role: profile.role,
+      organizationId: profile.organization_id,
+      isActive: profile.is_active !== false,
+      createdAt: profile.created_at,
+      updatedAt: profile.updated_at,
+      pagePermissions: profile.pagePermissions.map((permission) => ({
         pageKey: permission.page_key,
         canView: permission.can_view ?? false,
         canEdit: permission.can_edit ?? false,

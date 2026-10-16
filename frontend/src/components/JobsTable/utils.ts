@@ -12,10 +12,10 @@ export function normalizeStatusKey(
 
 export function getServicem8StatsFromJobs(jobs: JobRow[]) {
   const total = jobs.length;
-  const completed = jobs.filter((j) => normalizeStatusKey(j.status) === "completed").length;
-  const active = jobs.filter((j) => {
-    if (normalizeStatusKey(j.status) === "completed") return false;
-    return j.status.trim().toLowerCase() !== "unsuccessful";
+  const completed = jobs.filter((job) => normalizeStatusKey(job.status) === "completed").length;
+  const active = jobs.filter((job) => {
+    if (normalizeStatusKey(job.status) === "completed") return false;
+    return job.status.trim().toLowerCase() !== "unsuccessful";
   }).length;
   const revenue = 0;
   const newThisWeek = 0;

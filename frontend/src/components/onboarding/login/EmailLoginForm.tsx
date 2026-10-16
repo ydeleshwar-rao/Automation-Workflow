@@ -6,7 +6,6 @@ import Link from "next/link";
 import axios from "axios";
 import { API_ROUTES } from "@/src/constants/api.constants";
 import { persistLoginResponse } from "@/src/services/auth.service";
-import { COMPANY_SSO_ENABLED } from "@/src/lib/auth/provider";
 import { SsoButtons } from "../shared/SsoButtons";
 import { CompanySsoForm } from "./CompanySsoForm";
 
@@ -17,8 +16,8 @@ export function EmailLoginForm() {
   const [error, setError]       = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     if (isLoading) return;
     setIsLoading(true);
     setError(null);
@@ -64,16 +63,14 @@ export function EmailLoginForm() {
       {/* ── Google / Microsoft / company SSO ── */}
       <SsoButtons />
 
-      {COMPANY_SSO_ENABLED && (
-        <button
-          type="button"
-          onClick={() => setMode("company")}
-          className="mt-3 w-full rounded-xl border border-border/70 bg-background px-5 py-3 text-sm font-semibold text-foreground transition-all hover:border-primary/40 hover:bg-primary/5 active:scale-[0.98] flex items-center justify-center gap-3"
-        >
-          <Building2 className="h-4 w-4 text-primary" />
-          Sign in with company SSO
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={() => setMode("company")}
+        className="mt-3 w-full rounded-xl border border-border/70 bg-background px-5 py-3 text-sm font-semibold text-foreground transition-all hover:border-primary/40 hover:bg-primary/5 active:scale-[0.98] flex items-center justify-center gap-3"
+      >
+        <Building2 className="h-4 w-4 text-primary" />
+        Sign in with company SSO
+      </button>
 
       {/* ── Divider ── */}
       <div className="my-6 flex items-center gap-3">
@@ -96,7 +93,7 @@ export function EmailLoginForm() {
             required
             autoComplete="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(event) => setEmail(event.target.value)}
             className="w-full bg-background border border-border/70 rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
           />
         </div>
@@ -120,7 +117,7 @@ export function EmailLoginForm() {
             required
             autoComplete="current-password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(event) => setPassword(event.target.value)}
             className="w-full bg-background border border-border/70 rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
           />
         </div>

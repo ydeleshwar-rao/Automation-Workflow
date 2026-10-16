@@ -52,7 +52,7 @@ export function ApplyTemplateWizard({ templateId, isOpen, onClose }: Props) {
   }, [isOpen, template]);
 
   const nodesNeedingCreds = useMemo<TemplateNode[]>(
-    () => (template?.nodes ?? []).filter((n) => (n.required_credentials ?? []).length > 0),
+    () => (template?.nodes ?? []).filter((templateNode) => (templateNode.required_credentials ?? []).length > 0),
     [template]
   );
 
@@ -155,7 +155,7 @@ export function ApplyTemplateWizard({ templateId, isOpen, onClose }: Props) {
     >
       <div
         className="flex max-h-[85vh] w-full max-w-[680px] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
@@ -201,7 +201,7 @@ export function ApplyTemplateWizard({ templateId, isOpen, onClose }: Props) {
                 <Input
                   autoFocus
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(event) => setName(event.target.value)}
                   placeholder="e.g. Acme Lead Flow"
                 />
               </div>
@@ -212,7 +212,7 @@ export function ApplyTemplateWizard({ templateId, isOpen, onClose }: Props) {
                 </label>
                 <Input
                   value={tag}
-                  onChange={(e) => setTag(e.target.value)}
+                  onChange={(event) => setTag(event.target.value)}
                   placeholder="e.g. client-acme"
                 />
               </div>
@@ -260,7 +260,7 @@ export function ApplyTemplateWizard({ templateId, isOpen, onClose }: Props) {
                           credentialType={cred.type}
                           fieldKey={cred.field}
                           value={overrides[node.id]?.[cred.field] ?? ""}
-                          onChange={(v) => handleOverrideChange(node.id, cred.field, v)}
+                          onChange={(selectedValue) => handleOverrideChange(node.id, cred.field, selectedValue)}
                         />
                       </div>
                     ))}
@@ -353,7 +353,7 @@ function StepIndicator({
       : []),
     { key: "review", label: "Review" },
   ];
-  const currentIndex = steps.findIndex((s) => s.key === step);
+  const currentIndex = steps.findIndex((wizardStep) => wizardStep.key === step);
 
   return (
     <div className="flex items-center gap-2 border-b border-border bg-muted/20 px-6 py-3">
@@ -400,7 +400,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 function formatIntegration(key: string): string {
   return key
     .split("_")
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 }
 function formatAction(key: string): string {
@@ -409,5 +409,5 @@ function formatAction(key: string): string {
 function prettyLabel(field: string): string {
   return field
     .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }

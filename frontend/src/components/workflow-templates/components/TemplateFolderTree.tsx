@@ -46,8 +46,8 @@ interface TreeNode extends TemplateFolderRecord {
 
 function buildTree(folders: TemplateFolderRecord[]): TreeNode[] {
   const byId = new Map<string, TreeNode>();
-  for (const f of folders) {
-    byId.set(f.id, { ...f, children: [], depth: 0 });
+  for (const folder of folders) {
+    byId.set(folder.id, { ...folder, children: [], depth: 0 });
   }
   const roots: TreeNode[] = [];
   for (const node of byId.values()) {
@@ -61,14 +61,14 @@ function buildTree(folders: TemplateFolderRecord[]): TreeNode[] {
     }
   }
   const sortRecursive = (list: TreeNode[]) => {
-    list.sort((a, b) => a.name.localeCompare(b.name));
-    for (const n of list) sortRecursive(n.children);
+    list.sort((firstNode, secondNode) => firstNode.name.localeCompare(secondNode.name));
+    for (const childNode of list) sortRecursive(childNode.children);
   };
   sortRecursive(roots);
   const stamp = (list: TreeNode[], depth: number) => {
-    for (const n of list) {
-      n.depth = depth;
-      stamp(n.children, depth + 1);
+    for (const childNode of list) {
+      childNode.depth = depth;
+      stamp(childNode.children, depth + 1);
     }
   };
   stamp(roots, 0);
@@ -99,10 +99,10 @@ export function TemplateFolderTree({
     });
 
   const countIn = (folderId: string) =>
-    templates.filter((t) => t.template_folder_id === folderId).length;
+    templates.filter((template) => template.template_folder_id === folderId).length;
 
   const allCount = templates.length;
-  const unfiledCount = templates.filter((t) => !t.template_folder_id).length;
+  const unfiledCount = templates.filter((template) => !template.template_folder_id).length;
 
   return (
     <div className="flex h-full flex-col">
@@ -287,8 +287,8 @@ function FolderNode({
       >
         {/* Chevron / spacer */}
         <button
-          onClick={(e) => {
-            e.stopPropagation();
+          onClick={(event) => {
+            event.stopPropagation();
             if (hasChildren) onToggle(node.id);
           }}
           className={cn(
@@ -313,8 +313,8 @@ function FolderNode({
         {/* Name */}
         <span
           className="flex-1 truncate font-medium"
-          onDoubleClick={(e) => {
-            e.stopPropagation();
+          onDoubleClick={(event) => {
+            event.stopPropagation();
             onRename(node.id, node.name);
           }}
           title="Double-click to rename"
@@ -337,7 +337,7 @@ function FolderNode({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                onClick={(e) => e.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
                 className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
                 <MoreVertical className="h-3.5 w-3.5" />
@@ -345,7 +345,7 @@ function FolderNode({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
               <DropdownMenuItem
-                onClick={(e) => { e.stopPropagation(); onDeploy(node.id, node.name); }}
+                onClick={(event) => { event.stopPropagation(); onDeploy(node.id, node.name); }}
                 className="text-indigo-500 focus:text-indigo-500"
               >
                 <Rocket className="mr-2 h-3.5 w-3.5" />
@@ -353,20 +353,20 @@ function FolderNode({
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={(e) => { e.stopPropagation(); onCreateChild(node.id); }}
+                onClick={(event) => { event.stopPropagation(); onCreateChild(node.id); }}
               >
                 <FolderPlus className="mr-2 h-3.5 w-3.5" />
                 Add subfolder
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={(e) => { e.stopPropagation(); onRename(node.id, node.name); }}
+                onClick={(event) => { event.stopPropagation(); onRename(node.id, node.name); }}
               >
                 <Pencil className="mr-2 h-3.5 w-3.5" />
                 Rename
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={(e) => { e.stopPropagation(); onDelete(node.id); }}
+                onClick={(event) => { event.stopPropagation(); onDelete(node.id); }}
                 className="text-destructive focus:text-destructive"
               >
                 <Trash2 className="mr-2 h-3.5 w-3.5" />

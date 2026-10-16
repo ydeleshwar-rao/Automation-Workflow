@@ -1,20 +1,26 @@
 import axios from "axios";
 import { Request } from "express";
-import { supabase } from "../../../../config/db.config.js";
 import { getUserId } from "../../../../common/function.js";
+import { leadshubIntegrationRepository } from "../../repositories/leadshub-integration.repository.js";
+
+const GHL_TOKEN_URL = "https://services.leadconnectorhq.com/oauth/token";
+const MILLISECONDS_PER_SECOND = 1000;
+
+interface GhlAuthorizationTokenResponse {
+  access_token: string;
+  refresh_token?: string;
+  expires_in: number;
+  companyId?: string;
+  locationId?: string;
+  userType?: string;
+}
 
 export async function ghlInstallService(req: Request): Promise<string> {
   const baseUrl = process.env.BASE_MARKETPLACE_URL;
 
   const userId = await getUserId(req);
 
-  const { data: existing } = await supabase
-    .from("leadshub_integrations")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("is_active", true)
-    .maybeSingle();
-
+  const existing = await leadshubIntegrationRepository.findActiveByUserId(userId);
   if (existing) {
     throw Object.assign(new Error("Already connected to LeadsHub"), { statusCode: 409 });
   }
@@ -62,83 +68,46 @@ export async function ghlCallbackService(req: Request) {
   params.append("code", code as string);
   params.append("redirect_uri", process.env.GHL_REDIRECT_URI!);
 
-  const response = await axios.post(
-    "https://services.leadconnectorhq.com/oauth/token",
-    params.toString(),
-    {
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-    }
-  );
-
-  const tokenData = response.data;
-  const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
-
-  const { error } = await supabase.from("leadshub_integrations").upsert({
-    user_id: userId,
-    company_id: tokenData.companyId,
-    location_id: tokenData.locationId,
-    access_token: tokenData.access_token,
-    refresh_token: tokenData.refresh_token,
-    expires_in: tokenData.expires_in,
-    user_type: tokenData.userType,
-    expires_at: expiresAt,
-    is_active: true,
+  const response = await axios.post<GhlAuthorizationTokenResponse>(GHL_TOKEN_URL, params.toString(), {
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
   });
 
-  if (error) {
-    throw new Error(error.message);
-  }
+  const tokenData = response.data;
+
+  await leadshubIntegrationRepository.save({
+    user_id: userId,
+    company_id: tokenData.companyId ?? null,
+    location_id: tokenData.locationId ?? null,
+    access_token: tokenData.access_token,
+    refresh_token: tokenData.refresh_token ?? null,
+    expires_in: tokenData.expires_in,
+    user_type: tokenData.userType ?? null,
+    expires_at: new Date(Date.now() + tokenData.expires_in * MILLISECONDS_PER_SECOND),
+  });
 
   return true;
 }
-
 
 export async function ghlDisconnectService(userId: string) {
-  const { error } = await supabase
-    .from("leadshub_integrations")
-    .delete()
-    .eq("user_id", userId);
-
-  if (error) throw new Error(error.message);
-
+  await leadshubIntegrationRepository.deleteByUserId(userId);
   return true;
 }
 
-
-
-
 export async function ghlStatusService(userId: string) {
-  const { data, error } = await supabase
-    .from("leadshub_integrations")
-    .select("company_id, location_id, user_type, is_active, updated_at")
-    .eq("user_id", userId)
-    .eq("is_active", true)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("first_name, last_name, email, company_name")
-    .eq("id", userId)
-    .maybeSingle();
-
-  const ownerName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim();
+  const integration = await leadshubIntegrationRepository.findActiveWithOwnerByUserId(userId);
 
   return {
-    connected: !!data,
-    account: data
+    connected: Boolean(integration),
+    account: integration
       ? {
-          ownerName: ownerName || profile?.email || null,
-          companyName: profile?.company_name ?? null,
-          companyId: data.company_id ?? null,
-          locationId: data.location_id ?? null,
-          userType: data.user_type ?? null,
-          connectedAt: data.updated_at ?? null,
+          ownerName: integration.user.full_name || integration.user.email || null,
+          companyName: integration.user.organization.name || null,
+          companyId: integration.company_id ?? null,
+          locationId: integration.location_id ?? null,
+          userType: integration.user_type ?? null,
+          connectedAt: integration.updated_at,
         }
       : null,
   };

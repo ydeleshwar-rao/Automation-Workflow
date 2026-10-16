@@ -12,13 +12,7 @@ router.delete("/disconnect", catchAsync(RazorpayController.disconnect));
 // ─── Webhook registration on Razorpay (optional — can also set via Dashboard) ─
 router.post("/register-webhook", catchAsync(RazorpayController.registerWebhook));
 
-// ─── Sync (Razorpay API → Supabase DB) ───────────────────────────────────────
-router.post("/sync",                catchAsync(RazorpayController.syncAll));
-router.post("/sync/payments",       catchAsync(RazorpayController.syncPayments));
-router.post("/sync/invoices",       catchAsync(RazorpayController.syncInvoices));
-router.post("/sync/payment-links",  catchAsync(RazorpayController.syncPaymentLinks));
-
-// ─── Triggers: DB reads ───────────────────────────────────────────────────────
+// ─── Triggers: live reads from Razorpay ───────────────────────────────────────────────────────────────────────────────────────────
 // Trigger: Payment Captured / Payment Failed
 router.get("/payments",      catchAsync(RazorpayController.getPayments));
 
@@ -27,9 +21,6 @@ router.get("/invoices",      catchAsync(RazorpayController.getInvoices));
 
 // Trigger: Payment Link Paid / Partially Paid / Payment Page Paid
 router.get("/payment-links", catchAsync(RazorpayController.getPaymentLinks));
-
-// All raw webhook events log (optional ?event_type= filter)
-router.get("/events",        catchAsync(RazorpayController.getEvents));
 
 // ─── Incoming Webhook Receiver (PUBLIC — Razorpay posts here instantly) ───────
 // No authMiddleware — Razorpay calls this URL directly with HMAC signature

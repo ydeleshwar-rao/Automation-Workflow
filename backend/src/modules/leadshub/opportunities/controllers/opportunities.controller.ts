@@ -2,7 +2,7 @@ import {Request, Response, NextFunction } from "express";
 import * as opportunityService from "../service/opportunities.service.js";
 import { ApiResponse } from "../../../../utils/ApiResponse.js";
 import { UpdateOpportunityDTO } from "../dto/update-opportunities.dto.js";
-import { getUserId } from "../../../../common/function.js";
+import { getLocationIdByUserId, getUserId } from "../../../../common/function.js";
 import { processLeadhubCreateAndContact } from "../../../workflow-automation/processor/leadhubProcessor.js";
 
 // Resolve {{map:id|label|fallback}} tokens → fallback (3rd segment), preserving structure.
@@ -28,32 +28,14 @@ export  const syncOpportunityController = async (req: Request, res: Response, ne
                 message: "Invalid or missing OpportunitiyId parameter",
             });
         }
-        const data = await opportunityService.syncOpportunity(opportunityId);
+        const userId = await getUserId(req);
+        const locationId = await getLocationIdByUserId(userId);
+        const data = await opportunityService.getOpportunity(locationId, opportunityId);
         return ApiResponse(res, 200, "Opportunity synced successfully", data);
     } catch(error) {
         next (error);
     }
 };
-
-export  const syncOpportunitiesController = async (req: Request, res: Response, next: NextFunction) => {
-    try{
-        console.log("calling syncOpportunitiesController");
-        const { locationId } = req.params;
-        console.log("Received locationId:", locationId);
-        if (!locationId || typeof locationId !== 'string') {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid or missing locationId parameter",
-            });
-        }
-        const data = await opportunityService.syncOpportunities(locationId);
-        return ApiResponse(res, 200, "Opportunities synced successfully", null);
-    } catch(error) {
-        next (error);
-    }
-};
-
-
 
 export const updateOpportunityController = async (
   req: Request,
@@ -91,7 +73,10 @@ export const updateOpportunityController = async (
       });
     }
 
+    const userId = await getUserId(req);
+    const locationId = await getLocationIdByUserId(userId);
     const updatedOpportunity = await opportunityService.updateOpportunity(
+      locationId,
       opportunityId,
       updateDTO
     );

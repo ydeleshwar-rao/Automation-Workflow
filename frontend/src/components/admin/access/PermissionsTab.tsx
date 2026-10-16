@@ -30,17 +30,17 @@ import { DeveloperPermissionsModal } from "./DeveloperPermissionsModal";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function displayName(u: DeveloperRecord): string {
-  return u.full_name?.trim() || u.email;
+function displayName(developer: DeveloperRecord): string {
+  return developer.full_name?.trim() || developer.email;
 }
 
-function initials(u: DeveloperRecord): string {
-  const name = u.full_name?.trim() ?? "";
+function initials(developer: DeveloperRecord): string {
+  const name = developer.full_name?.trim() ?? "";
   if (name) {
     const parts = name.split(" ");
     return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase();
   }
-  return (u.email[0] ?? "?").toUpperCase();
+  return (developer.email[0] ?? "?").toUpperCase();
 }
 
 // ── Row ───────────────────────────────────────────────────────────────────────
@@ -142,10 +142,10 @@ export function PermissionsTab() {
   const developers = useMemo(() => devsResp?.data ?? [], [devsResp]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return developers;
-    return developers.filter((d) =>
-      `${displayName(d)} ${d.email}`.toLowerCase().includes(q)
+    const query = search.trim().toLowerCase();
+    if (!query) return developers;
+    return developers.filter((developer) =>
+      `${displayName(developer)} ${developer.email}`.toLowerCase().includes(query)
     );
   }, [developers, search]);
 
@@ -208,7 +208,7 @@ export function PermissionsTab() {
               type="search"
               placeholder="Search developers by name or email…"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(event) => setSearch(event.target.value)}
               className="pl-9"
             />
           </div>

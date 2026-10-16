@@ -72,7 +72,7 @@ function CollapsibleSection({
   return (
     <div className="border-b border-black/8 dark:border-white/5 last:border-0">
       <button
-        onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
+        onClick={(event) => { event.stopPropagation(); setIsOpen(!isOpen); }}
         className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-primary/5 rounded-xl transition-colors group"
       >
         <div className="nm-inset w-6 h-6 rounded-lg flex items-center justify-center shrink-0">
@@ -246,7 +246,7 @@ export function SelectionPopup({
           <input
             placeholder={placeholder}
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(event) => setSearch(event.target.value)}
             className="flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none font-medium"
             autoFocus
           />
@@ -300,7 +300,7 @@ export function SelectionPopup({
                 Load more
               </button>
               <button
-                onClick={(e) => { e.stopPropagation(); onRefresh?.(); }}
+                onClick={(event) => { event.stopPropagation(); onRefresh?.(); }}
                 disabled={isLoading}
                 className={cn(
                   "nm-btn flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold text-muted-foreground hover:text-primary transition-all",

@@ -53,8 +53,8 @@ export function MailSetupStep({
     setConnectError(null);
     try {
       await onAddAccount(config);
-    } catch (err: any) {
-      setConnectError(err.message || "Failed to connect SMTP account. Please check your credentials.");
+    } catch (error: any) {
+      setConnectError(error.message || "Failed to connect SMTP account. Please check your credentials.");
     } finally {
       setIsConnecting(false);
     }

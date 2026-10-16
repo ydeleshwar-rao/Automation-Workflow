@@ -1,10 +1,19 @@
-import { supabase } from "../../../../config/db.config.js";
 import { IncomingHttpHeaders } from "http";
-import { randomBytes, randomUUID } from "crypto";
+import { randomBytes } from "crypto";
+import type { Prisma, Webhook, WebhookEvent } from "@prisma/client";
 import { executeWorkflow, findWorkflowByWebhookId } from "../../../workflow-automation/processor/webhookProcessor.js";
-import { API_PREFIX } from "../../../../config/api.config.js";
+import {
+  findWebhookTriggerNodeService,
+  saveSamplePayloadService,
+} from "../../../workflow-automation/node/node.service.js";
+import { webhookRepository, type UpdateWebhookInput } from "../repositories/webhook.repository.js";
+import { buildPublicApiUrl } from "../../../../config/api.config.js";
+import { ApiError } from "../../../../utils/ApiError.js";
 import { webhookLogger as log } from "../../../../utils/logger.js";
 
+const UNIQUE_PATH_BYTES = 8;
+const HTTP_OK = 200;
+const HTTP_SERVER_ERROR = 500;
 
 export async function createWebhookService({
   name,
@@ -18,48 +27,34 @@ export async function createWebhookService({
   workflow_id: string;
 }) {
   try {
-    const baseUrl = process.env.BASE_URL || "http://localhost:5000";
+    const uniquePath = randomBytes(UNIQUE_PATH_BYTES).toString("hex");
 
-    const uniquePath = randomBytes(8).toString("hex");
-
-    const { data, error } = await supabase
-      .from("webhooks")
-      .insert({
-        user_id,
-        name,
-        unique_path: uniquePath,
-        full_url: `${baseUrl}${API_PREFIX}/webhooks/${uniquePath}`,
-        action_type,
-        workflow_id,
-        status: "active",
-      })
-      .select()
-      .single();
-
-    if (error) {
-      throw error;
-    }
-
-    const { id, full_url } = data;
+    const webhook = await webhookRepository.create({
+      user_id,
+      name,
+      unique_path: uniquePath,
+      full_url: buildPublicApiUrl(`/webhooks/${uniquePath}`),
+      action_type,
+      workflow_id,
+      status: "active",
+    });
 
     log.info("WEBHOOK CREATED", {
-      webhook_id: id,
+      webhook_id: webhook.id,
       name,
-      url: full_url,
+      url: webhook.full_url,
       path: uniquePath,
       workflow_id,
       user_id,
       mode: "test",
     });
 
-    return { id, full_url };
-
+    return { id: webhook.id, full_url: webhook.full_url };
   } catch (error: any) {
     log.error("create webhook failed", { error: error?.message, name, workflow_id });
-    throw new Error(error?.message || "Webhook creation failed");
+    throw error;
   }
 }
-
 
 export async function processIncomingWebhook({
   hookPath,
@@ -69,32 +64,23 @@ export async function processIncomingWebhook({
   hookPath: string;
   headers: IncomingHttpHeaders;
   body: unknown;
- }) {
+}) {
   const cleanPath = hookPath.trim().toLowerCase();
-  const bodyObj = body as Record<string, any>;
+  const bodyObject = body as Record<string, any>;
 
   log.info("INCOMING", {
     path: cleanPath,
-    email: bodyObj?.email ?? bodyObj?.contact?.email ?? "",
-    name: bodyObj?.firstname ?? bodyObj?.firstName ?? bodyObj?.full_name ?? bodyObj?.name ?? "",
-    phone: bodyObj?.phone ?? bodyObj?.mobile ?? "",
-    fields: Object.keys(bodyObj ?? {}).length,
+    email: bodyObject?.email ?? bodyObject?.contact?.email ?? "",
+    name: bodyObject?.firstname ?? bodyObject?.firstName ?? bodyObject?.full_name ?? bodyObject?.name ?? "",
+    phone: bodyObject?.phone ?? bodyObject?.mobile ?? "",
+    fields: Object.keys(bodyObject ?? {}).length,
     userAgent: (headers["user-agent"] ?? "").slice(0, 60),
   });
 
-  // ── STEP 2: Look up webhook in DB ─────────────────────────────────────────────
-  const { data: webhook, error } = await supabase
-    .from("webhooks")
-    .select("*")
-    .eq("unique_path", cleanPath)
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
-    .single();
-
-  if (error || !webhook) {
-    log.error("webhook not found", { path: cleanPath, error: error?.message ?? "no data" });
-    throw new Error("Webhook not found or inactive");
+  const webhook = await webhookRepository.findActiveByPath(cleanPath, new Date());
+  if (!webhook) {
+    log.error("webhook not found", { path: cleanPath, error: "no data" });
+    throw new ApiError(404, "Webhook not found or inactive");
   }
 
   log.info("webhook resolved", { webhook_id: webhook.id, name: webhook.name, mode: webhook.mode });
@@ -102,219 +88,110 @@ export async function processIncomingWebhook({
   const cleanHeaders = JSON.parse(JSON.stringify(headers ?? {}));
   const cleanBody = JSON.parse(JSON.stringify(body ?? {}));
 
-  // ── STEP 3: Save incoming event to webhook_events ─────────────────────────────
-  const { data: event, error: eventError } = await supabase
-    .from("webhook_events")
-    .insert({
-      webhook_id: webhook.id,
-      request_headers: cleanHeaders,
-      request_body: cleanBody,
-      status: "pending",
-    })
-    .select()
-    .single();
-
-  if (eventError) {
-    log.error("event save failed", { webhook_id: webhook.id, error: eventError.message });
-    throw new Error(eventError.message);
-  }
-
+  const event = await webhookRepository.createEvent({
+    webhook_id: webhook.id,
+    request_headers: cleanHeaders,
+    request_body: cleanBody,
+  });
   log.info("event saved", { event_id: event.id, webhook_id: event.webhook_id, mode: webhook.mode });
 
-  // ── STEP 4: Update last_triggered_at ─────────────────────────────────────────
-  await supabase
-    .from("webhooks")
-    .update({ last_triggered_at: new Date().toISOString() })
-    .eq("id", webhook.id);
+  await webhookRepository.markTriggered(webhook.id, new Date());
 
-  // ── STEP 5: Route by mode ─────────────────────────────────────────────────────
   if (webhook.mode === "live") {
-    const result = await findWorkflowByWebhookId(webhook.id);
-
-    if (result) {
-      log.info("executing workflow", { workflow_id: result.workflowId, event_id: event.id, webhook_id: webhook.id });
-      executeWorkflow(result.workflowId, cleanBody).then(async ({ success, error: execError }) => {
-        if (success) {
-          await recordWebhookAttempt(event.id, 200, null);
-          await supabase.from("webhook_events").update({ status: "processed", processed_at: new Date().toISOString() }).eq("id", event.id);
-          log.info("END — processed", { event_id: event.id, workflow_id: result.workflowId });
-        } else {
-          await recordWebhookAttempt(event.id, 500, execError ?? "Unknown error");
-          await supabase.from("webhook_events").update({ status: "failed" }).eq("id", event.id);
-          log.error("END — workflow failed", { event_id: event.id, workflow_id: result.workflowId, error: execError });
-        }
-      }).catch(async (err) => {
-        log.error("END — unexpected error", { event_id: event.id, error: err.message });
-        await recordWebhookAttempt(event.id, 500, err.message);
-        await supabase.from("webhook_events").update({ status: "failed" }).eq("id", event.id);
-      });
-    } else {
-      log.warn("no active workflow linked", { webhook_id: webhook.id });
-    }
-
+    await runLinkedWorkflow(webhook, event, cleanBody);
   } else if (webhook.mode === "test") {
-    log.info("TEST mode — saving sample payload", { webhook_id: webhook.id });
-
-    const { data: triggerNode, error: triggerNodeError } = await supabase
-      .from("workflow_nodes")
-      .select("id")
-      .eq("type", "trigger")
-      .eq("integration_key", "webhooks")
-      .contains("config", { webhook_id: webhook.id })
-      .maybeSingle();
-
-    if (triggerNodeError) {
-      log.warn("trigger node lookup error", { webhook_id: webhook.id, error: triggerNodeError.message });
-    } else if (!triggerNode) {
-      log.warn("no trigger node found", { webhook_id: webhook.id });
-    } else {
-      const outputSchema = Object.keys(cleanBody).reduce<Record<string, null>>((acc, key) => ({ ...acc, [key]: null }), {});
-      const { error: saveError } = await supabase
-        .from("workflow_nodes")
-        .update({ sample_payload: cleanBody, output_schema: outputSchema, updated_at: new Date().toISOString() })
-        .eq("id", triggerNode.id);
-
-      if (saveError) {
-        log.error("sample payload save failed", { node_id: triggerNode.id, error: saveError.message });
-      } else {
-        log.info("sample payload saved", { node_id: triggerNode.id, fields: Object.keys(cleanBody) });
-      }
-    }
+    await saveTestSamplePayload(webhook, cleanBody);
   }
 
   log.info("DONE", { event_id: event.id, webhook_id: webhook.id, mode: webhook.mode });
   return event;
 }
 
-
-export async function getWebhookByIdService(
-  webhookId: string
-){
-  try {
-    const { data, error } = await supabase
-      .from("webhook_events")
-      .select("*")
-      .eq("webhook_id", webhookId)
-      .order("received_at", { ascending: false })
-//.limit(1)
-      .single();
-
-    if (error) throw error;
-    const {id,webhook_id,request_body} = data
-  return {id,webhook_id,request_body};
-  } catch (error: any) {
-    throw new Error(error);
+/** Starts the workflow in the background; the HTTP caller does not wait for it. */
+async function runLinkedWorkflow(webhook: Webhook, event: WebhookEvent, cleanBody: Record<string, any>) {
+  const result = await findWorkflowByWebhookId(webhook.id);
+  if (!result) {
+    log.warn("no active workflow linked", { webhook_id: webhook.id });
+    return;
   }
-   
-}
 
-export async function getNextPendingWebhookEvent(
-  webhookId: string
-) {
-  const { data, error } = await supabase
-    .from("webhook_events")
-    .select("*")
-    .eq("webhook_id", webhookId)
-    .eq("status", "pending") // 🔥 MOST IMPORTANT
-    .order("received_at", { ascending: true }) // oldest first
-  
-
-  if (error) throw new Error(error.message);
- return data?.map(({ id, webhook_id, request_body }) => ({
-  id,
-  webhook_id,
-  request_body,
-}));
-
-}
-
-
-
-export async function markWebhookEventProcessed(eventId: string) {
-  const { error } = await supabase
-    .from("webhook_events")
-    .update({
-      status: "processed",
-      processed_at: new Date()
+  log.info("executing workflow", { workflow_id: result.workflowId, event_id: event.id, webhook_id: webhook.id });
+  executeWorkflow(result.workflowId, cleanBody)
+    .then(async ({ success, error: executionError }) => {
+      if (success) {
+        await recordWebhookAttempt(event.id, HTTP_OK, null);
+        await webhookRepository.setEventStatus(event.id, "processed", new Date());
+        log.info("END — processed", { event_id: event.id, workflow_id: result.workflowId });
+      } else {
+        await recordWebhookAttempt(event.id, HTTP_SERVER_ERROR, executionError ?? "Unknown error");
+        await webhookRepository.setEventStatus(event.id, "failed");
+        log.error("END — workflow failed", { event_id: event.id, workflow_id: result.workflowId, error: executionError });
+      }
     })
-    .eq("id", eventId);
-
-  if (error) throw new Error(error.message);
+    .catch(async (error) => {
+      log.error("END — unexpected error", { event_id: event.id, error: error.message });
+      await recordWebhookAttempt(event.id, HTTP_SERVER_ERROR, error.message);
+      await webhookRepository.setEventStatus(event.id, "failed").catch(() => undefined);
+    });
 }
 
-// ── Record one attempt into webhook_attempts ──────────────────────────────────
+/** Test mode only records the payload shape for field mapping; failures are logged, not thrown. */
+async function saveTestSamplePayload(webhook: Webhook, cleanBody: Record<string, any>) {
+  log.info("TEST mode — saving sample payload", { webhook_id: webhook.id });
+  try {
+    const triggerNode = await findWebhookTriggerNodeService(webhook.id);
+    if (!triggerNode) {
+      log.warn("no trigger node found", { webhook_id: webhook.id });
+      return;
+    }
+    await saveSamplePayloadService(triggerNode.id, cleanBody);
+    log.info("sample payload saved", { node_id: triggerNode.id, fields: Object.keys(cleanBody) });
+  } catch (error: any) {
+    log.error("sample payload save failed", { webhook_id: webhook.id, error: error?.message });
+  }
+}
+
+export function getNextPendingWebhookEvent(webhookId: string) {
+  return webhookRepository.findPendingEvents(webhookId);
+}
+
+/** Delivery attempts are bookkeeping — a failed write is logged and never breaks the caller. */
 async function recordWebhookAttempt(
   eventId: string,
   responseStatus: number,
   errorMessage: string | null
 ): Promise<void> {
-  // Derive the next attempt_no from how many attempts already exist for this event
-  const { count } = await supabase
-    .from("webhook_attempts")
-    .select("id", { count: "exact", head: true })
-    .eq("event_id", eventId);
-
-  const attemptNo = (count ?? 0) + 1;
-
-  const { error } = await supabase
-    .from("webhook_attempts")
-    .insert({
+  try {
+    const attemptNo = await webhookRepository.recordAttempt({
       event_id: eventId,
-      attempt_no: attemptNo,
       response_status: responseStatus,
       error_message: errorMessage,
     });
-
-  if (error) {
-    log.error("attempt record failed", { event_id: eventId, error: error.message });
-  } else {
     log.debug("attempt recorded", { event_id: eventId, attempt: attemptNo, status: responseStatus });
+  } catch (error: any) {
+    log.error("attempt record failed", { event_id: eventId, error: error?.message });
   }
 }
-
 
 export async function updateWebhookService(
   id: string,
   updates: {
-    mode?: "test"| "live";
+    mode?: "test" | "live";
     status?: "active" | "disabled";
     request_body?: any;
   }
 ) {
-  // Update webhook_events.request_body when provided
+  // With request_body, `id` is a webhook_events id and only that event's body is replaced
   if (updates.request_body !== undefined) {
-    const { data, error: eventError } = await supabase
-      .from("webhook_events")
-      .update({ request_body: updates.request_body })
-      .eq("id", id)
-      .select();
-    if (eventError) throw new Error(eventError.message);
-    return data;
+    return webhookRepository.updateEventRequestBody(id, updates.request_body as Prisma.InputJsonValue);
   }
 
-  // Update webhook mode / status
-  const updateData: any = {
-    updated_at: new Date().toISOString(),
-  };
-
+  const updateData: UpdateWebhookInput = {};
   if (updates.mode) {
     updateData.mode = updates.mode;
-    if (updates.mode === "live") {
-      updateData.expires_at = null;
-    }
+    if (updates.mode === "live") updateData.expires_at = null;
   }
+  if (updates.status) updateData.status = updates.status;
 
-  if (updates.status) {
-    updateData.status = updates.status;
-  }
-
-  const { data, error } = await supabase
-    .from("webhooks")
-    .update(updateData)
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data;
+  return webhookRepository.update(id, updateData);
 }

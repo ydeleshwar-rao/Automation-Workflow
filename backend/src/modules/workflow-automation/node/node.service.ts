@@ -1,5 +1,7 @@
-import { supabase } from "../../../config/db.config.js";
+import type { WorkflowNode } from "@prisma/client";
 import { CreateNodeDTO, UpdateNodeDTO } from "./node.dto.js";
+import { workflowNodeRepository, type UpdateWorkflowNodeInput } from "./node.repository.js";
+import { workflowRepository } from "../workflow/workflow.repository.js";
 import { createMappingsBulkService } from "../field_mapping/mapping.service.js";
 import { createPollingSubscription } from "../../polling-engine/polling.service.js";
 import { getDefaultPollInterval } from "../../polling-engine/polling.runner.js";
@@ -16,66 +18,69 @@ export async function createNodeService(
 ) {
   console.log(`[NodeService] Creating node | workflow_id=${workflowId} type=${payload.type} integration=${payload.integration_key}`);
 
-  const { data, error } = await supabase
-    .from("workflow_nodes")
-    .insert({
-      workflow_id: workflowId,
-      integration_key: payload.integration_key,
-      type: payload.type,
-      node_category: payload.node_category ?? payload.type,
-      config: payload.config || {},
-      sample_payload: payload.sample_payload || {},
-      output_schema: payload.output_schema || {},
-      position: payload.position || 0,
-      action_key: payload.action_key,
-    })
-    .select()
-    .single();
+  const node = await workflowNodeRepository.create({
+    workflow_id: workflowId,
+    integration_key: payload.integration_key,
+    type: payload.type,
+    node_category: payload.node_category ?? payload.type,
+    config: payload.config || {},
+    sample_payload: payload.sample_payload || {},
+    output_schema: payload.output_schema || {},
+    position: payload.position || 0,
+    action_key: payload.action_key ?? "",
+  });
 
-  if (error) {
-    console.error(`[NodeService] Failed to create node:`, error.message);
-    throw new Error(error.message);
-  }
+  console.log(`[NodeService] Node created successfully | node_id=${node.id}`);
 
-  console.log(`[NodeService] Node created successfully | node_id=${data.id}`);
-
-  // Auto-create polling subscription for polling trigger nodes
   if (
     payload.type === "trigger" &&
     POLLING_INTEGRATIONS.has(payload.integration_key) &&
     payload.action_key
   ) {
-    try {
-      // Look up user_id from the workflow
-      const { data: workflow } = await supabase
-        .from("workflows")
-        .select("user_id")
-        .eq("id", workflowId)
-        .single();
-
-      if (workflow?.user_id) {
-        const sub = await createPollingSubscription({
-          workflow_id: workflowId,
-          node_id:     data.id,
-          user_id:     workflow.user_id,
-          integration_key: payload.integration_key,
-          event_key:   payload.action_key,
-          config:      payload.config || {},
-          poll_interval: getDefaultPollInterval(),
-        });
-        console.log(
-          `[NodeService] ✅ Polling subscription auto-created | sub_id=${sub.id} event=${payload.action_key} integration=${payload.integration_key}`
-        );
-      } else {
-        console.warn(`[NodeService] ⚠ Could not auto-create subscription — workflow ${workflowId} has no user_id`);
-      }
-    } catch (subErr: any) {
-      // Non-fatal — node was created, subscription can be created manually
-      console.error(`[NodeService] ⚠ Failed to auto-create polling subscription | node_id=${data.id} error=${subErr?.message}`);
-    }
+    await autoCreatePollingSubscription(workflowId, node, payload.action_key);
   }
 
-  return data;
+  return node;
+}
+
+/** Polling trigger nodes get their subscription immediately so the engine starts watching. */
+async function autoCreatePollingSubscription(workflowId: string, node: WorkflowNode, eventKey: string) {
+  try {
+    const workflow = await workflowRepository.findById(workflowId);
+    if (!workflow) {
+      console.warn(`[NodeService] ⚠ Could not auto-create subscription — workflow ${workflowId} not found`);
+      return;
+    }
+
+    const subscription = await createPollingSubscription({
+      workflow_id: workflowId,
+      node_id: node.id,
+      user_id: workflow.user_id,
+      integration_key: node.integration_key,
+      event_key: eventKey,
+      config: (node.config ?? {}) as Record<string, any>,
+      poll_interval: getDefaultPollInterval(),
+    });
+    console.log(
+      `[NodeService] ✅ Polling subscription auto-created | sub_id=${subscription.id} event=${eventKey} integration=${node.integration_key}`
+    );
+  } catch (error: any) {
+    // Non-fatal — node was created, subscription can be created manually
+    console.error(`[NodeService] ⚠ Failed to auto-create polling subscription | node_id=${node.id} error=${error?.message}`);
+  }
+}
+
+/** Only real workflow_nodes columns are written; anything else in the payload is ignored. */
+function buildNodePatch(updates: Omit<UpdateNodeDTO, "mappings">): UpdateWorkflowNodeInput {
+  const patch: UpdateWorkflowNodeInput = {};
+  if (updates.integration_key !== undefined) patch.integration_key = updates.integration_key;
+  if (updates.node_category !== undefined) patch.node_category = updates.node_category;
+  if (updates.config !== undefined) patch.config = updates.config;
+  if (updates.sample_payload !== undefined) patch.sample_payload = updates.sample_payload;
+  if (updates.output_schema !== undefined) patch.output_schema = updates.output_schema;
+  if (updates.position !== undefined) patch.position = updates.position;
+  if (updates.action_key !== undefined) patch.action_key = updates.action_key;
+  return patch;
 }
 
 export async function updateNodeService(
@@ -92,20 +97,7 @@ export async function updateNodeService(
     mappings ? `+mappings(${mappings.length})` : ""
   );
 
-  const { data, error } = await supabase
-    .from("workflow_nodes")
-    .update({
-      ...nodeUpdates,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", nodeId)
-    .select()
-    .single();
-
-  if (error) {
-    console.error(`[NodeService] Failed to update node ${nodeId}:`, error.message);
-    throw new Error(error.message);
-  }
+  const node = await workflowNodeRepository.update(nodeId, buildNodePatch(nodeUpdates));
 
   // When mappings are provided, rewrite workflow_field_mappings in the same
   // request so config/sample_payload and mappings cannot drift apart. This
@@ -124,7 +116,7 @@ export async function updateNodeService(
   }
 
   console.log(`[NodeService] Node updated | node_id=${nodeId}`);
-  return data;
+  return node;
 }
 
 /**
@@ -141,51 +133,32 @@ export async function saveSamplePayloadService(
   samplePayload: Record<string, any>
 ) {
   const outputSchema = Object.keys(samplePayload).reduce<Record<string, null>>(
-    (acc, key) => ({ ...acc, [key]: null }),
+    (schema, key) => ({ ...schema, [key]: null }),
     {}
   );
 
   console.log(`[NodeService] Saving sample_payload for trigger node | node_id=${nodeId}`);
   console.log(`[NodeService] sample_payload keys:`, Object.keys(samplePayload));
 
-  const { data, error } = await supabase
-    .from("workflow_nodes")
-    .update({
-      sample_payload: samplePayload,
-      output_schema: outputSchema,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", nodeId)
-    .select()
-    .single();
-
-  if (error) {
-    console.error(`[NodeService] Failed to save sample_payload for node ${nodeId}:`, error.message);
-    throw new Error(error.message);
-  }
+  const node = await workflowNodeRepository.update(nodeId, {
+    sample_payload: samplePayload,
+    output_schema: outputSchema,
+  });
 
   console.log(`[NodeService] sample_payload saved | node_id=${nodeId} | keys_count=${Object.keys(samplePayload).length}`);
-  return data;
+  return node;
 }
 
-export async function getNodesByWorkflowService(workflowId: string) {
-  const { data, error } = await supabase
-    .from("workflow_nodes")
-    .select("*")
-    .eq("workflow_id", workflowId)
-    .order("position", { ascending: true });
+/** The webhook trigger node configured with the given dynamic webhook id, or null. */
+export function findWebhookTriggerNodeService(webhookId: string) {
+  return workflowNodeRepository.findWebhookTriggerNode(webhookId);
+}
 
-  if (error) throw new Error(error.message);
-  return data;
+export function getNodesByWorkflowService(workflowId: string) {
+  return workflowNodeRepository.findByWorkflow(workflowId);
 }
 
 export async function deleteNodeService(nodeId: string) {
-  const { error } = await supabase
-    .from("workflow_nodes")
-    .delete()
-    .eq("id", nodeId);
-
-  if (error) throw new Error(error.message);
-
+  await workflowNodeRepository.delete(nodeId);
   return { message: "Node deleted successfully" };
 }

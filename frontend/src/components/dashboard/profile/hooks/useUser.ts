@@ -41,7 +41,7 @@ export function useUser() {
 
   const router   = useRouter();
   const dispatch = useAppDispatch();
-  const { user } = useSelector((s: RootState) => s.access);
+  const { user } = useSelector((state: RootState) => state.access);
 
   useEffect(() => {
     const stored = loadProfile();

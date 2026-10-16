@@ -54,18 +54,18 @@ export function TemplateTable(props: TemplateTableProps) {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  const sorted = [...templates].sort((a, b) => {
-    const dir = sortDir === "asc" ? 1 : -1;
-    if (sortKey === "name") return a.name.localeCompare(b.name) * dir;
-    if (sortKey === "usage_count") return ((a.usage_count ?? 0) - (b.usage_count ?? 0)) * dir;
-    const av = a.updated_at ?? a.created_at ?? "";
-    const bv = b.updated_at ?? b.created_at ?? "";
-    return av.localeCompare(bv) * dir;
+  const sorted = [...templates].sort((firstTemplate, secondTemplate) => {
+    const sortMultiplier = sortDir === "asc" ? 1 : -1;
+    if (sortKey === "name") return firstTemplate.name.localeCompare(secondTemplate.name) * sortMultiplier;
+    if (sortKey === "usage_count") return ((firstTemplate.usage_count ?? 0) - (secondTemplate.usage_count ?? 0)) * sortMultiplier;
+    const firstTimestamp = firstTemplate.updated_at ?? firstTemplate.created_at ?? "";
+    const secondTimestamp = secondTemplate.updated_at ?? secondTemplate.created_at ?? "";
+    return firstTimestamp.localeCompare(secondTimestamp) * sortMultiplier;
   });
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      setSortDir((direction) => (direction === "asc" ? "desc" : "asc"));
     } else {
       setSortKey(key);
       setSortDir(key === "name" ? "asc" : "desc");
@@ -109,16 +109,16 @@ export function TemplateTable(props: TemplateTableProps) {
       </div>
 
       <div className="divide-y divide-border/60">
-        {sorted.map((tpl) => (
+        {sorted.map((template) => (
           <TemplateRow
-            key={tpl.id}
-            template={tpl}
+            key={template.id}
+            template={template}
             folders={props.folders}
-            isConfirmingDelete={confirmDeleteId === tpl.id}
-            onAskDelete={() => setConfirmDeleteId(tpl.id)}
+            isConfirmingDelete={confirmDeleteId === template.id}
+            onAskDelete={() => setConfirmDeleteId(template.id)}
             onCancelDelete={() => setConfirmDeleteId(null)}
             onConfirmDelete={() => {
-              props.onDelete(tpl.id);
+              props.onDelete(template.id);
               setConfirmDeleteId(null);
             }}
             onRename={props.onRename}
@@ -233,8 +233,8 @@ function TemplateRow({
             <Input
               ref={inputRef}
               value={draftName}
-              onChange={(e) => setDraftName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }}
+              onChange={(event) => setDraftName(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") commitEdit(); if (event.key === "Escape") cancelEdit(); }}
               className="h-7 text-sm"
             />
             <button onClick={commitEdit} className="rounded p-1 text-emerald-600 hover:bg-emerald-50"><Check className="h-4 w-4" /></button>
@@ -243,7 +243,7 @@ function TemplateRow({
         ) : (
           <button
             onClick={() => onApply(template)}
-            onDoubleClick={(e) => { e.stopPropagation(); startEditing(); }}
+            onDoubleClick={(event) => { event.stopPropagation(); startEditing(); }}
             className="flex-1 truncate text-left text-sm font-medium text-foreground hover:text-primary"
             title="Click to apply · Double-click to rename"
           >
@@ -318,13 +318,13 @@ function TemplateRow({
             {folders.length > 0 && (
               <>
                 <DropdownMenuSeparator />
-                {folders.map((f) => (
+                {folders.map((folder) => (
                   <DropdownMenuItem
-                    key={f.id}
-                    onClick={() => onMoveTo(template.id, f.id)}
-                    disabled={f.id === template.template_folder_id}
+                    key={folder.id}
+                    onClick={() => onMoveTo(template.id, folder.id)}
+                    disabled={folder.id === template.template_folder_id}
                   >
-                    Move to {f.name}
+                    Move to {folder.name}
                   </DropdownMenuItem>
                 ))}
               </>

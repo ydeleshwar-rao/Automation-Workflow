@@ -1,4 +1,4 @@
-import { supabase } from "../../../../config/db.config.js";
+import { googleFormsRepository } from "../repositories/googleForms.repository.js";
 
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
@@ -12,23 +12,17 @@ export const refreshGoogleFormsAccessToken = async (
     throw new Error(`No refresh token for user ${userId}`);
   }
 
-  const { data: currentRow } = await supabase
-    .from("google_forms_integrations")
-    .select("access_token, refresh_token, expires_at")
-    .eq("user_id", userId)
-    .maybeSingle();
+  const currentRow = await googleFormsRepository.findIntegrationByUserId(userId);
 
   if (
-    currentRow?.expires_at &&
-    new Date(currentRow.expires_at).getTime() > Date.now() + REFRESH_BUFFER_MS
+    currentRow &&
+    currentRow.expires_at.getTime() > Date.now() + REFRESH_BUFFER_MS
   ) {
     console.log(`[GoogleForms:refresh] ✅ Token already fresh for user=${userId}`);
     return {
       access_token: currentRow.access_token,
-      refresh_token: currentRow.refresh_token ?? refreshToken,
-      expires_in: Math.floor(
-        (new Date(currentRow.expires_at).getTime() - Date.now()) / 1000
-      ),
+      refresh_token: currentRow.refresh_token || refreshToken,
+      expires_in: Math.floor((currentRow.expires_at.getTime() - Date.now()) / 1000),
     };
   }
 
@@ -50,10 +44,7 @@ export const refreshGoogleFormsAccessToken = async (
     const reason = body?.error_description || body?.error || "unknown";
     console.error(`[GoogleForms:refresh] ❌ Refresh failed for user=${userId}: ${reason}`);
 
-    await supabase
-      .from("google_forms_integrations")
-      .update({ needs_reauth: true })
-      .eq("user_id", userId);
+    await googleFormsRepository.markNeedsReauth(userId);
 
     throw new Error(`Google token refresh failed: ${reason}`);
   }
@@ -64,17 +55,11 @@ export const refreshGoogleFormsAccessToken = async (
   // Google does NOT rotate refresh tokens — keep existing one
   const keptRefreshToken = currentRow?.refresh_token || refreshToken;
 
-  const { error } = await supabase
-    .from("google_forms_integrations")
-    .update({
-      access_token: body.access_token,
-      refresh_token: keptRefreshToken,
-      expires_at: newExpiry.toISOString(),
-      needs_reauth: false,
-    })
-    .eq("user_id", userId);
-
-  if (error) throw new Error(`DB update failed: ${error.message}`);
+  await googleFormsRepository.saveTokens(userId, {
+    access_token: body.access_token,
+    refresh_token: keptRefreshToken,
+    expires_at: newExpiry,
+  });
 
   console.log(`[GoogleForms:refresh] ✅ Token refresh complete for user=${userId}`);
   return {

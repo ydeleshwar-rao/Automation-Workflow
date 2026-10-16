@@ -21,7 +21,7 @@ function useMailStepProps(step: ConfigStep, context: StepContext) {
     const sample = context.node.sample_payload || {};
     // If config has form fields (beyond accountId/accountName), it was saved with tokens — use it.
     const hasFormFields = Object.keys(config).some(
-      (k) => k !== "accountId" && k !== "accountName" && k !== "webhook_id"
+      (configKey) => configKey !== "accountId" && configKey !== "accountName" && configKey !== "webhook_id"
     );
     if (hasFormFields) return config;
     // Otherwise fall back to sample_payload (plain values, no chips — first time load)
@@ -76,7 +76,7 @@ function useMailStepProps(step: ConfigStep, context: StepContext) {
     setup: {
       selectedEvent: context.node.eventLabel ?? null,
       onEventSelect: context.onEventSelect, 
-      selectedAccount: mail.accounts.find(a => a.id === context.node.config?.accountId) || null,
+      selectedAccount: mail.accounts.find(account => account.id === context.node.config?.accountId) || null,
       onAccountSelect: (account: any) => {
         context.onFormDataChange({ accountId: account.id, accountName: account.username || account.name });
       },
@@ -94,8 +94,8 @@ function useMailStepProps(step: ConfigStep, context: StepContext) {
           } else {
             context.onFormDataChange({ accountName: config.user || 'SMTP Account' });
           }
-        } catch (err: any) {
-          throw err;
+        } catch (error: any) {
+          throw error;
         }
       },
 

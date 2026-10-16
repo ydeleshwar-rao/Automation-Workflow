@@ -86,8 +86,8 @@ export function WhatsAppConfigureStep({
     onChange(values, isValid);
   }, [requiresTo, selectedEvent, valuesKey, values, onChange]);
 
-  const openVariablePicker = useCallback((e: React.MouseEvent, field: keyof WhatsAppConfig, label: string) => {
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
+  const openVariablePicker = useCallback((event: React.MouseEvent, field: keyof WhatsAppConfig, label: string) => {
+    const rect = (event.target as HTMLElement).getBoundingClientRect();
     activeFieldRef.current = field;
     setPopupState({
       isOpen: true,
@@ -137,8 +137,8 @@ export function WhatsAppConfigureStep({
         label="Recipient phone"
         required
         value={values.to ?? ""}
-        onChange={(val) => setValue("to", val, { shouldValidate: true, shouldDirty: true })}
-        onPlusClick={(e) => openVariablePicker(e, "to", "Recipient phone")}
+        onChange={(value) => setValue("to", value, { shouldValidate: true, shouldDirty: true })}
+        onPlusClick={(event) => openVariablePicker(event, "to", "Recipient phone")}
         placeholder="919876543210"
       />
 
@@ -147,8 +147,8 @@ export function WhatsAppConfigureStep({
           label={selectedEvent === "send_template_message" ? "Template body" : "Message"}
           required
           value={values.message ?? ""}
-          onChange={(val) => setValue("message", val, { shouldValidate: true, shouldDirty: true })}
-          onPlusClick={(e) => openVariablePicker(e, "message", "Message")}
+          onChange={(value) => setValue("message", value, { shouldValidate: true, shouldDirty: true })}
+          onPlusClick={(event) => openVariablePicker(event, "message", "Message")}
           placeholder="Enter message or insert data..."
         />
       )}
@@ -158,15 +158,15 @@ export function WhatsAppConfigureStep({
           <ConfigField
             label="Template name"
             value={values.templateName ?? ""}
-            onChange={(val) => setValue("templateName", val, { shouldValidate: true, shouldDirty: true })}
-            onPlusClick={(e) => openVariablePicker(e, "templateName", "Template name")}
+            onChange={(value) => setValue("templateName", value, { shouldValidate: true, shouldDirty: true })}
+            onPlusClick={(event) => openVariablePicker(event, "templateName", "Template name")}
             placeholder="appointment_reminder"
           />
           <ConfigField
             label="Language"
             value={values.language ?? ""}
-            onChange={(val) => setValue("language", val, { shouldValidate: true, shouldDirty: true })}
-            onPlusClick={(e) => openVariablePicker(e, "language", "Language")}
+            onChange={(value) => setValue("language", value, { shouldValidate: true, shouldDirty: true })}
+            onPlusClick={(event) => openVariablePicker(event, "language", "Language")}
             placeholder="en"
           />
         </>
@@ -178,31 +178,31 @@ export function WhatsAppConfigureStep({
             label={selectedEvent === "send_image" ? "Image URL" : "Document/PDF URL"}
             required
             value={values.url ?? ""}
-            onChange={(val) => setValue("url", val, { shouldValidate: true, shouldDirty: true })}
-            onPlusClick={(e) => openVariablePicker(e, "url", "File URL")}
+            onChange={(value) => setValue("url", value, { shouldValidate: true, shouldDirty: true })}
+            onPlusClick={(event) => openVariablePicker(event, "url", "File URL")}
             placeholder="https://example.com/file.pdf"
           />
           <ConfigField
             label="Caption"
             value={values.caption ?? ""}
-            onChange={(val) => setValue("caption", val, { shouldValidate: true, shouldDirty: true })}
-            onPlusClick={(e) => openVariablePicker(e, "caption", "Caption")}
+            onChange={(value) => setValue("caption", value, { shouldValidate: true, shouldDirty: true })}
+            onPlusClick={(event) => openVariablePicker(event, "caption", "Caption")}
             placeholder="Optional caption"
           />
           {selectedEvent === "send_document" && (
             <ConfigField
               label="Filename"
               value={values.filename ?? ""}
-              onChange={(val) => setValue("filename", val, { shouldValidate: true, shouldDirty: true })}
-              onPlusClick={(e) => openVariablePicker(e, "filename", "Filename")}
+              onChange={(value) => setValue("filename", value, { shouldValidate: true, shouldDirty: true })}
+              onPlusClick={(event) => openVariablePicker(event, "filename", "Filename")}
               placeholder="invoice.pdf"
             />
           )}
           <ConfigField
             label="MIME type"
             value={values.mimetype ?? ""}
-            onChange={(val) => setValue("mimetype", val, { shouldValidate: true, shouldDirty: true })}
-            onPlusClick={(e) => openVariablePicker(e, "mimetype", "MIME type")}
+            onChange={(value) => setValue("mimetype", value, { shouldValidate: true, shouldDirty: true })}
+            onPlusClick={(event) => openVariablePicker(event, "mimetype", "MIME type")}
             placeholder={selectedEvent === "send_image" ? "image/jpeg" : "application/pdf"}
           />
         </>
@@ -214,30 +214,30 @@ export function WhatsAppConfigureStep({
             label="Latitude"
             required
             value={values.lat ?? ""}
-            onChange={(val) => setValue("lat", val, { shouldValidate: true, shouldDirty: true })}
-            onPlusClick={(e) => openVariablePicker(e, "lat", "Latitude")}
+            onChange={(value) => setValue("lat", value, { shouldValidate: true, shouldDirty: true })}
+            onPlusClick={(event) => openVariablePicker(event, "lat", "Latitude")}
             placeholder="28.6139"
           />
           <ConfigField
             label="Longitude"
             required
             value={values.lng ?? ""}
-            onChange={(val) => setValue("lng", val, { shouldValidate: true, shouldDirty: true })}
-            onPlusClick={(e) => openVariablePicker(e, "lng", "Longitude")}
+            onChange={(value) => setValue("lng", value, { shouldValidate: true, shouldDirty: true })}
+            onPlusClick={(event) => openVariablePicker(event, "lng", "Longitude")}
             placeholder="77.2090"
           />
           <ConfigField
             label="Place name"
             value={values.name ?? ""}
-            onChange={(val) => setValue("name", val, { shouldValidate: true, shouldDirty: true })}
-            onPlusClick={(e) => openVariablePicker(e, "name", "Place name")}
+            onChange={(value) => setValue("name", value, { shouldValidate: true, shouldDirty: true })}
+            onPlusClick={(event) => openVariablePicker(event, "name", "Place name")}
             placeholder="Customer location"
           />
           <ConfigField
             label="Address"
             value={values.address ?? ""}
-            onChange={(val) => setValue("address", val, { shouldValidate: true, shouldDirty: true })}
-            onPlusClick={(e) => openVariablePicker(e, "address", "Address")}
+            onChange={(value) => setValue("address", value, { shouldValidate: true, shouldDirty: true })}
+            onPlusClick={(event) => openVariablePicker(event, "address", "Address")}
             placeholder="Street, city"
           />
         </>

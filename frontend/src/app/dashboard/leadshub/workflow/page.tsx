@@ -207,7 +207,7 @@ export default function CustomFieldsPage() {
             type="text"
             placeholder="Search fields..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(event) => setSearch(event.target.value)}
             className="w-full border border-gray-300 bg-gray-50 text-gray-800 px-4 py-2 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none"
           />
         </div>
@@ -233,8 +233,8 @@ export default function CustomFieldsPage() {
                   type="text"
                   placeholder={`Enter ${field.name}`}
                   value={formData[fieldIdentifier] || ""}
-                  onChange={(e) =>
-                    handleChange(field, e.target.value)
+                  onChange={(event) =>
+                    handleChange(field, event.target.value)
                   }
                   className="w-full border border-gray-300 text-gray-800 bg-white px-3 py-2 rounded-md focus:ring-2 focus:ring-blue-400 outline-none"
                 />

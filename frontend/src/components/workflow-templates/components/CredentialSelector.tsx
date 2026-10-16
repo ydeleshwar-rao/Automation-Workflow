@@ -44,7 +44,7 @@ function SmtpPicker({
   fieldKey,
 }: {
   value: string;
-  onChange: (v: string) => void;
+  onChange: (value: string) => void;
   fieldKey: string;
 }) {
   const [options, setOptions] = useState<SmtpOption[]>([]);
@@ -95,7 +95,7 @@ function SmtpPicker({
         <input
           className="ml-auto w-40 rounded border border-amber-300 bg-white px-2 py-1 text-xs"
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(event) => onChange(event.target.value)}
           placeholder="smtp-uuid"
         />
       </div>
@@ -113,7 +113,7 @@ function SmtpPicker({
   return (
     <select
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(event) => onChange(event.target.value)}
       className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-transparent focus:ring-2 focus:ring-primary"
       data-field={fieldKey}
     >
@@ -134,7 +134,7 @@ function GenericIdInput({
   credentialType,
 }: {
   value: string;
-  onChange: (v: string) => void;
+  onChange: (value: string) => void;
   fieldKey: string;
   credentialType: string;
 }) {
@@ -143,7 +143,7 @@ function GenericIdInput({
       <input
         type="text"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(event) => onChange(event.target.value)}
         placeholder={`Paste ${credentialType} ID`}
         className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-transparent focus:ring-2 focus:ring-primary"
         data-field={fieldKey}

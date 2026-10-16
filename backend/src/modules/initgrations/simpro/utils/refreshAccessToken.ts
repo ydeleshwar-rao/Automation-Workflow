@@ -1,4 +1,4 @@
-import { supabase } from "../../../../config/db.config.js";
+import { simproIntegrationRepository } from "../repositories/simpro-integration.repository.js";
 
 // Refresh proactively 5 min before expiry — avoids tokens expiring mid-flight.
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
@@ -29,21 +29,17 @@ export const refreshSimproAccessToken = async (
   // Re-read the current DB row before calling Simpro.
   // Another concurrent request for the same user may have already refreshed —
   // if the stored token is still fresh, skip the API call entirely.
-  const { data: currentRow } = await supabase
-    .from("simpro_integrations")
-    .select("access_token, refresh_token, expires_at, base_url")
-    .eq("user_id", userId)
-    .maybeSingle();
+  const currentRow = await simproIntegrationRepository.findByUserId(userId);
 
   if (
-    currentRow &&
-    new Date(currentRow.expires_at).getTime() > Date.now() + REFRESH_BUFFER_MS
+    currentRow?.expires_at &&
+    currentRow.expires_at.getTime() > Date.now() + REFRESH_BUFFER_MS
   ) {
     console.log(`[Simpro:refresh] ✅ Token already fresh (refreshed by concurrent request) — skipping API call for user=${userId}`);
     return {
       access_token:  currentRow.access_token,
       refresh_token: currentRow.refresh_token ?? refreshToken,
-      expires_in:    Math.floor((new Date(currentRow.expires_at).getTime() - Date.now()) / 1000),
+      expires_in:    Math.floor((currentRow.expires_at.getTime() - Date.now()) / 1000),
     };
   }
 
@@ -71,10 +67,7 @@ export const refreshSimproAccessToken = async (
     console.error(`[Simpro:refresh] ❌ Simpro rejected refresh for user=${userId}: ${reason}`);
 
     // Mark needs_reauth so the frontend can prompt the user to reconnect.
-    await supabase
-      .from("simpro_integrations")
-      .update({ needs_reauth: true })
-      .eq("user_id", userId);
+    await simproIntegrationRepository.markNeedsReauth(userId);
 
     console.warn(`[Simpro:refresh] 🔒 Marked user=${userId} needs_reauth — user must reconnect Simpro`);
     throw new Error(`Simpro token refresh failed for user ${userId}: ${reason}`);
@@ -89,20 +82,11 @@ export const refreshSimproAccessToken = async (
 
   console.log(`[Simpro:refresh] ⏱  New access token expires_in=${body.expires_in ?? "3600 (default)"}`);
 
-  const { error } = await supabase
-    .from("simpro_integrations")
-    .update({
-      access_token:  body.access_token,
-      refresh_token: keptRefreshToken,
-      expires_at:    newExpiry.toISOString(),
-      needs_reauth:  false,
-    })
-    .eq("user_id", userId);
-
-  if (error) {
-    console.error(`[Simpro:refresh] ❌ DB update failed for user=${userId}:`, error);
-    throw new Error(`DB update failed for user ${userId}: ${error.message}`);
-  }
+  await simproIntegrationRepository.updateTokens(userId, {
+    access_token:  body.access_token,
+    refresh_token: keptRefreshToken,
+    expires_at:    newExpiry,
+  });
 
   console.log(`[Simpro:refresh] ✅ Token refresh complete for user=${userId}`);
   return {

@@ -50,10 +50,10 @@ export function embedBlockMeta(html: string, blocks: EmailBlock[]): string {
 
 export function extractBlockMeta(html: string): EmailBlock[] | null {
   if (!html) return null;
-  const m = html.match(new RegExp(`<!-- ${META_KEY}:(.+?) -->`));
-  if (!m) return null;
+  const metaMatch = html.match(new RegExp(`<!-- ${META_KEY}:(.+?) -->`));
+  if (!metaMatch) return null;
   try {
-    return JSON.parse(m[1].replace(/--&gt;/g, "-->")) as EmailBlock[];
+    return JSON.parse(metaMatch[1].replace(/--&gt;/g, "-->")) as EmailBlock[];
   } catch {
     return null;
   }
@@ -63,12 +63,12 @@ export function extractBlockMeta(html: string): EmailBlock[] | null {
 
 export function generateHtmlFromBlocks(blocks: EmailBlock[]): string {
   const rows = blocks
-    .map((b) => {
-      if (b.kind === "divider") {
+    .map((block) => {
+      if (block.kind === "divider") {
         return `<tr><td style="padding:4px 40px"><hr style="border:none;border-top:1px solid #e5e7eb"/></td></tr>`;
       }
-      const inner = b.content.replace(/\n/g, "<br/>");
-      return b.kind === "heading"
+      const inner = block.content.replace(/\n/g, "<br/>");
+      return block.kind === "heading"
         ? `<tr><td style="padding:20px 40px 8px;font-size:22px;font-weight:700;color:#111827;line-height:1.3">${inner}</td></tr>`
         : `<tr><td style="padding:6px 40px;font-size:15px;color:#374151;line-height:1.7">${inner}</td></tr>`;
     })
@@ -103,8 +103,8 @@ function resolvePreviewHtml(
   let out = html.replace(
     /\{\{map:([^|]*)\|([^|]*)\|([^}]*)\}\}/g,
     (_, id, label, fallback) => {
-      const val = flat[label] ?? flat[id] ?? fallback ?? label;
-      return `<mark style="background:#ddd9fe;color:#4f46e5;border-radius:3px;padding:0 3px;font-style:normal">${val}</mark>`;
+      const value = flat[label] ?? flat[id] ?? fallback ?? label;
+      return `<mark style="background:#ddd9fe;color:#4f46e5;border-radius:3px;padding:0 3px;font-style:normal">${value}</mark>`;
     }
   );
   // Highlight remaining plain tokens
@@ -147,29 +147,29 @@ function makeChipElement(id: string, label: string, example: string): HTMLSpanEl
   return span;
 }
 
-function buildEditorDom(el: HTMLDivElement, content: string) {
-  el.innerHTML = "";
+function buildEditorDom(element: HTMLDivElement, content: string) {
+  element.innerHTML = "";
   const re = /\{\{map:([^|]*)\|([^|]*)\|([^}]*)\}\}/g;
   let last = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(content)) !== null) {
-    if (m.index > last) {
-      el.appendChild(document.createTextNode(content.slice(last, m.index)));
+  let tokenMatch: RegExpExecArray | null;
+  while ((tokenMatch = re.exec(content)) !== null) {
+    if (tokenMatch.index > last) {
+      element.appendChild(document.createTextNode(content.slice(last, tokenMatch.index)));
     }
-    el.appendChild(makeChipElement(m[1], m[2], m[3]));
+    element.appendChild(makeChipElement(tokenMatch[1], tokenMatch[2], tokenMatch[3]));
     last = re.lastIndex;
   }
   if (last < content.length) {
-    el.appendChild(document.createTextNode(content.slice(last)));
+    element.appendChild(document.createTextNode(content.slice(last)));
   }
-  if (!el.lastChild || el.lastChild.nodeType !== Node.TEXT_NODE) {
-    el.appendChild(document.createTextNode("​"));
+  if (!element.lastChild || element.lastChild.nodeType !== Node.TEXT_NODE) {
+    element.appendChild(document.createTextNode("​"));
   }
 }
 
-function readEditorDom(el: HTMLDivElement): string {
+function readEditorDom(element: HTMLDivElement): string {
   let out = "";
-  el.childNodes.forEach((node) => {
+  element.childNodes.forEach((node) => {
     if (node.nodeType === Node.TEXT_NODE) {
       out += (node.textContent ?? "").replace(/​/g, "");
     } else if (node instanceof HTMLElement) {
@@ -211,84 +211,84 @@ function BlockEditor({
 
   useEffect(() => {
     if (initialized.current) return;
-    const el = editorRef.current;
-    if (!el) return;
+    const element = editorRef.current;
+    if (!element) return;
     initialized.current = true;
-    buildEditorDom(el, block.content);
+    buildEditorDom(element, block.content);
     setIsEmpty(!block.content.trim());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleInput = useCallback(() => {
-    const el = editorRef.current;
-    if (!el) return;
-    const content = readEditorDom(el);
+    const element = editorRef.current;
+    if (!element) return;
+    const content = readEditorDom(element);
     setIsEmpty(!content.trim());
     onChange(content);
   }, [onChange]);
 
-  const handlePaste = useCallback((e: React.ClipboardEvent) => {
-    e.preventDefault();
-    const text = e.clipboardData.getData("text/plain");
+  const handlePaste = useCallback((event: React.ClipboardEvent) => {
+    event.preventDefault();
+    const text = event.clipboardData.getData("text/plain");
     document.execCommand("insertText", false, text);
   }, []);
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" && block.kind === "heading") e.preventDefault();
+    (event: React.KeyboardEvent) => {
+      if (event.key === "Enter" && block.kind === "heading") event.preventDefault();
     },
     [block.kind]
   );
 
-  const openPicker = useCallback((e: React.MouseEvent) => {
-    const sel = window.getSelection();
-    if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
-      savedRange.current = sel.getRangeAt(0).cloneRange();
+  const openPicker = useCallback((event: React.MouseEvent) => {
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0 && editorRef.current?.contains(selection.anchorNode)) {
+      savedRange.current = selection.getRangeAt(0).cloneRange();
     } else {
-      const el = editorRef.current;
-      if (el) {
-        const r = document.createRange();
-        r.selectNodeContents(el);
-        r.collapse(false);
-        savedRange.current = r;
+      const element = editorRef.current;
+      if (element) {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        range.collapse(false);
+        savedRange.current = range;
       }
     }
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     setPickerPos({ top: rect.top, right: window.innerWidth - rect.left + 8 });
     setPickerOpen(true);
   }, []);
 
   const insertVariable = useCallback(
     (field: VariableField) => {
-      const el = editorRef.current;
-      if (!el) return;
+      const element = editorRef.current;
+      if (!element) return;
 
       const chip = makeChipElement(field.id, field.label, field.description ?? "");
       const spacer = document.createTextNode("​");
 
-      const sel = window.getSelection();
+      const selection = window.getSelection();
       if (savedRange.current) {
-        sel?.removeAllRanges();
-        sel?.addRange(savedRange.current);
+        selection?.removeAllRanges();
+        selection?.addRange(savedRange.current);
       }
 
-      if (sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)) {
-        const range = sel.getRangeAt(0);
+      if (selection && selection.rangeCount > 0 && element.contains(selection.anchorNode)) {
+        const range = selection.getRangeAt(0);
         range.deleteContents();
         range.insertNode(spacer);
         range.insertNode(chip);
         const newRange = document.createRange();
         newRange.setStartAfter(spacer);
         newRange.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(newRange);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
       } else {
-        el.appendChild(chip);
-        el.appendChild(spacer);
+        element.appendChild(chip);
+        element.appendChild(spacer);
       }
 
-      el.focus();
-      const content = readEditorDom(el);
+      element.focus();
+      const content = readEditorDom(element);
       setIsEmpty(!content.trim());
       onChange(content);
       setPickerOpen(false);
@@ -353,9 +353,9 @@ function BlockEditor({
       <div className="flex flex-col gap-1 pt-6">
         <button
           type="button"
-          onMouseDown={(e) => {
-            e.preventDefault();
-            openPicker(e);
+          onMouseDown={(event) => {
+            event.preventDefault();
+            openPicker(event);
           }}
           title="Insert dynamic variable"
           className="flex h-6 w-6 items-center justify-center rounded border border-border text-muted-foreground transition-colors hover:border-primary hover:bg-primary/5 hover:text-primary"
@@ -400,25 +400,25 @@ function detectTokens(html: string): DetectedToken[] {
 
   // Already-mapped tokens: {{map:id|label|fallback}}
   const mapRe = /\{\{map:([^|]*)\|([^|]*)\|([^}]*)\}\}/g;
-  let m: RegExpExecArray | null;
-  while ((m = mapRe.exec(html)) !== null) {
-    if (!seen.has(m[0])) {
-      seen.set(m[0], {
-        raw: m[0],
-        displayKey: m[2] || m[1] || "variable",
+  let tokenMatch: RegExpExecArray | null;
+  while ((tokenMatch = mapRe.exec(html)) !== null) {
+    if (!seen.has(tokenMatch[0])) {
+      seen.set(tokenMatch[0], {
+        raw: tokenMatch[0],
+        displayKey: tokenMatch[2] || tokenMatch[1] || "variable",
         isMapped: true,
-        mapLabel: m[2] || m[1],
+        mapLabel: tokenMatch[2] || tokenMatch[1],
       });
     }
   }
 
   // Plain tokens: {{key}} — skip map: ones already captured
   const plainRe = /\{\{(?!map:)([^}]+)\}\}/g;
-  while ((m = plainRe.exec(html)) !== null) {
-    if (!seen.has(m[0])) {
+  while ((tokenMatch = plainRe.exec(html)) !== null) {
+    if (!seen.has(tokenMatch[0])) {
       // Strip node-id prefix like "315896032__"
-      const displayKey = m[1].replace(/^[^_]+__/, "").replace(/_/g, " ");
-      seen.set(m[0], { raw: m[0], displayKey, isMapped: false });
+      const displayKey = tokenMatch[1].replace(/^[^_]+__/, "").replace(/_/g, " ");
+      seen.set(tokenMatch[0], { raw: tokenMatch[0], displayKey, isMapped: false });
     }
   }
 
@@ -523,7 +523,7 @@ function HtmlCodePane({
   triggerTestSamples,
 }: HtmlCodePaneProps) {
   const tokens = useMemo(() => detectTokens(rawHtml), [rawHtml]);
-  const mappedCount = tokens.filter((t) => t.isMapped).length;
+  const mappedCount = tokens.filter((token) => token.isMapped).length;
 
   const handleMap = useCallback(
     (token: DetectedToken, field: VariableField) => {
@@ -542,7 +542,7 @@ function HtmlCodePane({
         </p>
         <textarea
           value={rawHtml}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(event) => onChange(event.target.value)}
           className="flex-1 resize-none rounded-lg border border-border bg-muted/30 p-3 font-mono text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
           spellCheck={false}
           placeholder={"Paste your HTML template here…\n\nVariables like {{fieldName}} or {{nodeId__fieldName}} will appear in the Token Mapper on the right."}
@@ -673,11 +673,11 @@ export function HtmlTemplateBuilder({
 
   // ── Block operations ──────────────────────────────────────────────────────
   const updateBlock = useCallback((id: string, content: string) => {
-    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, content } : b)));
+    setBlocks((prev) => prev.map((block) => (block.id === id ? { ...block, content } : block)));
   }, []);
 
   const deleteBlock = useCallback((id: string) => {
-    setBlocks((prev) => prev.filter((b) => b.id !== id));
+    setBlocks((prev) => prev.filter((block) => block.id !== id));
   }, []);
 
   const addBlock = (kind: BlockKind) => {
@@ -707,7 +707,7 @@ export function HtmlTemplateBuilder({
         role="dialog"
         aria-modal="true"
         className="flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl animate-in fade-in zoom-in-95 duration-200"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-6 py-3">
@@ -754,7 +754,7 @@ export function HtmlTemplateBuilder({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setShowPreview((p) => !p)}
+              onClick={() => setShowPreview((isPreviewShown) => !isPreviewShown)}
             >
               {showPreview ? (
                 <EyeOff className="mr-1.5 h-3.5 w-3.5" />
@@ -800,7 +800,7 @@ export function HtmlTemplateBuilder({
                 <BlockEditor
                   key={block.id}
                   block={block}
-                  onChange={(c) => updateBlock(block.id, c)}
+                  onChange={(nextContent) => updateBlock(block.id, nextContent)}
                   onDelete={() => deleteBlock(block.id)}
                   webhookId={webhookId}
                   triggerTestPayload={triggerTestPayload}

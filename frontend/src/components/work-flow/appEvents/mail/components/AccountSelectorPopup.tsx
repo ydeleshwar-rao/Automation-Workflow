@@ -78,8 +78,8 @@ export function AccountSelectorPopup({
                     <button
                       type="button"
                       title="Disconnect account"
-                      onClick={(e) => {
-                        e.stopPropagation();
+                      onClick={(event) => {
+                        event.stopPropagation();
                         onRemoveAccount(account.id);
                       }}
                       className="nm-btn flex items-center justify-center w-7 h-7 rounded-lg text-muted-foreground hover:text-destructive transition-all shrink-0"

@@ -58,12 +58,12 @@ export function setJwksFetcher(fn: typeof fetchJwks) {
 
 async function signingKey(uri: string, kid: string): Promise<crypto.KeyObject> {
   let cached = jwksCache.get(uri);
-  let jwk = cached && Date.now() - cached.fetchedAt < JWKS_TTL_MS ? cached.keys.find((k) => k.kid === kid) : undefined;
+  let jwk = cached && Date.now() - cached.fetchedAt < JWKS_TTL_MS ? cached.keys.find((jsonWebKey) => jsonWebKey.kid === kid) : undefined;
   if (!jwk) {
     // Unknown kid → keys may have rotated; refetch once
     cached = { keys: await fetchJwks(uri), fetchedAt: Date.now() };
     jwksCache.set(uri, cached);
-    jwk = cached.keys.find((k) => k.kid === kid);
+    jwk = cached.keys.find((jsonWebKey) => jsonWebKey.kid === kid);
   }
   if (!jwk) throw new OidcError("Token was signed with an unknown key");
   return crypto.createPublicKey({ key: { kty: jwk.kty, n: jwk.n, e: jwk.e }, format: "jwk" });
@@ -112,44 +112,44 @@ export async function verifyIdToken(provider: SsoProvider, idToken: string, expe
   return provider === "google" ? googleIdentity(claims) : microsoftIdentity(claims);
 }
 
-function googleIdentity(c: Claims): VerifiedIdentity {
-  if (c.iss !== "https://accounts.google.com" && c.iss !== "accounts.google.com") {
+function googleIdentity(claims: Claims): VerifiedIdentity {
+  if (claims.iss !== "https://accounts.google.com" && claims.iss !== "accounts.google.com") {
     throw new OidcError("Token was not issued by Google");
   }
-  const email = String(c.email ?? "").toLowerCase();
+  const email = String(claims.email ?? "").toLowerCase();
   if (!email) throw new OidcError("Google account did not return an email address");
 
   return {
     provider: "google",
-    subject: String(c.sub),
+    subject: String(claims.sub),
     email,
-    emailVerified: c.email_verified === true || c.email_verified === "true",
-    name: String(c.name ?? ""),
-    picture: typeof c.picture === "string" ? c.picture : null,
+    emailVerified: claims.email_verified === true || claims.email_verified === "true",
+    name: String(claims.name ?? ""),
+    picture: typeof claims.picture === "string" ? claims.picture : null,
     // "hd" is only present for Google Workspace accounts and is verified by Google
-    tenantKey: typeof c.hd === "string" && c.hd ? c.hd.toLowerCase() : null,
+    tenantKey: typeof claims.hd === "string" && claims.hd ? claims.hd.toLowerCase() : null,
   };
 }
 
-function microsoftIdentity(c: Claims): VerifiedIdentity {
-  const tid = String(c.tid ?? "");
+function microsoftIdentity(claims: Claims): VerifiedIdentity {
+  const tid = String(claims.tid ?? "");
   // Multi-tenant apps get tenant-specific issuers: https://login.microsoftonline.com/{tid}/v2.0
-  if (!tid || c.iss !== `https://login.microsoftonline.com/${tid}/v2.0`) {
+  if (!tid || claims.iss !== `https://login.microsoftonline.com/${tid}/v2.0`) {
     throw new OidcError("Token was not issued by Microsoft");
   }
-  const email = String(c.email ?? c.preferred_username ?? "").toLowerCase();
+  const email = String(claims.email ?? claims.preferred_username ?? "").toLowerCase();
   if (!email.includes("@")) throw new OidcError("Microsoft account did not return an email address");
 
   const personal = tid === MICROSOFT_CONSUMER_TENANT;
   return {
     provider: "microsoft",
     // oid is the user's stable ID within the tenant; sub is per-app — use tenant-scoped oid when present
-    subject: c.oid ? `${tid}:${String(c.oid)}` : String(c.sub),
+    subject: claims.oid ? `${tid}:${String(claims.oid)}` : String(claims.sub),
     email,
     // Personal Microsoft account emails are verified; work-account email claims are admin-editable,
     // so they are trusted only inside their own tenant (see sso.service).
     emailVerified: personal,
-    name: String(c.name ?? ""),
+    name: String(claims.name ?? ""),
     picture: null,
     tenantKey: personal ? null : tid,
   };

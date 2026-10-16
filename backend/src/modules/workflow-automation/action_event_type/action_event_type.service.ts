@@ -226,27 +226,27 @@ export function getActionLeadshubTypes(): ActionType[] {
 }
 
 export function getLeadshubTriggers(): ActionType[] {
-  return ACTION_TYPES_LEADSHUB.filter((a) => a.type === "trigger");
+  return ACTION_TYPES_LEADSHUB.filter((actionType) => actionType.type === "trigger");
 }
 
 export function getLeadshubActions(): ActionType[] {
-  return ACTION_TYPES_LEADSHUB.filter((a) => a.type === "action");
+  return ACTION_TYPES_LEADSHUB.filter((actionType) => actionType.type === "action");
 }
 
 export function getServiceM8Triggers(): ActionType[] {
-  return ACTION_TYPES_SERVICE_M8.filter((a) => a.type === "trigger");
+  return ACTION_TYPES_SERVICE_M8.filter((actionType) => actionType.type === "trigger");
 }
 
 export function getServiceM8Actions(): ActionType[] {
-  return ACTION_TYPES_SERVICE_M8.filter((a) => a.type === "action");
+  return ACTION_TYPES_SERVICE_M8.filter((actionType) => actionType.type === "action");
 }
 
 export function getCommusoftTriggers(): ActionType[] {
-  return ACTION_TYPES_COMMUSOFT.filter((a) => a.type === "trigger");
+  return ACTION_TYPES_COMMUSOFT.filter((actionType) => actionType.type === "trigger");
 }
 
 export function getCommusoftActions(): ActionType[] {
-  return ACTION_TYPES_COMMUSOFT.filter((a) => a.type === "action");
+  return ACTION_TYPES_COMMUSOFT.filter((actionType) => actionType.type === "action");
 }
 
 const ACTION_TYPES_SIMPRO: ActionType[] = [
@@ -550,9 +550,9 @@ const ACTION_TYPES_SIMPRO: ActionType[] = [
 ];
 
 export function getSimproTriggers(): ActionType[] {
-  return ACTION_TYPES_SIMPRO.filter((a) => a.type === "trigger");
+  return ACTION_TYPES_SIMPRO.filter((actionType) => actionType.type === "trigger");
 }
 
 export function getSimproActions(): ActionType[] {
-  return ACTION_TYPES_SIMPRO.filter((a) => a.type === "action");
+  return ACTION_TYPES_SIMPRO.filter((actionType) => actionType.type === "action");
 }
