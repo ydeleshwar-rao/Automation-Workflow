@@ -32,7 +32,7 @@ function requireUser(req: Request) {
 
 export class SsoController {
   /**
-   * POST /sso/callback
+   * POST /api/v1/sso/callback
    * Body: { provider, id_token, nonce, intent?: "signin" | "company-setup", organization_name? }
    * Signs in (creating the account / workspace when needed) and sets auth cookies.
    */

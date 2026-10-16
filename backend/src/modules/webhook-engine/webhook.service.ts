@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { supabase } from "../../config/db.config.js";
+import { API_PREFIX } from "../../config/api.config.js";
 import { ApiError } from "../../utils/ApiError.js";
 import {
   getWebhookAdapter,
@@ -70,7 +71,7 @@ export async function createWebhookSubscription(dto: CreateWebhookSubscriptionDT
     }
 
     const targetPath = existing.target_path; // reuse stable URL
-    const targetUrl = `${getPublicBaseUrl()}/api/webhooks-receiver/integrations/${dto.integration_key}/${targetPath}`;
+    const targetUrl = `${getPublicBaseUrl()}${API_PREFIX}/webhooks-receiver/integrations/${dto.integration_key}/${targetPath}`;
 
     const { externalSubscriptionId, signingSecret } = await adapter.subscribe(
       dto.user_id,
@@ -104,7 +105,7 @@ export async function createWebhookSubscription(dto: CreateWebhookSubscriptionDT
 
   // Fresh subscription
   const targetPath = `sub_${crypto.randomBytes(16).toString("hex")}`;
-  const targetUrl = `${getPublicBaseUrl()}/api/webhooks-receiver/integrations/${dto.integration_key}/${targetPath}`;
+  const targetUrl = `${getPublicBaseUrl()}${API_PREFIX}/webhooks-receiver/integrations/${dto.integration_key}/${targetPath}`;
 
   const { externalSubscriptionId, signingSecret } = await adapter.subscribe(
     dto.user_id,

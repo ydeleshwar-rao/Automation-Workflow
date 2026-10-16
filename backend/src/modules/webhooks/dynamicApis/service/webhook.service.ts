@@ -2,6 +2,7 @@ import { supabase } from "../../../../config/db.config.js";
 import { IncomingHttpHeaders } from "http";
 import { randomBytes, randomUUID } from "crypto";
 import { executeWorkflow, findWorkflowByWebhookId } from "../../../workflow-automation/processor/webhookProcessor.js";
+import { API_PREFIX } from "../../../../config/api.config.js";
 import { webhookLogger as log } from "../../../../utils/logger.js";
 
 
@@ -27,7 +28,7 @@ export async function createWebhookService({
         user_id,
         name,
         unique_path: uniquePath,
-        full_url: `${baseUrl}/api/webhooks/${uniquePath}`,
+        full_url: `${baseUrl}${API_PREFIX}/webhooks/${uniquePath}`,
         action_type,
         workflow_id,
         status: "active",

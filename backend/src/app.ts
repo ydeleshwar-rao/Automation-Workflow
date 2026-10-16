@@ -1,7 +1,10 @@
+import { Router } from "express";
 import { createApp } from "./config/app.config.js";
+import { API_PREFIX } from "./config/api.config.js";
 import { metricsMiddleware, metricsHandler } from "./middlewares/metrics.middleware.js";
 import leadsHubRouter from "./modules/leadshub/leadshub.routes.js";
 import webhooksRoutes from "./modules/webhooks/dynamicApis/routes/webhook.route.js"
+import { handleIncomingWebhook } from "./modules/webhooks/dynamicApis/controllers/webhook.controller.js"
 import emailRoutes from "./modules/mail/smtp-connection/routes/mail.routes.js"
 import automationRoutes from "./modules/workflow-automation/workflow-automation.routes.js"
 import { errorHandler } from "./middlewares/errorHandler.js";
@@ -40,35 +43,38 @@ app.get("/metrics", metricsHandler);
 // ─── Global rate limiter — applied to every route ────────────────────────────
 app.use(globalRateLimiter);
 
-app.use("/auth", authRoutes);           // login / signup / refresh token
-app.use("/access", accessRoutes);       // role-based access (clients, assignments, permissions)
-app.use("/sso", ssoRoutes);            // company SSO + Google/Microsoft sign-in
-app.use("/leadshub", leadsHubRouter);
-app.use("/api", webhooksRoutes)
-app.use("/mail", emailRoutes)
-app.use("/automation", automationRoutes);
-app.use("/ai-workflow", authMiddleware, aiWorkflowRouter);
+// ─── Versioned API: every route lives under /api/v1 ─────────────────────────
+const v1 = Router();
+
+v1.use("/auth", authRoutes);           // login / signup / refresh token
+v1.use("/access", accessRoutes);       // role-based access (clients, assignments, permissions)
+v1.use("/sso", ssoRoutes);            // company SSO + Google/Microsoft sign-in
+v1.use("/leadshub", leadsHubRouter);
+v1.use(webhooksRoutes)                 // dynamic webhooks: /webhooks, /getwebhook/:id/event
+v1.use("/mail", emailRoutes)
+v1.use("/automation", automationRoutes);
+v1.use("/ai-workflow", authMiddleware, aiWorkflowRouter);
 
 // Third-party integration routes — additional per-user rate limiting
-app.use("/servicem8", integrationRateLimiter, servicem8Routes);
-app.use("/commusoft", integrationRateLimiter, commusoftRoutes);
-app.use("/simpro", integrationRateLimiter, simproRoutes);
-app.use("/zoho", integrationRateLimiter, zohoRoutes);
-app.use("/whatsapp", authMiddleware, integrationRateLimiter, whatsappRoutes);
-app.use("/zoho-forms", integrationRateLimiter, zohoFormsRoutes);
-app.use("/google-forms", integrationRateLimiter, googleFormsRoutes);
-app.use("/google-sheets", integrationRateLimiter, googleSheetsRoutes);
-app.use("/razorpay", integrationRateLimiter, razorpayRoutes);
-app.use("/bigquery", integrationRateLimiter, bigqueryRoutes);
+v1.use("/servicem8", integrationRateLimiter, servicem8Routes);
+v1.use("/commusoft", integrationRateLimiter, commusoftRoutes);
+v1.use("/simpro", integrationRateLimiter, simproRoutes);
+v1.use("/zoho", integrationRateLimiter, zohoRoutes);
+v1.use("/whatsapp", authMiddleware, integrationRateLimiter, whatsappRoutes);
+v1.use("/zoho-forms", integrationRateLimiter, zohoFormsRoutes);
+v1.use("/google-forms", integrationRateLimiter, googleFormsRoutes);
+v1.use("/google-sheets", integrationRateLimiter, googleSheetsRoutes);
+v1.use("/razorpay", integrationRateLimiter, razorpayRoutes);
+v1.use("/bigquery", integrationRateLimiter, bigqueryRoutes);
 
 // Polling engine (subscriptions + manual poll-now)
-app.use("/polling", integrationRateLimiter, pollingRouter);
+v1.use("/polling", integrationRateLimiter, pollingRouter);
 
 // Vendor-facing webhook receiver (ServiceM8, GHL, Commusoft push events arrive here)
-app.use("/api/webhooks-receiver", webhookEngineReceiverRoutes);
+v1.use("/webhooks-receiver", webhookEngineReceiverRoutes);
 
 // ─── Admin: rate limit event log (admin / developer only) ────────────────────
-app.get(
+v1.get(
   "/admin/rate-limit-logs",
   authMiddleware,
   requireRole("admin", "developer"),
@@ -77,6 +83,14 @@ app.get(
     res.json({ success: true, count: events.length, events });
   }
 );
+
+app.use(API_PREFIX, v1);
+
+// ─── Legacy unversioned inbound webhook URLs ─────────────────────────────────
+// Already stored in the DB (webhook full_url) and registered with vendors, so
+// keep accepting them. New URLs are generated under /api/v1.
+app.all("/api/webhooks/:hookPath", handleIncomingWebhook);
+app.use("/api/webhooks-receiver", webhookEngineReceiverRoutes);
 
 // Global error handler
 app.use(errorHandler);

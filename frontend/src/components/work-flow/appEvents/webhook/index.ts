@@ -18,18 +18,18 @@ import { useGetWebhookResponseQuery, useUpdateWebhookResponseMutation } from "./
 import { parseRequestBodyFromWebhookRow } from "./apiIntegrations/parseWebhookRequestBody";
 import { GetWebhookResponse } from "./apiIntegrations/types/webhookApis.type";
 import { toast } from "sonner";
+import { API_ORIGIN, API_PREFIX } from "@/src/constants/api.constants";
 
 function resolveWebhookUrl(rawUrl: string): string {
   const trimmed = rawUrl.trim();
   if (!trimmed) return "";
 
-  const fallbackApiOrigin = "http://localhost:5000";
-  const apiOrigin = process.env.NEXT_PUBLIC_API_URL || fallbackApiOrigin;
+  const apiOrigin = API_ORIGIN;
 
   try {
     const parsed = new URL(trimmed);
     const isLocalWebhook =
-      parsed.pathname.startsWith("/api/webhooks/") &&
+      (parsed.pathname.startsWith("/api/webhooks/") || parsed.pathname.startsWith(`${API_PREFIX}/webhooks/`)) &&
       (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1");
 
     if (!isLocalWebhook) return trimmed;

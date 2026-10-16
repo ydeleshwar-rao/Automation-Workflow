@@ -38,10 +38,10 @@ function splitName(fullName: string): { name: string; surname: string } {
 
 /**
  * Two receiver shapes:
- *   POST /api/webhooks-receiver/integrations/:integrationKey/:targetPath
+ *   POST /api/v1/webhooks-receiver/integrations/:integrationKey/:targetPath
  *     → Per-subscription URL (ServiceM8, Commusoft)
  *
- *   POST /api/webhooks-receiver/integrations/:integrationKey
+ *   POST /api/v1/webhooks-receiver/integrations/:integrationKey
  *     → OAuth-app-level URL (GHL/Leadshub) — lookup via locationId in payload
  */
 export async function receiveIntegrationWebhook(

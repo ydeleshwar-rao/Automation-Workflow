@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { WebhookRequest, WebhookTestStatus } from '@/src/components/work-flow/uiOrchestrator/types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-const WEBHOOK_BASE_PATH = '/api/webhooks';
+import { API_BASE_URL } from '@/src/constants/api.constants';
+
+const WEBHOOK_BASE_PATH = '/webhooks';
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 30_000;
 const MAX_HISTORY = 10;

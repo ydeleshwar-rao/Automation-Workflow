@@ -21,7 +21,7 @@ export const webhookApi = createApi({
   endpoints: (builder) => ({
     createWebhook: builder.mutation<ApiResponse<CreateWebhookResponse>, CreateWebhookPayload>({
       query: (payload) => ({
-        url: `/api/webhooks`,
+        url: `/webhooks`,
         method: "POST",
         data: payload,
       }),
@@ -29,7 +29,7 @@ export const webhookApi = createApi({
 
     getWebhookResponse: builder.query<ApiResponse<GetWebhookResponse[]>, string>({
       query: (webhookId) => ({
-        url: `/api/getwebhook/${webhookId}/event`,
+        url: `/getwebhook/${webhookId}/event`,
         method: "GET",
       }),
       providesTags: (_r, _e, webhookId) => [{ type: "WebhookResponse", id: webhookId }],
@@ -37,7 +37,7 @@ export const webhookApi = createApi({
 
     updateWebhookResponse: builder.mutation<void, { responseId: string; payload: UpdateWebhookModePayload }>({
       query: ({ responseId, payload }) => ({
-        url: `/api/webhooks/update/${responseId}`,
+        url: `/webhooks/update/${responseId}`,
         method: "PATCH",
         data: payload,
       }),

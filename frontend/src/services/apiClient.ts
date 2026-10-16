@@ -10,8 +10,9 @@
 
 import axios from "axios"
 import { loadSession, saveSession, clearSession, isSessionValid } from "@/src/store/localStorage"
+import { API_BASE_URL } from "@/src/constants/api.constants"
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
+const BASE_URL = API_BASE_URL
 
 const axiosInstance = axios.create({
   baseURL: BASE_URL,

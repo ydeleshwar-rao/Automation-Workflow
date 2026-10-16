@@ -16,6 +16,7 @@ import {
   CardContent,
 } from "@/src/components/ui/card";
 import { Loader2, CheckCircle2, AlertCircle, ChevronDown, ArrowLeft } from "lucide-react";
+import { API_BASE_URL } from "@/src/constants/api.constants";
 
 const createUserSchema = z.object({
   first_name: z.string().min(1, "First name is required"),
@@ -60,7 +61,7 @@ export function CreateUserForm() {
   });
 
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/bigquery/getclientskeydetails`)
+    fetch(`${API_BASE_URL}/bigquery/getclientskeydetails`)
       .then((r) => r.json())
       .then((json) => {
         const rows = json?.data?.rows ?? [];

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import { API_BASE_URL } from "@/src/constants/api.constants";
 
 interface CustomField {
   id?: string;
@@ -25,7 +26,7 @@ export default function CustomFieldsPage() {
       try {
         setLoading(true);
 
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
+        const baseUrl = API_BASE_URL;
         const res = await fetch(
           `${baseUrl}/customFields/all/6QckpJiSCvacZ7Vcnkxk`
         );
@@ -54,7 +55,7 @@ export default function CustomFieldsPage() {
     try {
       setLeadLoading(true);
 
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
+      const baseUrl = API_BASE_URL;
       const res = await fetch(
         `${baseUrl}/webhooks/getleadinput/6QckpJiSCvacZ7Vcnkxk`
       );
@@ -103,7 +104,7 @@ export default function CustomFieldsPage() {
     }
 
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
+      const baseUrl = API_BASE_URL;
       const res = await fetch(
         `${baseUrl}/contacts/createlead/6QckpJiSCvacZ7Vcnkxk`,
         {

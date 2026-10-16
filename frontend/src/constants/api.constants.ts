@@ -3,7 +3,16 @@
  * No direct Supabase calls from frontend.
  */
 
-const B = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+/** Backend origin, e.g. http://localhost:5000 (no path). */
+export const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/+$/, "");
+
+/** API version prefix — every backend route lives under it. */
+export const API_PREFIX = "/api/v1";
+
+/** Versioned backend base URL — use this for every backend call. */
+export const API_BASE_URL = `${API_ORIGIN}${API_PREFIX}`;
+
+const B = API_BASE_URL;
 
 export const API_ROUTES = {
   // ── Auth ───────────────────────────────────────────────────────────────────

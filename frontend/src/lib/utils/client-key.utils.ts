@@ -1,4 +1,5 @@
 import axios from "axios";
+import { API_BASE_URL } from "@/src/constants/api.constants";
 
 type BigQueryClientRow = {
   client_name?: string | null;
@@ -7,7 +8,7 @@ type BigQueryClientRow = {
 };
 
 const CLIENT_KEY_LOOKUP_URL =
-  `${process.env.NEXT_PUBLIC_API_URL}/bigquery/getclientskeydetails`;
+  `${API_BASE_URL}/bigquery/getclientskeydetails`;
 
 export function normalizeLookupValue(value: string | null | undefined) {
   return value
