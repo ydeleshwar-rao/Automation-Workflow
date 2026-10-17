@@ -4,22 +4,13 @@
  * (/automation/action-event-types/commusoft/triggers|actions).
  */
 
-export interface CommusoftFieldOption {
-  label: string;
-  value: string;
-}
-
-export interface CommusoftFieldDef {
-  name: string;
-  label: string;
-  type: "text" | "textarea" | "select";
-  required?: boolean;
-  placeholder?: string;
-  options?: CommusoftFieldOption[]; // only for type="select"
-}
+import type {
+  IntegrationFieldOption,
+  IntegrationFieldsByEvent,
+} from "@/src/components/work-flow/appEvents/shared/configure/integrationField.types";
 
 // Commusoft /jobs status enum (from API docs).
-const JOB_STATUS_OPTIONS: CommusoftFieldOption[] = [
+const JOB_STATUS_OPTIONS: IntegrationFieldOption[] = [
   { label: "Ongoing", value: "ongoing" },
   { label: "Reserved", value: "reserved" },
   { label: "On Hold", value: "on_hold" },
@@ -27,14 +18,14 @@ const JOB_STATUS_OPTIONS: CommusoftFieldOption[] = [
   { label: "Completed", value: "completed" },
 ];
 
-const JOB_PRIORITY_OPTIONS: CommusoftFieldOption[] = [
+const JOB_PRIORITY_OPTIONS: IntegrationFieldOption[] = [
   { label: "Not Important", value: "Not_Important" },
   { label: "Medium Importance", value: "Medium_Importance" },
   { label: "Important", value: "Important" },
   { label: "Urgent", value: "Urgent" },
 ];
 
-export const COMMUSOFT_EVENT_FIELDS: Record<string, CommusoftFieldDef[]> = {
+export const COMMUSOFT_EVENT_FIELDS: IntegrationFieldsByEvent = {
   // ─── Triggers ──────────────────────────────────────────────────────────────
   job_completed: [
     {

@@ -3,149 +3,138 @@
 import React, { useState, useMemo } from "react";
 import { Search, ChevronDown, Plus } from "lucide-react";
 import { cn } from "@/src/lib/utils";
-import { SelectionItem, SelectionPopup, SelectionSection } from "../../ui/selection-popup";
+import { SelectionPopup } from "../../ui/selection-popup";
 import { ConfigField, ConfigTextArea } from "./ChipTextField";
+import { getPopupPositionLeftOf, type PopupPosition } from "../appEvents/shared/configure/useVariablePicker";
+import type { FieldFilterType, FieldMeta, FieldOption, FieldOptionValue } from "./dynamicConfigForm.types";
 
-export interface FieldOption {
-  label: string;
-  value: any;
+const DEFAULT_SELECT_PLACEHOLDER = "Choose value...";
+const DEFAULT_TEXT_PLACEHOLDER = "Enter text or insert data...";
+const DEFAULT_FILTER_TYPE: FieldFilterType = "All";
+const NESTED_PATH_SEPARATOR = ".";
+
+type FormValues = Record<string, unknown>;
+
+const FIELD_FILTER_PREDICATES: Record<FieldFilterType, (field: FieldMeta, isFilled: boolean) => boolean> = {
+  All: () => true,
+  Required: (field) => Boolean(field.required),
+  Optional: (field) => !field.required,
+  Filled: (_field, isFilled) => isFilled,
+  Empty: (_field, isFilled) => !isFilled,
+};
+
+export const FIELD_FILTER_OPTIONS = (Object.keys(FIELD_FILTER_PREDICATES) as FieldFilterType[]).map(
+  (filterType) => ({ id: filterType, label: filterType })
+);
+
+function isFieldFilterType(value: string): value is FieldFilterType {
+  return value in FIELD_FILTER_PREDICATES;
 }
 
-export interface FieldMeta {
-  name: string;
-  label: string;
-  required?: boolean;
-  type?: "text" | "textarea" | "select" | "radio";
-  options?: FieldOption[];
-  placeholder?: string;
-  description?: string;
+function isRecord(value: unknown): value is FormValues {
+  return typeof value === "object" && value !== null;
 }
 
-interface DynamicConfigFormProps {
-  fields: FieldMeta[];
-  values: Record<string, any>;
-  onChange: (name: string, value: any) => void;
-  variableSections?: SelectionSection[];
-  onVariableSelect?: (fieldName: string, variable: SelectionItem) => void;
-  onRefresh?: () => void;
-  isLoading?: boolean;
-  /** When provided, overrides the internal variable popup — called instead of opening SelectionPopup */
-  onPlusClick?: (event: React.MouseEvent, fieldName: string) => void;
-  searchQuery?: string;
-  onSearchChange?: (value: string) => void;
-  filterType?: string;
-  onFilterChange?: (value: string) => void;
-}
-
-function getFieldValue(values: Record<string, any>, name: string): any {
-  // React Hook Form stores dotted names as nested objects (e.g. "contact.first_name" → values.contact.first_name)
-  // Try flat key first, then resolve as nested path
+/** React Hook Form stores dotted names as nested objects ("contact.first_name" → values.contact.first_name). */
+function getFieldValue(values: FormValues, name: string): unknown {
   if (name in values) return values[name];
-  return name.split(".").reduce((acc, key) => acc?.[key], values);
+  return name
+    .split(NESTED_PATH_SEPARATOR)
+    .reduce<unknown>((parent, key) => (isRecord(parent) ? parent[key] : undefined), values);
 }
 
-export const filterOptions = [
-  { id: "All", label: "All" },
-  { id: "Required", label: "Required" },
-  { id: "Optional", label: "Optional" },
-  { id: "Filled", label: "Filled" },
-  { id: "Empty", label: "Empty" },
-];
+function isFilledValue(value: unknown): boolean {
+  return typeof value === "string" ? value.length > 0 : Boolean(value);
+}
 
-// Sub-components
-function ConfigFieldWrapper({ 
-  label, 
-  required, 
-  children, 
-  error 
-}: { 
-  label: string; 
-  required?: boolean; 
-  children: React.ReactNode;
-  error?: string;
-}) {
+function filterFields(fields: FieldMeta[], values: FormValues, searchQuery: string, filterType: string): FieldMeta[] {
+  const normalizedQuery = searchQuery.toLowerCase();
+  const matchesFilter = FIELD_FILTER_PREDICATES[isFieldFilterType(filterType) ? filterType : DEFAULT_FILTER_TYPE];
+  return fields.filter(
+    (field) =>
+      field.label.toLowerCase().includes(normalizedQuery) &&
+      matchesFilter(field, isFilledValue(getFieldValue(values, field.name)))
+  );
+}
+
+function ConfigFieldWrapper({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div className="space-y-2 relative">
       <label className="text-sm font-bold text-foreground flex items-center gap-1.5">
         {label} {required && <span className="text-destructive">*</span>}
       </label>
       {children}
-      {error && <p className="text-xs text-destructive font-medium animate-in fade-in slide-in-from-top-1 duration-200">{error}</p>}
     </div>
   );
 }
 
-function ConfigRadioField({ 
-  label, 
-  required, 
-  value, 
-  onChange, 
-  options, 
-  error 
-}: { 
-  label: string; 
-  required?: boolean; 
-  value: any; 
-  onChange: (nextValue: any) => void;
+interface ChoiceFieldProps {
+  label: string;
+  required?: boolean;
+  value: unknown;
   options: FieldOption[];
-  error?: string;
+}
+
+function ConfigRadioField({ label, required, value, onChange, options }: ChoiceFieldProps & {
+  onChange: (nextValue: FieldOptionValue) => void;
 }) {
   return (
-    <ConfigFieldWrapper label={label} required={required} error={error}>
-       <div className="flex gap-4 p-3 nm-inset rounded-xl h-11 items-center transition-all">
-          {options.map((opt) => (
-            <label key={opt.label} className="flex items-center gap-2 cursor-pointer group">
-              <input
-                type="radio"
-                name={label}
-                checked={value === opt.value}
-                onChange={() => onChange(opt.value)}
-                className="w-4 h-4 accent-primary border-border focus:ring-primary/20"
-              />
-              <span className="text-sm font-medium text-foreground">{opt.label}</span>
-            </label>
-          ))}
-       </div>
+    <ConfigFieldWrapper label={label} required={required}>
+      <div className="flex gap-4 p-3 nm-inset rounded-xl h-11 items-center transition-all">
+        {options.map((option) => (
+          <label key={option.label} className="flex items-center gap-2 cursor-pointer group">
+            <input
+              type="radio"
+              name={label}
+              checked={value === option.value}
+              onChange={() => onChange(option.value)}
+              className="w-4 h-4 accent-primary border-border focus:ring-primary/20"
+            />
+            <span className="text-sm font-medium text-foreground">{option.label}</span>
+          </label>
+        ))}
+      </div>
     </ConfigFieldWrapper>
   );
 }
 
-function ConfigSelectField({ 
-  label, 
-  required, 
-  value, 
-  onChange, 
+interface ConfigSelectFieldProps extends ChoiceFieldProps {
+  onChange: (nextValue: string) => void;
+  onPlusClick: (event: React.MouseEvent) => void;
+  onRefresh?: () => void;
+  isLoading?: boolean;
+  placeholder?: string;
+}
+
+function ConfigSelectField({
+  label,
+  required,
+  value,
+  onChange,
   onPlusClick,
   onRefresh,
   isLoading,
-  options, 
+  options,
   placeholder,
-  error 
-}: { 
-  label: string; 
-  required?: boolean; 
-  value: any; 
-  onChange: (nextValue: any) => void;
-  onPlusClick?: (event: React.MouseEvent) => void;
-  onRefresh?: () => void;
-  isLoading?: boolean;
-  options: FieldOption[];
-  placeholder?: string;
-  error?: string;
-}) {
+}: ConfigSelectFieldProps) {
   const [isPopupOpen, setIsPopupOpen] = useState(false);
-  const [popupPos, setPopupPos] = useState({ top: 0, right: 0 });
+  const [popupPosition, setPopupPosition] = useState<PopupPosition>({ top: 0, right: 0 });
 
-  const selectedOption = options.find(option => String(option.value) === String(value));
+  const selectedOption = options.find((option) => String(option.value) === String(value));
 
   const handleOpenPopup = (event: React.MouseEvent) => {
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    setPopupPos({ top: rect.top, right: window.innerWidth - rect.left + 10 });
+    setPopupPosition(getPopupPositionLeftOf(event.currentTarget as HTMLElement));
     setIsPopupOpen(true);
   };
 
+  const handlePlusClick = (event: React.MouseEvent) => {
+    // Keep the click from also opening the options popup on the wrapper.
+    event.stopPropagation();
+    onPlusClick(event);
+  };
+
   return (
-    <ConfigFieldWrapper label={label} required={required} error={error}>
+    <ConfigFieldWrapper label={label} required={required}>
       <div className="relative group">
         <div
           onClick={handleOpenPopup}
@@ -154,27 +143,19 @@ function ConfigSelectField({
             isPopupOpen && "outline outline-1 outline-primary/40"
           )}
         >
-          <span className={cn(
-            "text-sm font-medium",
-            selectedOption ? "text-foreground" : "text-muted-foreground"
-          )}>
-            {selectedOption ? selectedOption.label : (placeholder || "Choose value...")}
+          <span className={cn("text-sm font-medium", selectedOption ? "text-foreground" : "text-muted-foreground")}>
+            {selectedOption ? selectedOption.label : (placeholder || DEFAULT_SELECT_PLACEHOLDER)}
           </span>
           <div className="flex items-center gap-2">
             <div className="w-[1px] h-4 bg-border mx-1" />
             <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
-            {onPlusClick && (
-              <button
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onPlusClick(event);
-                }}
-                className="nm-btn w-7 h-7 flex items-center justify-center rounded-xl text-muted-foreground hover:text-primary transition-all"
-                type="button"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-            )}
+            <button
+              onClick={handlePlusClick}
+              className="nm-btn w-7 h-7 flex items-center justify-center rounded-xl text-muted-foreground hover:text-primary transition-all"
+              type="button"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
@@ -191,200 +172,104 @@ function ConfigSelectField({
             {
               id: "options",
               title: "Options",
-              items: options.map(option => ({ id: String(option.value), label: option.label })),
-              defaultOpen: true
-            }
+              items: options.map((option) => ({ id: String(option.value), label: option.label })),
+              defaultOpen: true,
+            },
           ]}
-          position={popupPos}
+          position={popupPosition}
         />
       </div>
     </ConfigFieldWrapper>
   );
 }
 
-interface PopupState {
-  isOpen: boolean;
-  fieldName: string | null;
-  position: { top: number; right: number };
-  selectedId?: string;
-  placeholder?: string;
-  showTabs?: boolean;
-  type?: "variable" | "value";
-  sections?: SelectionSection[];
-  title?: string;
+function NoMatchingFieldsNotice() {
+  return (
+    <div className="p-10 text-center nm-inset rounded-2xl border-2 border-dashed border-border/40 animate-in zoom-in duration-300">
+      <div className="w-12 h-12 nm-card rounded-full flex items-center justify-center mx-auto mb-4">
+        <Search className="w-6 h-6 text-muted-foreground" />
+      </div>
+      <p className="text-sm font-bold text-foreground mb-1">No matching fields found</p>
+      <p className="text-xs text-muted-foreground">Try adjusting your search or filter keywords.</p>
+    </div>
+  );
 }
 
+interface DynamicConfigFormProps {
+  fields: FieldMeta[];
+  values: FormValues;
+  onChange: (name: string, value: FieldOptionValue) => void;
+  /** Opens the variable picker for a field's "+" button. */
+  onPlusClick: (event: React.MouseEvent, fieldName: string) => void;
+  onRefresh?: () => void;
+  isLoading?: boolean;
+  searchQuery?: string;
+  filterType?: string;
+}
+
+/** Renders backend-described fields (text / textarea / select / radio), narrowed by search and filter. */
 export function DynamicConfigForm({
   fields,
   values,
   onChange,
-  variableSections,
-  onVariableSelect,
+  onPlusClick,
   onRefresh,
   isLoading,
-  onPlusClick,
   searchQuery = "",
-  onSearchChange,
-  filterType = "All",
-  onFilterChange,
+  filterType = DEFAULT_FILTER_TYPE,
 }: DynamicConfigFormProps) {
-  
-  const [popupState, setPopupState] = useState<PopupState>({
-    isOpen: false,
-    fieldName: null,
-    position: { top: 0, right: 0 },
-  });
+  const filteredFields = useMemo(
+    () => filterFields(fields, values, searchQuery, filterType),
+    [searchQuery, filterType, fields, values]
+  );
 
-  const filteredFields = useMemo(() => {
-    return fields.filter(field => {
-      const matchesSearch = field.label.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      let matchesFilter = true;
-      const value = getFieldValue(values, field.name);
-      const isFilled = typeof value === 'string' ? value.length > 0 : !!value;
+  const renderField = (field: FieldMeta) => {
+    const value = getFieldValue(values, field.name);
+    const handleChange = (nextValue: FieldOptionValue) => onChange(field.name, nextValue);
+    const handlePlusClick = (event: React.MouseEvent) => onPlusClick(event, field.name);
+    const options = field.options || [];
 
-      if (filterType === "Required") matchesFilter = !!field.required;
-      else if (filterType === "Optional") matchesFilter = !field.required;
-      else if (filterType === "Filled") matchesFilter = isFilled;
-      else if (filterType === "Empty") matchesFilter = !isFilled;
-
-      return matchesSearch && matchesFilter;
-    });
-  }, [searchQuery, filterType, fields, values]);
-
-  const handlePlusClick = (event: React.MouseEvent, fieldName: string) => {
-    if (onPlusClick) {
-      onPlusClick(event, fieldName);
-      return;
-    }
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    setPopupState({
-      isOpen: true,
-      fieldName,
-      position: { top: rect.top, right: window.innerWidth - rect.left + 10 },
-      type: "variable",
-      sections: variableSections || [],
-      title: "Insert Variable",
-      showTabs: true,
-      placeholder: "Search variables"
-    });
-  };
-
-  const handlePopupSelect = (item: SelectionItem) => {
-    if (popupState.fieldName === "filterType") {
-      onFilterChange?.(item.id);
-      setPopupState(prev => ({ ...prev, isOpen: false }));
-      return;
+    if (field.type === "radio") {
+      return <ConfigRadioField key={field.name} label={field.label} required={field.required} value={value} onChange={handleChange} options={options} />;
     }
 
-    if (popupState.fieldName) {
-      if (onVariableSelect) {
-        onVariableSelect(popupState.fieldName, item);
-      } else {
-        const currentValue = values[popupState.fieldName] || "";
-        onChange(popupState.fieldName, `${currentValue}{{${item.label}}}`);
-      }
+    if (field.type === "select") {
+      return (
+        <ConfigSelectField
+          key={field.name}
+          label={field.label}
+          required={field.required}
+          value={value}
+          onChange={handleChange}
+          onPlusClick={handlePlusClick}
+          onRefresh={onRefresh}
+          isLoading={isLoading}
+          options={options}
+          placeholder={field.placeholder}
+        />
+      );
     }
-  };
 
-  const handleFilterSelectOpen = (event: React.MouseEvent) => {
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    setPopupState({
-      isOpen: true,
-      fieldName: "filterType",
-      position: { top: rect.bottom + 8, right: window.innerWidth - rect.right + 10 },
-      selectedId: filterType,
-      type: "value",
-      sections: [{ id: "filter", title: "Filter by", items: filterOptions, defaultOpen: true }],
-      placeholder: "Select filter type",
-      title: "Filter fields"
-    });
+    const TextInput = field.type === "textarea" ? ConfigTextArea : ConfigField;
+    return (
+      <TextInput
+        key={field.name}
+        label={field.label}
+        required={field.required}
+        value={String(value ?? "")}
+        onChange={handleChange}
+        onPlusClick={handlePlusClick}
+        placeholder={field.placeholder || DEFAULT_TEXT_PLACEHOLDER}
+      />
+    );
   };
 
   return (
     <div className="space-y-6 pb-10 animate-in fade-in duration-500">
       <div className="space-y-6">
-        {filteredFields.map((field) => {
-          if (field.type === "radio") {
-            return (
-              <ConfigRadioField
-                key={field.name}
-                label={field.label}
-                required={field.required}
-                value={getFieldValue(values, field.name)}
-                onChange={(value) => onChange(field.name, value)}
-                options={field.options || []}
-              />
-            );
-          }
-
-          if (field.type === "select") {
-            return (
-              <ConfigSelectField
-                key={field.name}
-                label={field.label}
-                required={field.required}
-                value={getFieldValue(values, field.name)}
-                onChange={(value) => onChange(field.name, value)}
-                onPlusClick={(event) => handlePlusClick(event, field.name)}
-                onRefresh={onRefresh}
-                isLoading={isLoading}
-                options={field.options || []}
-                placeholder={field.placeholder}
-              />
-            );
-          }
-
-          if (field.type === "textarea") {
-            return (
-              <ConfigTextArea
-                key={field.name}
-                label={field.label}
-                required={field.required}
-                value={String(getFieldValue(values, field.name) ?? "")}
-                onChange={(value) => onChange(field.name, value)}
-                onPlusClick={(event) => handlePlusClick(event, field.name)}
-                placeholder={field.placeholder || "Enter text or insert data..."}
-              />
-            );
-          }
-
-          return (
-            <ConfigField
-              key={field.name}
-              label={field.label}
-              required={field.required}
-              value={String(getFieldValue(values, field.name) ?? "")}
-              onChange={(value) => onChange(field.name, value)}
-              onPlusClick={(event) => handlePlusClick(event, field.name)}
-              placeholder={field.placeholder || "Enter text or insert data..."}
-            />
-          );
-        })}
-        {filteredFields.length === 0 && (
-          <div className="p-10 text-center nm-inset rounded-2xl border-2 border-dashed border-border/40 animate-in zoom-in duration-300">
-            <div className="w-12 h-12 nm-card rounded-full flex items-center justify-center mx-auto mb-4">
-              <Search className="w-6 h-6 text-muted-foreground" />
-            </div>
-            <p className="text-sm font-bold text-foreground mb-1">No matching fields found</p>
-            <p className="text-xs text-muted-foreground">Try adjusting your search or filter keywords.</p>
-          </div>
-        )}
+        {filteredFields.map(renderField)}
+        {filteredFields.length === 0 && <NoMatchingFieldsNotice />}
       </div>
-
-      <SelectionPopup
-        isOpen={popupState.isOpen}
-        onClose={() => setPopupState(prev => ({ ...prev, isOpen: false }))}
-        onSelect={handlePopupSelect}
-        items={[]}
-        sections={popupState.sections || []}
-        title={popupState.title || "Insert Variable"}
-        position={popupState.position}
-        showTabs={popupState.showTabs}
-        type={popupState.type}
-        selectedId={popupState.selectedId}
-        placeholder={popupState.placeholder}
-      />
     </div>
   );
 }

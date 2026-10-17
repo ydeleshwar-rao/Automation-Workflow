@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { ConfigField, ConfigTextArea } from "@/src/components/work-flow/components/ChipTextField";
-import {
-  WebhookVariablePicker,
-  VariableField,
-} from "@/src/components/work-flow/components/WebhookVariablePicker";
+import { WebhookVariablePicker } from "@/src/components/work-flow/components/WebhookVariablePicker";
+import { ConfigureStepNotice } from "../../shared/configure/ConfigureStepNotice";
+import { areRequiredFieldsFilled } from "../../shared/configure/useReportFormValidity";
+import { USER_EDIT_SET_VALUE_OPTIONS, useVariablePicker } from "../../shared/configure/useVariablePicker";
 
 type WhatsAppConfig = {
   to?: string;
@@ -22,6 +22,96 @@ type WhatsAppConfig = {
   name?: string;
   address?: string;
 };
+
+type WhatsAppFieldName = keyof WhatsAppConfig;
+
+interface WhatsAppFieldConfig {
+  name: WhatsAppFieldName;
+  label: string;
+  placeholder: string;
+  required?: boolean;
+  isMultiline?: boolean;
+  /** Title of the variable picker when it differs from the field label. */
+  pickerLabel?: string;
+}
+
+/** Only "send_*" events are actions with something to configure. */
+const SEND_EVENT_PREFIX = "send_";
+const DEFAULT_LANGUAGE = "en";
+
+const RECIPIENT_FIELD: WhatsAppFieldConfig = {
+  name: "to",
+  label: "Recipient phone",
+  placeholder: "919876543210",
+  required: true,
+};
+
+const CAPTION_FIELD: WhatsAppFieldConfig = { name: "caption", label: "Caption", placeholder: "Optional caption" };
+
+/** send_* event → fields in display order. `required` drives both the asterisk and validity. */
+const WHATSAPP_FIELDS_BY_EVENT: Record<string, WhatsAppFieldConfig[]> = {
+  send_text_message: [
+    RECIPIENT_FIELD,
+    { name: "message", label: "Message", placeholder: "Enter message or insert data...", required: true, isMultiline: true },
+  ],
+  send_template_message: [
+    RECIPIENT_FIELD,
+    {
+      name: "message",
+      label: "Template body",
+      pickerLabel: "Message",
+      placeholder: "Enter message or insert data...",
+      required: true,
+      isMultiline: true,
+    },
+    { name: "templateName", label: "Template name", placeholder: "appointment_reminder" },
+    { name: "language", label: "Language", placeholder: DEFAULT_LANGUAGE },
+  ],
+  send_image: [
+    RECIPIENT_FIELD,
+    { name: "url", label: "Image URL", pickerLabel: "File URL", placeholder: "https://example.com/file.pdf", required: true },
+    CAPTION_FIELD,
+    { name: "mimetype", label: "MIME type", placeholder: "image/jpeg" },
+  ],
+  send_document: [
+    RECIPIENT_FIELD,
+    { name: "url", label: "Document/PDF URL", pickerLabel: "File URL", placeholder: "https://example.com/file.pdf", required: true },
+    CAPTION_FIELD,
+    { name: "filename", label: "Filename", placeholder: "invoice.pdf" },
+    { name: "mimetype", label: "MIME type", placeholder: "application/pdf" },
+  ],
+  send_location: [
+    RECIPIENT_FIELD,
+    { name: "lat", label: "Latitude", placeholder: "28.6139", required: true },
+    { name: "lng", label: "Longitude", placeholder: "77.2090", required: true },
+    { name: "name", label: "Place name", placeholder: "Customer location" },
+    { name: "address", label: "Address", placeholder: "Street, city" },
+  ],
+};
+
+function buildDefaultValues(savedConfig: WhatsAppConfig): WhatsAppConfig {
+  return {
+    to: savedConfig.to ?? "",
+    message: savedConfig.message ?? "",
+    url: savedConfig.url ?? "",
+    caption: savedConfig.caption ?? "",
+    filename: savedConfig.filename ?? "",
+    mimetype: savedConfig.mimetype ?? "",
+    templateName: savedConfig.templateName ?? "",
+    language: savedConfig.language ?? DEFAULT_LANGUAGE,
+    lat: savedConfig.lat ?? "",
+    lng: savedConfig.lng ?? "",
+    name: savedConfig.name ?? "",
+    address: savedConfig.address ?? "",
+  };
+}
+
+/** Triggers need no setup; an unknown send_* event can never be valid. */
+function isWhatsAppConfigValid(selectedEvent: string | null | undefined, values: WhatsAppConfig): boolean {
+  if (!selectedEvent?.startsWith(SEND_EVENT_PREFIX)) return true;
+  const eventFields = WHATSAPP_FIELDS_BY_EVENT[selectedEvent];
+  return Boolean(eventFields) && areRequiredFieldsFilled(eventFields, values);
+}
 
 interface WhatsAppConfigureStepProps {
   data: Record<string, unknown>;
@@ -40,218 +130,68 @@ export function WhatsAppConfigureStep({
   triggerTestPayload,
   triggerTestSamples,
 }: WhatsAppConfigureStepProps) {
-  const initial = data as WhatsAppConfig;
   const { watch, setValue, getValues } = useForm<WhatsAppConfig>({
     mode: "onChange",
-    defaultValues: {
-      to: initial.to ?? "",
-      message: initial.message ?? "",
-      url: initial.url ?? "",
-      caption: initial.caption ?? "",
-      filename: initial.filename ?? "",
-      mimetype: initial.mimetype ?? "",
-      templateName: initial.templateName ?? "",
-      language: initial.language ?? "en",
-      lat: initial.lat ?? "",
-      lng: initial.lng ?? "",
-      name: initial.name ?? "",
-      address: initial.address ?? "",
-    },
+    defaultValues: buildDefaultValues(data as WhatsAppConfig),
   });
   const values = watch();
   const valuesKey = JSON.stringify(values);
-  const activeFieldRef = useRef<keyof WhatsAppConfig | null>(null);
-  const [popupState, setPopupState] = useState({
-    isOpen: false,
-    fieldLabel: "",
-    position: { top: 0, right: 0 },
-  });
-
-  const requiresTo = selectedEvent?.startsWith("send_");
 
   useEffect(() => {
-    if (!requiresTo) {
-      onChange(values, true);
-      return;
-    }
-    const isValid =
-      Boolean(values.to) &&
-      (
-        (selectedEvent === "send_text_message" && Boolean(values.message)) ||
-        (selectedEvent === "send_image" && Boolean(values.url)) ||
-        (selectedEvent === "send_document" && Boolean(values.url)) ||
-        (selectedEvent === "send_template_message" && Boolean(values.message)) ||
-        (selectedEvent === "send_location" && Boolean(values.lat) && Boolean(values.lng))
-      );
-    onChange(values, isValid);
-  }, [requiresTo, selectedEvent, valuesKey, values, onChange]);
+    onChange(values, isWhatsAppConfigValid(selectedEvent, values));
+  }, [selectedEvent, valuesKey, values, onChange]);
 
-  const openVariablePicker = useCallback((event: React.MouseEvent, field: keyof WhatsAppConfig, label: string) => {
-    const rect = (event.target as HTMLElement).getBoundingClientRect();
-    activeFieldRef.current = field;
-    setPopupState({
-      isOpen: true,
-      fieldLabel: label,
-      position: { top: rect.top, right: window.innerWidth - rect.left + 10 },
-    });
-  }, []);
-
-  const onSelectVariable = useCallback(
-    (variable: VariableField) => {
-      const field = activeFieldRef.current;
-      if (!field) return;
-      const current = getValues(field) || "";
-      const token = `{{map:${variable.id}|${variable.label}|${variable.description}}}`;
-      setValue(field, `${current}${token}`, { shouldValidate: true, shouldDirty: true });
-      setPopupState((prev) => ({ ...prev, isOpen: false }));
-    },
-    [getValues, setValue]
+  const getFieldValue = useCallback((fieldName: WhatsAppFieldName) => getValues(fieldName), [getValues]);
+  const setFieldValue = useCallback(
+    (fieldName: WhatsAppFieldName, value: string) => setValue(fieldName, value, USER_EDIT_SET_VALUE_OPTIONS),
+    [setValue]
   );
+  const { openVariablePicker, pickerProps } = useVariablePicker({ getFieldValue, setFieldValue });
 
-  const emptyState = useMemo(() => {
-    if (selectedEvent) return null;
-    return "Go back to Setup and choose a WhatsApp event first.";
-  }, [selectedEvent]);
-
-  if (emptyState) {
+  if (!selectedEvent) {
     return (
-      <div className="flex flex-col items-center justify-center h-full py-20 text-center space-y-3">
-        <p className="text-sm font-bold text-foreground">No event selected</p>
-        <p className="text-xs text-muted-foreground">{emptyState}</p>
-      </div>
+      <ConfigureStepNotice
+        title="No event selected"
+        description="Go back to Setup and choose a WhatsApp event first."
+      />
     );
   }
 
-  if (!requiresTo) {
+  if (!selectedEvent.startsWith(SEND_EVENT_PREFIX)) {
     return (
-      <div className="flex flex-col items-center justify-center h-full py-20 text-center space-y-3">
-        <p className="text-sm font-bold text-foreground">No extra setup needed</p>
-        <p className="text-xs text-muted-foreground">This WhatsApp trigger can continue to the test step.</p>
-      </div>
+      <ConfigureStepNotice
+        title="No extra setup needed"
+        description="This WhatsApp trigger can continue to the test step."
+      />
     );
   }
+
+  const eventFields = WHATSAPP_FIELDS_BY_EVENT[selectedEvent] ?? [RECIPIENT_FIELD];
 
   return (
     <div className="space-y-6 pb-20 animate-in fade-in duration-500">
-      <ConfigField
-        label="Recipient phone"
-        required
-        value={values.to ?? ""}
-        onChange={(value) => setValue("to", value, { shouldValidate: true, shouldDirty: true })}
-        onPlusClick={(event) => openVariablePicker(event, "to", "Recipient phone")}
-        placeholder="919876543210"
-      />
-
-      {(selectedEvent === "send_text_message" || selectedEvent === "send_template_message") && (
-        <ConfigTextArea
-          label={selectedEvent === "send_template_message" ? "Template body" : "Message"}
-          required
-          value={values.message ?? ""}
-          onChange={(value) => setValue("message", value, { shouldValidate: true, shouldDirty: true })}
-          onPlusClick={(event) => openVariablePicker(event, "message", "Message")}
-          placeholder="Enter message or insert data..."
-        />
-      )}
-
-      {selectedEvent === "send_template_message" && (
-        <>
-          <ConfigField
-            label="Template name"
-            value={values.templateName ?? ""}
-            onChange={(value) => setValue("templateName", value, { shouldValidate: true, shouldDirty: true })}
-            onPlusClick={(event) => openVariablePicker(event, "templateName", "Template name")}
-            placeholder="appointment_reminder"
+      {eventFields.map((field) => {
+        const TextInput = field.isMultiline ? ConfigTextArea : ConfigField;
+        return (
+          <TextInput
+            key={field.name}
+            label={field.label}
+            required={field.required}
+            value={values[field.name] ?? ""}
+            onChange={(value) => setFieldValue(field.name, value)}
+            onPlusClick={(event: React.MouseEvent) =>
+              openVariablePicker(event, field.name, field.pickerLabel ?? field.label)
+            }
+            placeholder={field.placeholder}
           />
-          <ConfigField
-            label="Language"
-            value={values.language ?? ""}
-            onChange={(value) => setValue("language", value, { shouldValidate: true, shouldDirty: true })}
-            onPlusClick={(event) => openVariablePicker(event, "language", "Language")}
-            placeholder="en"
-          />
-        </>
-      )}
-
-      {(selectedEvent === "send_image" || selectedEvent === "send_document") && (
-        <>
-          <ConfigField
-            label={selectedEvent === "send_image" ? "Image URL" : "Document/PDF URL"}
-            required
-            value={values.url ?? ""}
-            onChange={(value) => setValue("url", value, { shouldValidate: true, shouldDirty: true })}
-            onPlusClick={(event) => openVariablePicker(event, "url", "File URL")}
-            placeholder="https://example.com/file.pdf"
-          />
-          <ConfigField
-            label="Caption"
-            value={values.caption ?? ""}
-            onChange={(value) => setValue("caption", value, { shouldValidate: true, shouldDirty: true })}
-            onPlusClick={(event) => openVariablePicker(event, "caption", "Caption")}
-            placeholder="Optional caption"
-          />
-          {selectedEvent === "send_document" && (
-            <ConfigField
-              label="Filename"
-              value={values.filename ?? ""}
-              onChange={(value) => setValue("filename", value, { shouldValidate: true, shouldDirty: true })}
-              onPlusClick={(event) => openVariablePicker(event, "filename", "Filename")}
-              placeholder="invoice.pdf"
-            />
-          )}
-          <ConfigField
-            label="MIME type"
-            value={values.mimetype ?? ""}
-            onChange={(value) => setValue("mimetype", value, { shouldValidate: true, shouldDirty: true })}
-            onPlusClick={(event) => openVariablePicker(event, "mimetype", "MIME type")}
-            placeholder={selectedEvent === "send_image" ? "image/jpeg" : "application/pdf"}
-          />
-        </>
-      )}
-
-      {selectedEvent === "send_location" && (
-        <>
-          <ConfigField
-            label="Latitude"
-            required
-            value={values.lat ?? ""}
-            onChange={(value) => setValue("lat", value, { shouldValidate: true, shouldDirty: true })}
-            onPlusClick={(event) => openVariablePicker(event, "lat", "Latitude")}
-            placeholder="28.6139"
-          />
-          <ConfigField
-            label="Longitude"
-            required
-            value={values.lng ?? ""}
-            onChange={(value) => setValue("lng", value, { shouldValidate: true, shouldDirty: true })}
-            onPlusClick={(event) => openVariablePicker(event, "lng", "Longitude")}
-            placeholder="77.2090"
-          />
-          <ConfigField
-            label="Place name"
-            value={values.name ?? ""}
-            onChange={(value) => setValue("name", value, { shouldValidate: true, shouldDirty: true })}
-            onPlusClick={(event) => openVariablePicker(event, "name", "Place name")}
-            placeholder="Customer location"
-          />
-          <ConfigField
-            label="Address"
-            value={values.address ?? ""}
-            onChange={(value) => setValue("address", value, { shouldValidate: true, shouldDirty: true })}
-            onPlusClick={(event) => openVariablePicker(event, "address", "Address")}
-            placeholder="Street, city"
-          />
-        </>
-      )}
+        );
+      })}
 
       <WebhookVariablePicker
-        isOpen={popupState.isOpen}
-        fieldLabel={popupState.fieldLabel}
-        position={popupState.position}
+        {...pickerProps}
         webhookId={webhookId}
         triggerTestPayload={triggerTestPayload}
         triggerTestSamples={triggerTestSamples}
-        onSelect={onSelectVariable}
-        onClose={() => setPopupState((prev) => ({ ...prev, isOpen: false }))}
       />
     </div>
   );

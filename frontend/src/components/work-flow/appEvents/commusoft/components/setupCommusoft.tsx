@@ -1,76 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { Link2 } from "lucide-react";
-import { CommusoftEventSelectorPopup } from "./CommusoftEventSelectorPopup";
-import { AppSection, SelectSection } from "@/src/components/work-flow/appEvents/mail/components/shared/SelectorFields";
-import { useCommusoftStatus } from "@/src/components/app-connections/commusoft/hooks/useCommusoftStatus";
-import { ACTION_EVENT_INTEGRATION_SLUGS, useActionEventOptions } from "@/src/components/work-flow/apiIntegrations/actionEventTypesApi";
-import { ConnectInlineSection } from "@/src/components/work-flow/appEvents/shared/ConnectInlineSection";
+import { ACTION_EVENT_INTEGRATION_SLUGS } from "@/src/components/work-flow/apiIntegrations/actionEventTypesApi";
+import {
+  IntegrationSetupStep,
+  type IntegrationSetupConfig,
+  type IntegrationSetupStepProps,
+} from "@/src/components/work-flow/appEvents/shared/setup/IntegrationSetupStep";
 
-interface CommusoftSetupStepProps {
-  selectedEvent: string | null;
-  onEventSelect: (event: string) => void;
-  selectedApp: { label: string; icon: any; color: string };
-  isTrigger: boolean;
-  onChangeApp?: () => void;
-}
+const COMMUSOFT_SETUP_CONFIG: IntegrationSetupConfig = {
+  appId: "commusoft",
+  appName: "Commusoft",
+  appImage: "/image_1_commusoft.png",
+  accentColor: "#f58320",
+  actionEventSlug: ACTION_EVENT_INTEGRATION_SLUGS.COMMUSOFT,
+};
 
-export function CommusoftSetupStep({
-  selectedEvent,
-  onEventSelect,
-  selectedApp,
-  isTrigger,
-  onChangeApp,
-}: CommusoftSetupStepProps) {
-  const [isEventPopupOpen, setIsEventPopupOpen] = useState(false);
-
-  const { connected: isConnected } = useCommusoftStatus();
-  const { events, isLoading } = useActionEventOptions(ACTION_EVENT_INTEGRATION_SLUGS.COMMUSOFT, isTrigger);
-
-  const AppIcon = selectedApp.icon || Link2;
-  const displayLabel = events.find((event) => event.id === selectedEvent)?.label ?? selectedEvent;
-
-  return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
-      <AppSection
-        appName="Commusoft"
-        appIcon={AppIcon}
-        onOverride={onChangeApp}
-        connected={isConnected}
-      />
-
-      {/* ── Connect prompt (shown only when not connected) ── */}
-      {!isConnected && (
-        <ConnectInlineSection
-          appId="commusoft"
-          appName="Commusoft"
-          accentColor="#f58320"
-          appImage="/image_1_commusoft.png"
-        />
-      )}
-
-      {/* ── Event picker (shown only when connected) ── */}
-      {isConnected && (
-        <>
-          <SelectSection
-            label={isTrigger ? "Trigger event" : "Action event"}
-            value={displayLabel}
-            placeholder="Choose an event"
-            onClick={() => setIsEventPopupOpen(!isEventPopupOpen)}
-            isOpen={isEventPopupOpen}
-          />
-
-          <CommusoftEventSelectorPopup
-            isOpen={isEventPopupOpen}
-            onClose={() => setIsEventPopupOpen(false)}
-            onSelect={onEventSelect}
-            selectedEvent={selectedEvent}
-            events={events}
-            isLoading={isLoading}
-          />
-        </>
-      )}
-    </div>
-  );
+export function CommusoftSetupStep(props: IntegrationSetupStepProps) {
+  return <IntegrationSetupStep config={COMMUSOFT_SETUP_CONFIG} {...props} />;
 }

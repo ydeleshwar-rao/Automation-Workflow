@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
-import type { FieldMeta, FieldOption } from "@/src/components/ui/dynamic-config-form";
+import type { FieldMeta, FieldOption } from "@/src/components/work-flow/components/dynamicConfigForm.types";
 import {
   LeadConnectorActionField,
   LeadConnectorPipelineStage,

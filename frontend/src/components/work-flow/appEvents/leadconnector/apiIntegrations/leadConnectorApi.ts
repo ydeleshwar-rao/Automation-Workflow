@@ -8,7 +8,7 @@
 import { baseApi } from "@/src/store/baseApi";
 import { API_ROUTES } from "@/src/constants/api.constants";
 import { ApiResponse } from "@/src/components/work-flow/apiIntegrations/types/integration.types";
-import type { FieldMeta, FieldOption } from "@/src/components/ui/dynamic-config-form";
+import type { FieldMeta, FieldOption } from "@/src/components/work-flow/components/dynamicConfigForm.types";
 
 // ── Backend shapes ───────────────────────────────────────────────────────────
 

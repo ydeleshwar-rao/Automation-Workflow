@@ -1,22 +1,18 @@
 "use client";
-import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { cn } from "@/src/lib/utils";
-import { flattenWebhookPayload } from "@/src/components/template/autoMapper";
 import { generateEmailTemplate } from "@/src/components/template/generateEmailTemplate";
-import { useAutoMap } from "@/src/components/template/useAutoMap";
 import { Plus, X } from "lucide-react";
-import { Button } from "@/src/components/ui/button";
 import { useUpdateNodeMutation } from "@/src/components/work-flow/apiIntegrations/workflowApi";
 import { ConfigField, ConfigTextArea } from "../../../components/ChipTextField";
 import { WorkflowSection } from "../../../components/SectionWrapper";
-import {
-  WebhookVariablePicker,
-  VariableField,
-} from "@/src/components/work-flow/components/WebhookVariablePicker";
+import { WebhookVariablePicker } from "@/src/components/work-flow/components/WebhookVariablePicker";
 import { HtmlTemplateBuilder } from "./HtmlTemplateBuilder";
+import { formatCamelCaseLabel } from "../../shared/configure/fieldLabel";
+import { USER_EDIT_SET_VALUE_OPTIONS, useVariablePicker } from "../../shared/configure/useVariablePicker";
+import { hasSuggestedValue, isBlankFormValue, useWebhookAutoMap } from "../../shared/configure/useWebhookAutoMap";
 
 // ─── Validation ──────────────────────────────────────────────────────────────
 
@@ -24,14 +20,14 @@ const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const variableRegex = /\{\{.*?\}\}/;
 
 function resolveFormValues(values: Partial<MailFormData>): Partial<MailFormData> {
+  // Don't resolve {{map:...}} tokens — they match variableRegex as-is, so
+  // emailOrVariable fields accept them regardless of the sample value.
+  // Only trim leading/trailing whitespace from plain static text.
   const resolved: Partial<MailFormData> = {};
   for (const key in values) {
-    const formKey = key as keyof MailFormData;
+    const formKey = key as MailFieldName;
     const value = values[formKey];
-    // Don't resolve {{map:...}} tokens — they match variableRegex as-is, so
-    // emailOrVariable fields accept them regardless of the sample value.
-    // Only trim leading/trailing whitespace from plain static text.
-    resolved[formKey] = typeof value === "string" ? value.trim() : (value as any);
+    resolved[formKey] = typeof value === "string" ? value.trim() : value;
   }
   return resolved;
 }
@@ -66,8 +62,9 @@ const mailSchema = z.object({
 });
 
 type MailFormData = z.infer<typeof mailSchema>;
+type MailFieldName = keyof MailFormData;
 
-const MAIL_CONFIGURE_FIELD_KEYS: (keyof MailFormData)[] = [
+const MAIL_CONFIGURE_FIELD_KEYS: MailFieldName[] = [
   "fromName",
   "fromEmail",
   "replyTo",
@@ -87,6 +84,13 @@ const MAIL_TO_PAYLOAD_KEYS = [
   "email_address",
   "to_email",
 ] as const;
+
+/** First non-blank value among the payload's real email keys. */
+function findRecipientEmail(cleanedPayload: Record<string, unknown>): unknown {
+  return MAIL_TO_PAYLOAD_KEYS.map((payloadKey) => cleanedPayload[payloadKey]).find(
+    (payloadValue) => !isBlankFormValue(payloadValue)
+  );
+}
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -196,72 +200,22 @@ export function MailConfigureStep({
   const watchedHtmlBody = watch("htmlBody");
   const serializedValues = JSON.stringify(formValues);
 
-  const fieldKeys = useMemo(
-    () => MAIL_CONFIGURE_FIELD_KEYS.map((key) => String(key)),
-    []
+  const { suggestedValues, cleanedPayload, claimUnappliedPayload } = useWebhookAutoMap(
+    MAIL_CONFIGURE_FIELD_KEYS,
+    triggerTestPayload
   );
-
-  const webhookFlat = useMemo(() => {
-    const raw = triggerTestPayload;
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-    return flattenWebhookPayload(raw as Record<string, unknown>);
-  }, [triggerTestPayload]);
-
-  const cleanedFlat = Object.fromEntries(
-    Object.entries(webhookFlat).map(([key, value]) => [
-      key.replace(/^[\w-]+?__/, ""),
-      value,
-    ]),
-  );
-
-  const auto = useAutoMap(fieldKeys, cleanedFlat);
-  const webhookPayloadKey = useMemo(() => JSON.stringify(webhookFlat), [webhookFlat]);
-
-  const appliedPayloadRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!auto.isAutoMapped) return;
-    if (!webhookPayloadKey || webhookPayloadKey === "{}") return;
-    if (appliedPayloadRef.current === webhookPayloadKey) return;
-    appliedPayloadRef.current = webhookPayloadKey;
+    if (!claimUnappliedPayload()) return;
 
-    fieldKeys.forEach((key) => {
-      let suggested: unknown;
-      if (key === "to") {
-        suggested = undefined;
-        for (const payloadKey of MAIL_TO_PAYLOAD_KEYS) {
-          const payloadValue = cleanedFlat[payloadKey];
-          if (payloadValue !== undefined && payloadValue !== null && String(payloadValue).trim() !== "") {
-            suggested = payloadValue;
-            break;
-          }
-        }
-      } else {
-        suggested = auto.formValues[key];
-      }
-      if (suggested === undefined || suggested === null || String(suggested) === "") return;
-      const current = getValues(key as keyof MailFormData);
-      const curStr = current === undefined || current === null ? "" : String(current).trim();
-      if (curStr !== "") return;
-      setValue(key as keyof MailFormData, String(suggested), {
-        shouldValidate: true,
-        shouldDirty: false,
-      });
+    MAIL_CONFIGURE_FIELD_KEYS.forEach((key) => {
+      const suggested = key === "to" ? findRecipientEmail(cleanedPayload) : suggestedValues[key];
+      if (!hasSuggestedValue(suggested) || !isBlankFormValue(getValues(key))) return;
+      setValue(key, String(suggested), { shouldValidate: true, shouldDirty: false });
     });
 
-    if (auto.isAutoMapped) {
-      void tryApplyGeneratedHtmlEmail(getValues, setValue, triggerNodeId, cleanedFlat);
-    }
-  }, [
-    webhookPayloadKey,
-    auto.isAutoMapped,
-    auto.formValues,
-    fieldKeys,
-    getValues,
-    setValue,
-    triggerNodeId,
-    triggerTestPayload,
-  ]);
+    void tryApplyGeneratedHtmlEmail(getValues, setValue, triggerNodeId, cleanedPayload);
+  }, [claimUnappliedPayload, suggestedValues, cleanedPayload, getValues, setValue, triggerNodeId]);
 
   React.useEffect(() => {
     const resolved = resolveFormValues(formValues);
@@ -274,52 +228,21 @@ export function MailConfigureStep({
     trigger();
   }, [trigger]);
 
-  // ── Popup state ──────────────────────────────────────────────────────────
-
-  const [popupState, setPopupState] = useState<{
-    isOpen: boolean;
-    fieldName: keyof MailFormData | null;
-    position: { top: number; right: number };
-  }>({ isOpen: false, fieldName: null, position: { top: 0, right: 0 } });
-
   const [showBuilder, setShowBuilder] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
+  const getFieldValue = useCallback((fieldName: MailFieldName) => getValues(fieldName), [getValues]);
+  const setFieldValue = useCallback(
+    (fieldName: MailFieldName, value: string) => setValue(fieldName, value, USER_EDIT_SET_VALUE_OPTIONS),
+    [setValue]
+  );
+  const { openVariablePicker, pickerProps } = useVariablePicker({ getFieldValue, setFieldValue });
+
   const handlePlusClick = useCallback(
-    (event: React.MouseEvent, fieldName: keyof MailFormData) => {
-      const rect = (event.target as HTMLElement).getBoundingClientRect();
-      setPopupState({
-        isOpen: true,
-        fieldName,
-        position: { top: rect.top, right: window.innerWidth - rect.left + 10 },
-      });
-    },
-    []
+    (event: React.MouseEvent, fieldName: MailFieldName) =>
+      openVariablePicker(event, fieldName, formatCamelCaseLabel(fieldName)),
+    [openVariablePicker]
   );
-
-  const closePopup = useCallback(() => {
-    setPopupState((prev) => ({ ...prev, isOpen: false }));
-  }, []);
-
-  const onSelectField = useCallback(
-    (field: VariableField) => {
-      if (!popupState.fieldName) return;
-      const currentValue = getValues(popupState.fieldName) || "";
-      const token = `{{map:${field.id}|${field.label}|${field.description}}}`;
-      setValue(popupState.fieldName, `${currentValue}${token}`, {
-        shouldValidate: true,
-        shouldDirty: true,
-      });
-      closePopup();
-    },
-    [popupState.fieldName, getValues, setValue, closePopup]
-  );
-
-  const fieldLabel = popupState.fieldName
-    ? popupState.fieldName
-        .replace(/([A-Z])/g, " $1")
-        .replace(/^./, (letter) => letter.toUpperCase())
-    : "";
 
   return (
     <div className="space-y-6 pb-20 animate-in fade-in duration-500">
@@ -369,7 +292,7 @@ export function MailConfigureStep({
           <Controller
             name="htmlBody"
             control={control}
-            render={({ field }) => (
+            render={() => (
               <>
                 <WorkflowSection label="HTML Body">
                   <div className="flex flex-row items-center gap-2">
@@ -419,7 +342,7 @@ export function MailConfigureStep({
           webhookId={webhookId}
           triggerTestPayload={triggerTestPayload}
           triggerTestSamples={triggerTestSamples}
-          cleanedFlat={cleanedFlat}
+          cleanedFlat={cleanedPayload}
           onSave={(html) => {
             setValue("htmlBody", html, { shouldValidate: true, shouldDirty: true });
             setShowBuilder(false);
@@ -439,14 +362,10 @@ export function MailConfigureStep({
       )}
 
       <WebhookVariablePicker
-        isOpen={popupState.isOpen}
-        fieldLabel={fieldLabel}
-        position={popupState.position}
+        {...pickerProps}
         webhookId={webhookId}
         triggerTestPayload={triggerTestPayload}
         triggerTestSamples={triggerTestSamples}
-        onSelect={onSelectField}
-        onClose={closePopup}
       />
 
       {showPreview && (
@@ -477,7 +396,7 @@ export function MailConfigureStep({
             </header>
             <div className="min-h-0 flex-1 overflow-hidden">
               <iframe
-                srcDoc={resolveTemplateVars(watchedHtmlBody || "", cleanedFlat)}
+                srcDoc={resolveTemplateVars(watchedHtmlBody || "", cleanedPayload)}
                 className="h-full w-full border-0"
                 title="Email Preview"
               />

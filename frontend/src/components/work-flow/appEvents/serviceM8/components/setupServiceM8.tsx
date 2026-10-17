@@ -1,76 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { Link2 } from "lucide-react";
-import { Sm8EventSelectorPopup } from "./Sm8EventSelectorPopup";
-import { AppSection, SelectSection } from "@/src/components/work-flow/appEvents/mail/components/shared/SelectorFields";
-import { useServiceM8Status } from "@/src/components/app-connections/servicem8/hooks/useServiceM8Status";
-import { ACTION_EVENT_INTEGRATION_SLUGS, useActionEventOptions } from "@/src/components/work-flow/apiIntegrations/actionEventTypesApi";
-import { ConnectInlineSection } from "@/src/components/work-flow/appEvents/shared/ConnectInlineSection";
+import { ACTION_EVENT_INTEGRATION_SLUGS } from "@/src/components/work-flow/apiIntegrations/actionEventTypesApi";
+import {
+  IntegrationSetupStep,
+  type IntegrationSetupConfig,
+  type IntegrationSetupStepProps,
+} from "@/src/components/work-flow/appEvents/shared/setup/IntegrationSetupStep";
 
-interface ServiceM8SetupStepProps {
-  selectedEvent: string | null;
-  onEventSelect: (event: string) => void;
-  selectedApp: { label: string; icon: any; color: string };
-  isTrigger: boolean;
-  onChangeApp?: () => void;
-}
+const SERVICE_M8_SETUP_CONFIG: IntegrationSetupConfig = {
+  appId: "servicem8",
+  appName: "ServiceM8",
+  appImage: "/image_3_servicem8.png",
+  accentColor: "#7cc736",
+  actionEventSlug: ACTION_EVENT_INTEGRATION_SLUGS.SERVICE_M8,
+};
 
-export function ServiceM8SetupStep({
-  selectedEvent,
-  onEventSelect,
-  selectedApp,
-  isTrigger,
-  onChangeApp,
-}: ServiceM8SetupStepProps) {
-  const [isEventPopupOpen, setIsEventPopupOpen] = useState(false);
-
-  const { connected: isConnected } = useServiceM8Status();
-  const { events, isLoading } = useActionEventOptions(ACTION_EVENT_INTEGRATION_SLUGS.SERVICE_M8, isTrigger);
-
-  const AppIcon = selectedApp.icon || Link2;
-  const displayLabel = events.find((event) => event.id === selectedEvent)?.label ?? selectedEvent;
-
-  return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
-      <AppSection
-        appName="ServiceM8"
-        appIcon={AppIcon}
-        onOverride={onChangeApp}
-        connected={isConnected}
-      />
-
-      {/* ── Connect prompt (shown only when not connected) ── */}
-      {!isConnected && (
-        <ConnectInlineSection
-          appId="servicem8"
-          appName="ServiceM8"
-          accentColor="#7cc736"
-          appImage="/image_3_servicem8.png"
-        />
-      )}
-
-      {/* ── Event picker (shown only when connected) ── */}
-      {isConnected && (
-        <>
-          <SelectSection
-            label={isTrigger ? "Trigger event" : "Action event"}
-            value={displayLabel}
-            placeholder="Choose an event"
-            onClick={() => setIsEventPopupOpen(!isEventPopupOpen)}
-            isOpen={isEventPopupOpen}
-          />
-
-          <Sm8EventSelectorPopup
-            isOpen={isEventPopupOpen}
-            onClose={() => setIsEventPopupOpen(false)}
-            onSelect={onEventSelect}
-            selectedEvent={selectedEvent}
-            events={events}
-            isLoading={isLoading}
-          />
-        </>
-      )}
-    </div>
-  );
+export function ServiceM8SetupStep(props: IntegrationSetupStepProps) {
+  return <IntegrationSetupStep config={SERVICE_M8_SETUP_CONFIG} {...props} />;
 }

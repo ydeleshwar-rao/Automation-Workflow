@@ -1,76 +1,26 @@
 "use client";
 
-import { useState } from "react";
-import { Link2 } from "lucide-react";
-import { LcEventSelectorPopup } from "./LcEventSelectorPopup";
-import { AppSection, SelectSection } from "@/src/components/work-flow/appEvents/mail/components/shared/SelectorFields";
-import { useLeadsHubStatus } from "@/src/components/app-connections/leadshubs/hooks/useLeadsHubStatus";
-import { ACTION_EVENT_INTEGRATION_SLUGS, useActionEventOptions } from "@/src/components/work-flow/apiIntegrations/actionEventTypesApi";
-import { ConnectInlineSection } from "@/src/components/work-flow/appEvents/shared/ConnectInlineSection";
+import { ACTION_EVENT_INTEGRATION_SLUGS } from "@/src/components/work-flow/apiIntegrations/actionEventTypesApi";
+import {
+  IntegrationSetupStep,
+  type IntegrationSetupConfig,
+  type IntegrationSetupStepProps,
+} from "@/src/components/work-flow/appEvents/shared/setup/IntegrationSetupStep";
 
-interface LeadConnectorSetupStepProps {
-  selectedEvent: string | null;
-  onEventSelect: (event: string) => void;
-  selectedApp: { label: string; icon: any; color: string };
-  isTrigger: boolean;
-  onChangeApp?: () => void;
-}
+const ACTION_EVENT_LABEL = "Action event";
 
-export function LeadConnectorSetupStep({
-  selectedEvent,
-  onEventSelect,
-  selectedApp,
-  isTrigger,
-  onChangeApp,
-}: LeadConnectorSetupStepProps) {
-  const [isEventPopupOpen, setIsEventPopupOpen] = useState(false);
+const LEAD_CONNECTOR_SETUP_CONFIG: IntegrationSetupConfig = {
+  appId: "leadshub",
+  appName: "LeadConnector",
+  // The underlying connection is branded LeadsHub, so the connect prompt keeps that name.
+  connectAppName: "LeadsHub",
+  appImage: "/image_2_leads_hub.png",
+  accentColor: "#3fbfbb",
+  actionEventSlug: ACTION_EVENT_INTEGRATION_SLUGS.LEADSHUB,
+  // LeadConnector has always labelled the field "Action event", even when used as a trigger.
+  eventFieldLabels: { trigger: ACTION_EVENT_LABEL, action: ACTION_EVENT_LABEL },
+};
 
-  const { connected: isConnected } = useLeadsHubStatus();
-  const { events, isLoading } = useActionEventOptions(ACTION_EVENT_INTEGRATION_SLUGS.LEADSHUB, isTrigger);
-
-  const AppIcon = selectedApp.icon || Link2;
-  const displayLabel = events.find((event) => event.id === selectedEvent)?.label ?? selectedEvent;
-
-  return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
-      <AppSection
-        appName="LeadConnector"
-        appIcon={AppIcon}
-        onOverride={onChangeApp}
-        connected={isConnected}
-      />
-
-      {/* ── Connect prompt (shown only when not connected) ── */}
-      {!isConnected && (
-        <ConnectInlineSection
-          appId="leadshub"
-          appName="LeadsHub"
-          accentColor="#3fbfbb"
-          appImage="/image_2_leads_hub.png"
-        />
-      )}
-
-      {/* ── Event picker (shown only when connected) ── */}
-      {isConnected && (
-        <>
-          <SelectSection
-            label="Action event"
-            value={displayLabel}
-            placeholder="Choose an event"
-            onClick={() => setIsEventPopupOpen(!isEventPopupOpen)}
-            isOpen={isEventPopupOpen}
-          />
-
-          <LcEventSelectorPopup
-            isOpen={isEventPopupOpen}
-            onClose={() => setIsEventPopupOpen(false)}
-            onSelect={onEventSelect}
-            selectedEvent={selectedEvent}
-            events={events}
-            isLoading={isLoading}
-          />
-        </>
-      )}
-    </div>
-  );
+export function LeadConnectorSetupStep(props: IntegrationSetupStepProps) {
+  return <IntegrationSetupStep config={LEAD_CONNECTOR_SETUP_CONFIG} {...props} />;
 }

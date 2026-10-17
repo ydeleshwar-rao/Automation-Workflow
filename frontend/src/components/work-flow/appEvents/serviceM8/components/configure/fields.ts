@@ -3,25 +3,13 @@
  * Add a new entry here whenever a new event needs configure fields.
  */
 
-export interface Sm8FieldOption {
-  label: string;
-  value: string;
-}
-
-export interface Sm8FieldDef {
-  name: string;
-  label: string;
-  type: "text" | "textarea" | "select";
-  required?: boolean;
-  placeholder?: string;
-  options?: Sm8FieldOption[]; // only for type="select"
-}
+import type { IntegrationFieldsByEvent } from "@/src/components/work-flow/appEvents/shared/configure/integrationField.types";
 
 /**
  * Map of action_key → field definitions shown on the Configure step.
  * The action_key must match exactly what the API returns in `action_key`.
  */
-export const SM8_EVENT_FIELDS: Record<string, Sm8FieldDef[]> = {
+export const SM8_EVENT_FIELDS: IntegrationFieldsByEvent = {
   job_queued: [
     {
       name: "queue_uuid",

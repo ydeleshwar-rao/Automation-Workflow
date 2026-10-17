@@ -1,106 +1,58 @@
 "use client";
 
-import React, { useState, useCallback, useRef, useMemo, useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { ChevronDown, Plus } from "lucide-react";
-import { cn } from "@/src/lib/utils";
-
-import { flattenWebhookPayload } from "@/src/components/template/autoMapper";
-import { useAutoMap } from "@/src/components/template/useAutoMap";
-
-import { ConfigField, ConfigTextArea } from "@/src/components/work-flow/components/ChipTextField";
-import { SelectionPopup } from "@/src/components/ui/selection-popup";
-import {
-  WebhookVariablePicker,
-  VariableField,
-} from "@/src/components/work-flow/components/WebhookVariablePicker";
-
-import { COMMUSOFT_EVENT_FIELDS, CommusoftFieldDef } from "./configure/fields";
-import { CommusoftSelectOption, useGetCommusoftCustomerTypeOptionsQuery } from "../apiIntegrations/commusoftApi";
-import { useCommusoftStatus } from "@/src/components/app-connections/commusoft/hooks/useCommusoftStatus";
+import React, { useMemo } from "react";
 import { Link2 } from "lucide-react";
 
+import { useCommusoftStatus } from "@/src/components/app-connections/commusoft/hooks/useCommusoftStatus";
+import { FieldDrivenConfigureStep } from "../../shared/configure/FieldDrivenConfigureStep";
+import type { AutoMapPolicy } from "../../shared/configure/useFieldDrivenConfigForm";
+import type { IntegrationOptionsByFieldName } from "../../shared/configure/integrationField.types";
+import { COMMUSOFT_EVENT_FIELDS } from "./configure/fields";
+import { CommusoftSelectOption, useGetCommusoftCustomerTypeOptionsQuery } from "../apiIntegrations/commusoftApi";
+
 const NO_CUSTOMER_TYPE_OPTIONS: CommusoftSelectOption[] = [];
+const CUSTOMER_TYPE_FIELD_NAME = "customer_type";
 
-// ─── Select field ─────────────────────────────────────────────────────────────
+const COMMUSOFT_AUTO_MAP_POLICY: AutoMapPolicy = {
+  shouldAutoMapSelectFields: true,
+  // The backend looks customer types up by exact description, so a guessed value would fail.
+  fieldsFallingBackToFirstOption: [CUSTOMER_TYPE_FIELD_NAME],
+};
 
-function CommusoftSelectField({
-  field,
-  value,
-  onChange,
-  onPlusClick,
-}: {
-  field: CommusoftFieldDef;
-  value: string;
-  onChange: (value: string) => void;
-  onPlusClick: (event: React.MouseEvent) => void;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [popupPos, setPopupPos] = useState({ top: 0, right: 0 });
-
-  const selectedOption = field.options?.find((option) => option.value === value);
-
-  const handleOpen = (event: React.MouseEvent) => {
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    setPopupPos({ top: rect.top, right: window.innerWidth - rect.left + 10 });
-    setIsOpen(true);
-  };
-
+function CheckingConnectionNotice() {
   return (
-    <div className="space-y-2">
-      <label className="text-sm font-bold text-foreground flex items-center gap-1.5">
-        {field.label}
-        {field.required && <span className="text-destructive">*</span>}
-      </label>
-      <div className="relative group">
-        <div
-          onClick={handleOpen}
-          className={cn(
-            "w-full h-11 px-4 bg-card border border-border rounded-lg flex items-center justify-between cursor-pointer transition-all hover:border-primary shadow-sm",
-            isOpen && "ring-2 ring-primary/20 border-primary"
-          )}
-        >
-          <span className={cn("text-sm font-medium", selectedOption ? "text-foreground" : "text-muted-foreground")}>
-            {selectedOption ? selectedOption.label : (field.placeholder || "Choose value...")}
-          </span>
-          <div className="flex items-center gap-2">
-            <div className="w-[1px] h-4 bg-border mx-1" />
-            <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
-            <button
-              type="button"
-              onClick={(event) => { event.stopPropagation(); onPlusClick(event); }}
-              className="w-7 h-7 flex items-center justify-center rounded-md border border-border bg-muted text-muted-foreground hover:text-primary hover:border-primary hover:bg-background transition-all shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+    <div className="flex flex-col items-center justify-center h-full py-20 text-center space-y-3">
+      <div className="w-6 h-6 rounded-full border-2 border-border border-t-primary animate-spin" />
+      <p className="text-sm text-muted-foreground">Checking Commusoft connection...</p>
+    </div>
+  );
+}
 
-        <SelectionPopup
-          isOpen={isOpen}
-          onClose={() => setIsOpen(false)}
-          onSelect={(item) => { onChange(item.id); setIsOpen(false); }}
-          type="value"
-          selectedId={value}
-          sections={[{
-            id: "options",
-            title: field.label,
-            items: (field.options || []).map((option) => ({ id: option.value, label: option.label })),
-            defaultOpen: true,
-          }]}
-          title={`Select ${field.label}`}
-          position={popupPos}
-        />
+function ConnectCommusoftFirstNotice() {
+  return (
+    <div className="flex flex-col items-center justify-center h-full py-20 text-center space-y-4 animate-in fade-in duration-500">
+      <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+        <Link2 className="w-7 h-7 text-primary" />
+      </div>
+      <div className="space-y-1.5">
+        <p className="text-sm font-bold text-foreground">Connect to Commusoft first</p>
+        <p className="text-xs text-muted-foreground max-w-[260px]">
+          Go to Connections and connect your Commusoft account before configuring this step.
+        </p>
       </div>
     </div>
   );
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+function getConnectionGate(isCheckingConnection: boolean, isConnected: boolean): React.ReactNode {
+  if (isCheckingConnection) return <CheckingConnectionNotice />;
+  if (!isConnected) return <ConnectCommusoftFirstNotice />;
+  return null;
+}
 
 interface CommusoftConfigureStepProps {
-  data: Record<string, any>;
-  onChange: (data: Record<string, any>, isValid: boolean) => void;
+  data: Record<string, unknown>;
+  onChange: (data: Record<string, unknown>, isValid: boolean) => void;
   webhookId?: string;
   selectedEvent?: string | null;
   /** From StepContext — live trigger payload (canvas state), not Redux nodes */
@@ -108,14 +60,7 @@ interface CommusoftConfigureStepProps {
   triggerTestSamples?: unknown[];
 }
 
-export function CommusoftConfigureStep({
-  data,
-  onChange,
-  webhookId,
-  selectedEvent,
-  triggerTestPayload,
-  triggerTestSamples,
-}: CommusoftConfigureStepProps) {
+export function CommusoftConfigureStep(props: CommusoftConfigureStepProps) {
   const { connected: isCommusoftConnected, isLoading: isCheckingConnection } = useCommusoftStatus();
 
   const { data: customerTypeOptions = NO_CUSTOMER_TYPE_OPTIONS } = useGetCommusoftCustomerTypeOptionsQuery(
@@ -123,226 +68,18 @@ export function CommusoftConfigureStep({
     { skip: !isCommusoftConnected }
   );
 
-  const fields: CommusoftFieldDef[] = useMemo(() => {
-    const base = selectedEvent ? COMMUSOFT_EVENT_FIELDS[selectedEvent] ?? [] : [];
-    return base.map((field) =>
-      field.name === "customer_type" && field.type === "select"
-        ? { ...field, options: customerTypeOptions }
-        : field
-    );
-  }, [selectedEvent, customerTypeOptions]);
-
-  const fieldKeys = useMemo(() => fields.map((field) => field.name), [fields]);
-
-  const webhookFlat = useMemo(() => {
-    const raw = triggerTestPayload;
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-    return flattenWebhookPayload(raw as Record<string, unknown>);
-  }, [triggerTestPayload]);
-
-  const cleanedFlat = Object.fromEntries(
-    Object.entries(webhookFlat).map(([key, value]) => [
-      key.replace(/^[\w-]+?__/, ""),
-      value,
-    ]),
+  const optionsByFieldName: IntegrationOptionsByFieldName = useMemo(
+    () => ({ [CUSTOMER_TYPE_FIELD_NAME]: customerTypeOptions }),
+    [customerTypeOptions]
   );
-
-  const auto = useAutoMap(fieldKeys, cleanedFlat);
-  const webhookPayloadKey = useMemo(() => JSON.stringify(webhookFlat), [webhookFlat]);
-  const appliedPayloadRef = useRef<string | null>(null);
-
-  const { watch, setValue, getValues } = useForm<Record<string, any>>({
-    mode: "onChange",
-    defaultValues: useMemo(() => ({ ...data }), []),
-  });
-
-  const formValues = watch();
-
-  useEffect(() => {
-    if (!auto.isAutoMapped) return;
-    if (!webhookPayloadKey || webhookPayloadKey === "{}") return;
-    if (appliedPayloadRef.current === webhookPayloadKey) return;
-    appliedPayloadRef.current = webhookPayloadKey;
-
-    fieldKeys.forEach((key) => {
-      const suggested = auto.formValues[key];
-      if (suggested === undefined || suggested === null || String(suggested) === "") return;
-      const current = getValues(key);
-      const curStr = current === undefined || current === null ? "" : String(current).trim();
-      if (curStr !== "") return;
-      setValue(key, String(suggested), { shouldValidate: true, shouldDirty: false });
-    });
-  }, [
-    webhookPayloadKey,
-    auto.isAutoMapped,
-    auto.formValues,
-    fieldKeys,
-    getValues,
-    setValue,
-  ]);
-
-  useEffect(() => {
-    const raw = auto.formValues.customer_type;
-    if (auto.isAutoMapped && raw != null && raw !== "" && customerTypeOptions.length > 0) {
-      const customerType = String(raw);
-      const validValues = customerTypeOptions.map((customerTypeOption) => customerTypeOption.value);
-      if (!validValues.includes(customerType)) {
-        setValue("customer_type", customerTypeOptions[0].value);
-      }
-    }
-  }, [auto.isAutoMapped, auto.formValues.customer_type, customerTypeOptions, setValue]);
-
-  // Notify parent on every change
-  useEffect(() => {
-    const requiredFields = fields.filter((field) => field.required);
-    const isValid = requiredFields.every((requiredField) => !!formValues[requiredField.name]);
-    onChange(formValues, isValid);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(formValues), fields]);
-
-  // ── Variable picker ──────────────────────────────────────────────────────
-  const [popupState, setPopupState] = useState<{
-    isOpen: boolean;
-    fieldName: string | null;
-    position: { top: number; right: number };
-  }>({ isOpen: false, fieldName: null, position: { top: 0, right: 0 } });
-
-  const activeFieldRef = useRef<string | null>(null);
-
-  const handlePlusClick = useCallback((event: React.MouseEvent, fieldName: string) => {
-    const rect = (event.target as HTMLElement).getBoundingClientRect();
-    activeFieldRef.current = fieldName;
-    setPopupState({
-      isOpen: true,
-      fieldName,
-      position: { top: rect.top, right: window.innerWidth - rect.left + 10 },
-    });
-  }, []);
-
-  const closePopup = useCallback(() => {
-    setPopupState((prev) => ({ ...prev, isOpen: false }));
-  }, []);
-
-  const onSelectVariable = useCallback(
-    (variable: VariableField) => {
-      const fieldName = activeFieldRef.current;
-      if (!fieldName) return;
-      const current = getValues(fieldName) || "";
-      const token = `{{map:${variable.id}|${variable.label}|${variable.description}}}`;
-      setValue(fieldName, `${current}${token}`, { shouldValidate: true, shouldDirty: true });
-      closePopup();
-    },
-    [getValues, setValue, closePopup]
-  );
-
-  const popupFieldLabel = popupState.fieldName
-    ? popupState.fieldName.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
-    : "";
-
-  // ── Not connected to Commusoft ────────────────────────────────────────────
-  if (isCheckingConnection) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full py-20 text-center space-y-3">
-        <div className="w-6 h-6 rounded-full border-2 border-border border-t-primary animate-spin" />
-        <p className="text-sm text-muted-foreground">Checking Commusoft connection...</p>
-      </div>
-    );
-  }
-
-  if (!isCommusoftConnected) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full py-20 text-center space-y-4 animate-in fade-in duration-500">
-        <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-          <Link2 className="w-7 h-7 text-primary" />
-        </div>
-        <div className="space-y-1.5">
-          <p className="text-sm font-bold text-foreground">Connect to Commusoft first</p>
-          <p className="text-xs text-muted-foreground max-w-[260px]">
-            Go to Connections and connect your Commusoft account before configuring this step.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // ── No event selected ────────────────────────────────────────────────────
-  if (!selectedEvent) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full py-20 text-center space-y-3">
-        <p className="text-sm font-bold text-foreground">No action event selected</p>
-        <p className="text-xs text-muted-foreground">Go back to Setup and choose an action event first.</p>
-      </div>
-    );
-  }
-
-  // ── No fields defined for this event ────────────────────────────────────
-  if (fields.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full py-20 text-center space-y-3">
-        <p className="text-sm font-bold text-foreground">No fields for this event</p>
-        <p className="text-xs text-muted-foreground">Fields for &quot;{selectedEvent}&quot; have not been configured yet.</p>
-      </div>
-    );
-  }
 
   return (
-    <div className="space-y-6 pb-20 animate-in fade-in duration-500">
-      <form className="space-y-6">
-        {fields.map((field) => {
-          if (field.type === "select") {
-            return (
-              <div key={field.name}>
-                <CommusoftSelectField
-                  field={field}
-                  value={formValues[field.name] ?? ""}
-                  onChange={(value) => setValue(field.name, value, { shouldValidate: true, shouldDirty: true })}
-                  onPlusClick={(event) => handlePlusClick(event, field.name)}
-                />
-              </div>
-            );
-          }
-
-          if (field.type === "textarea") {
-            return (
-              <div key={field.name}>
-                <ConfigTextArea
-                  label={field.label}
-                  required={field.required}
-                  value={String(formValues[field.name] ?? "")}
-                  onChange={(value) => setValue(field.name, value, { shouldValidate: true, shouldDirty: true })}
-                  onPlusClick={(event) => handlePlusClick(event, field.name)}
-                  placeholder={field.placeholder || "Enter text or insert data..."}
-                />
-              </div>
-            );
-          }
-
-          // default: text
-          return (
-            <div key={field.name}>
-              <ConfigField
-                label={field.label}
-                required={field.required}
-                value={String(formValues[field.name] ?? "")}
-                onChange={(value) => setValue(field.name, value, { shouldValidate: true, shouldDirty: true })}
-                onPlusClick={(event) => handlePlusClick(event, field.name)}
-                placeholder={field.placeholder || "Enter text or insert data..."}
-              />
-            </div>
-          );
-        })}
-      </form>
-
-      <WebhookVariablePicker
-        isOpen={popupState.isOpen}
-        fieldLabel={popupFieldLabel}
-        position={popupState.position}
-        webhookId={webhookId}
-        triggerTestPayload={triggerTestPayload}
-        triggerTestSamples={triggerTestSamples}
-        onSelect={onSelectVariable}
-        onClose={closePopup}
-      />
-    </div>
+    <FieldDrivenConfigureStep
+      {...props}
+      fieldsByEvent={COMMUSOFT_EVENT_FIELDS}
+      optionsByFieldName={optionsByFieldName}
+      autoMapPolicy={COMMUSOFT_AUTO_MAP_POLICY}
+      connectionGate={getConnectionGate(isCheckingConnection, isCommusoftConnected)}
+    />
   );
 }
