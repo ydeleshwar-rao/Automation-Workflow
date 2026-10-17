@@ -23,8 +23,7 @@
  *   - New: can_view / can_edit / can_delete (replaces can_read / can_write)
  */
 
-import { createApi }      from "@reduxjs/toolkit/query/react";
-import { axiosBaseQuery } from "@/src/store/axiosBaseQuery";
+import { baseApi } from "@/src/store/baseApi";
 import type { ApiResponse } from "@/src/components/work-flow/apiIntegrations/types/integration.types";
 import type { AccessRole } from "@/src/store/accessSlice";
 
@@ -71,10 +70,7 @@ export interface UpsertPagePermissionDto {
 
 // ── API Slice ───────────────────────────────────────────────────────────────
 
-export const accessApi = createApi({
-  reducerPath: "accessApi",
-  baseQuery:   axiosBaseQuery(),
-  tagTypes:    ["Developers", "Permissions"],
+export const accessApi = baseApi.enhanceEndpoints({ addTagTypes: ["Developers", "Permissions"] }).injectEndpoints({
   endpoints:   (builder) => ({
 
     // ── Developers ────────────────────────────────────────────

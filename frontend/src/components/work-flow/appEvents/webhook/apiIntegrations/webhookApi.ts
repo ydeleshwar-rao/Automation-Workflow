@@ -1,5 +1,4 @@
-import { createApi } from "@reduxjs/toolkit/query/react";
-import { axiosBaseQuery } from "@/src/store/axiosBaseQuery";
+import { baseApi } from "@/src/store/baseApi";
 import {
   ApiResponse,
   CreateWebhookPayload,
@@ -13,11 +12,7 @@ export interface UpdateWebhookModePayload {
   request_body?: Record<string, unknown>;
 }
 
-export const webhookApi = createApi({
-  reducerPath: "webhookApi",
-  baseQuery: axiosBaseQuery(),
-  tagTypes: ["WebhookResponse"],
-
+export const webhookApi = baseApi.enhanceEndpoints({ addTagTypes: ["WebhookResponse"] }).injectEndpoints({
   endpoints: (builder) => ({
     createWebhook: builder.mutation<ApiResponse<CreateWebhookResponse>, CreateWebhookPayload>({
       query: (payload) => ({

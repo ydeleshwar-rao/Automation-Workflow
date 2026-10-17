@@ -6,8 +6,7 @@
  * Base path: /automation/workflow-template-folders
  */
 
-import { axiosBaseQuery } from "@/src/store/axiosBaseQuery";
-import { createApi } from "@reduxjs/toolkit/query/react";
+import { baseApi } from "@/src/store/baseApi";
 import type { ApiResponse } from "@/src/components/work-flow/apiIntegrations/types/integration.types";
 import type {
   BulkApplyFolderBody,
@@ -25,11 +24,7 @@ export type IntegrationStatusMap = Record<string, IntegrationStatusItem>;
 
 const BASE = "/automation/workflow-template-folders";
 
-export const templateFolderApi = createApi({
-  reducerPath: "templateFolderApi",
-  baseQuery: axiosBaseQuery(),
-  tagTypes: ["TemplateFolderList"],
-
+export const templateFolderApi = baseApi.enhanceEndpoints({ addTagTypes: ["TemplateFolderList"] }).injectEndpoints({
   endpoints: (builder) => ({
     listTemplateFolders: builder.query<
       ApiResponse<TemplateFolderRecord[]>,

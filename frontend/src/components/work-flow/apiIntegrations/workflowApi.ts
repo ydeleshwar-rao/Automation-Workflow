@@ -8,8 +8,7 @@
  *                executions · execution_steps
  */
 
-import { axiosBaseQuery } from "@/src/store/axiosBaseQuery";
-import { createApi } from "@reduxjs/toolkit/query/react";
+import { baseApi } from "@/src/store/baseApi";
 import { ApiResponse } from "./types/integration.types";
 // clientkey removed — all requests are JWT-only (Bearer token via axios interceptor)
 
@@ -149,21 +148,8 @@ export interface PollingSubscriptionStatus {
 
 // ── RTK Query API ────────────────────────────────────────────────────────────
 
-export const workflowApi = createApi({
-    reducerPath: "workflowApi",
-
-    baseQuery: axiosBaseQuery(),
-    tagTypes: [
-        "Workflow",
-        "WorkflowList",
-        "Node",
-        "Mapping",
-        "Execution",
-        "ExecutionDetail",
-        "PollingSubscription",
-    ],
-
-    endpoints: (builder) => ({
+export const workflowApi = baseApi.enhanceEndpoints({ addTagTypes: ["Workflow", "WorkflowList", "Node", "Mapping", "Execution", "ExecutionDetail", "PollingSubscription"] }).injectEndpoints({
+  endpoints: (builder) => ({
         // ── Workflows ─────────────────────────────────────────────
         getWorkflows: builder.query<
             ApiResponse<WorkflowRecord[]>,

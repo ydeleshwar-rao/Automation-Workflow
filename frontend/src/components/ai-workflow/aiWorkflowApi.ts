@@ -1,7 +1,6 @@
 // aiWorkflowApi.ts — RTK Query API slice for the AI Visual Workflow builder
 
-import { axiosBaseQuery } from "@/src/store/axiosBaseQuery";
-import { createApi } from "@reduxjs/toolkit/query/react";
+import { baseApi } from "@/src/store/baseApi";
 import type {
   AiWorkflowRecord,
   AiWorkflowListItem,
@@ -9,11 +8,7 @@ import type {
 } from "@/src/lib/ai-workflow/types";
 import type { ApiResponse } from "@/src/components/work-flow/apiIntegrations/types/integration.types";
 
-export const aiWorkflowApi = createApi({
-  reducerPath: "aiWorkflowApi",
-  baseQuery: axiosBaseQuery(),
-  tagTypes: ["AiWorkflow", "AiWorkflowList", "AiExecution"],
-
+export const aiWorkflowApi = baseApi.enhanceEndpoints({ addTagTypes: ["AiWorkflow", "AiWorkflowList", "AiExecution"] }).injectEndpoints({
   endpoints: (builder) => ({
 
     // ── Workflow list ────────────────────────────────────────

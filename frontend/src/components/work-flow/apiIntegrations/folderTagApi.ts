@@ -8,8 +8,7 @@
  *   - role="admin" → returns all records across all users
  */
 
-import { axiosBaseQuery } from "@/src/store/axiosBaseQuery";
-import { createApi } from "@reduxjs/toolkit/query/react";
+import { baseApi } from "@/src/store/baseApi";
 import { ApiResponse } from "./types/integration.types";
 
 // ── Domain Types ────────────────────────────────────────────────────────────
@@ -48,12 +47,8 @@ export interface WorkflowTagLink {
 
 // ── RTK Query API ────────────────────────────────────────────────────────────
 
-export const folderTagApi = createApi({
-    reducerPath: "folderTagApi",
-    baseQuery: axiosBaseQuery(),
-    tagTypes: ["Folder", "Tag", "WorkflowTags"],
-
-    endpoints: (builder) => ({
+export const folderTagApi = baseApi.enhanceEndpoints({ addTagTypes: ["Folder", "Tag", "WorkflowTags", "WorkflowList"] }).injectEndpoints({
+  endpoints: (builder) => ({
         // ── Folders ───────────────────────────────────────────────────
 
         getFolders: builder.query<
@@ -155,7 +150,8 @@ export const folderTagApi = createApi({
                 url: `/automation/tags/${id}`,
                 method: "DELETE",
             }),
-            invalidatesTags: ["Tag", "WorkflowTags"],
+            // The workflow list carries tag_ids, so tag changes refresh it too
+            invalidatesTags: ["Tag", "WorkflowTags", "WorkflowList"],
         }),
 
         // ── Tag ↔ Workflow Linking ───────────────────────────────────
@@ -181,6 +177,7 @@ export const folderTagApi = createApi({
             }),
             invalidatesTags: (_r, _e, { workflowId }) => [
                 { type: "WorkflowTags", id: workflowId },
+                "WorkflowList",
             ],
         }),
 
@@ -194,6 +191,7 @@ export const folderTagApi = createApi({
             }),
             invalidatesTags: (_r, _e, { workflowId }) => [
                 { type: "WorkflowTags", id: workflowId },
+                "WorkflowList",
             ],
         }),
 

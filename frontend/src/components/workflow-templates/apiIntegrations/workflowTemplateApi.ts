@@ -6,8 +6,7 @@
  * Base path: /automation/workflow-templates
  */
 
-import { axiosBaseQuery } from "@/src/store/axiosBaseQuery";
-import { createApi } from "@reduxjs/toolkit/query/react";
+import { baseApi } from "@/src/store/baseApi";
 import type { ApiResponse } from "@/src/components/work-flow/apiIntegrations/types/integration.types";
 import type {
   ApplyTemplateBody,
@@ -22,11 +21,7 @@ import type {
 
 const BASE = "/automation/workflow-templates";
 
-export const workflowTemplateApi = createApi({
-  reducerPath: "workflowTemplateApi",
-  baseQuery: axiosBaseQuery(),
-  tagTypes: ["TemplateList", "Template"],
-
+export const workflowTemplateApi = baseApi.enhanceEndpoints({ addTagTypes: ["TemplateList", "Template"] }).injectEndpoints({
   endpoints: (builder) => ({
     listTemplates: builder.query<ApiResponse<WorkflowTemplate[]>, ListTemplatesParams | void>({
       query: (params) => ({

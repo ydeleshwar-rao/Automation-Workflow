@@ -237,10 +237,7 @@ export function useWorkflowOrchestrator() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── RTK Query — Workflows ──────────────────────────────────────────────────
-  const {
-    data: workflowsData,
-    refetch: refetchWorkflows,
-  } = useGetWorkflowsQuery({ userId: getActiveUserId(), ...(isAdmin ? { role: "admin" } : {}) });
+  const { data: workflowsData } = useGetWorkflowsQuery({ userId: getActiveUserId(), ...(isAdmin ? { role: "admin" } : {}) });
 
   const [createWorkflowMutation] = useCreateWorkflowMutation();
   const [updateWorkflowMutation] = useUpdateWorkflowMutation();
@@ -455,7 +452,6 @@ export function useWorkflowOrchestrator() {
             }).unwrap()
           )
         );
-        refetchWorkflows();
       }
 
       dispatch(setWorkflow({ id: result.data.id, name: result.data.name, status: result.data.status }));
@@ -473,7 +469,7 @@ export function useWorkflowOrchestrator() {
     } catch {
       toast.error("Workflow creation failed — backend unavailable");
     }
-  }, [createWorkflowMutation, assignTagToWorkflowMutation, refetchWorkflows, dispatch, workflowsData]);
+  }, [createWorkflowMutation, assignTagToWorkflowMutation, dispatch, workflowsData]);
 
   const loadWorkflow = useCallback(
     async (id: string) => {
@@ -710,25 +706,22 @@ export function useWorkflowOrchestrator() {
     async (workflowId: string, tagId: string) => {
       try {
         await assignTagToWorkflowMutation({ workflowId, tag_id: tagId }).unwrap();
-        // Tag links live in folderTagApi's cache; the workflow list carries tag_ids in a separate cache
-        refetchWorkflows();
       } catch {
         toast.error("Could not assign tag");
       }
     },
-    [assignTagToWorkflowMutation, refetchWorkflows]
+    [assignTagToWorkflowMutation]
   );
 
   const removeTagFromWorkflow = useCallback(
     async (workflowId: string, tagId: string) => {
       try {
         await removeTagFromWorkflowMutation({ workflowId, tagId }).unwrap();
-        refetchWorkflows();
       } catch {
         toast.error("Could not remove tag");
       }
     },
-    [removeTagFromWorkflowMutation, refetchWorkflows]
+    [removeTagFromWorkflowMutation]
   );
 
   // ── Test: fire a dry-run ───────────────────────────────────────────────────

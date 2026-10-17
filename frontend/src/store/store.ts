@@ -1,12 +1,6 @@
-import { configureStore, Middleware } from "@reduxjs/toolkit"
+import { configureStore } from "@reduxjs/toolkit"
 import rootReducer from "./rootReducer"
-import { workflowApi } from "../components/work-flow/apiIntegrations/workflowApi"
-import { folderTagApi } from "../components/work-flow/apiIntegrations/folderTagApi"
-import { webhookApi } from "../components/work-flow/appEvents/webhook/apiIntegrations/webhookApi"
-import { workflowTemplateApi } from "../components/workflow-templates/apiIntegrations/workflowTemplateApi"
-import { templateFolderApi } from "../components/workflow-templates/apiIntegrations/templateFolderApi"
-import { accessApi } from "../components/admin/access/apiIntegrations/accessApi"
-import { aiWorkflowApi } from "../components/ai-workflow/aiWorkflowApi"
+import { baseApi } from "./baseApi"
 import { aiHarnessApi } from "../components/ai-workflow/aiHarnessApi"
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -14,13 +8,8 @@ export const store = configureStore({
   reducer: rootReducer,
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware().concat(
-      workflowApi.middleware,
-      folderTagApi.middleware,
-      webhookApi.middleware,
-      workflowTemplateApi.middleware,
-      templateFolderApi.middleware,
-      accessApi.middleware,
-      aiWorkflowApi.middleware,
+      baseApi.middleware,
+      // Separate service (AI harness) with its own base URL and headers
       aiHarnessApi.middleware,
     ),
   devTools: process.env.NODE_ENV !== "production",
