@@ -300,7 +300,7 @@ export function MailConfigureStep({
                         <button
                           type="button"
                           onClick={() => setShowBuilder(true)}
-                          className="flex h-9 items-center rounded-xl px-4 bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-all border-2 border-foreground shadow-[3px_3px_0_hsl(var(--foreground))] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[5px_5px_0_hsl(var(--foreground))] whitespace-nowrap dark:border-border dark:shadow-[3px_3px_0_hsl(var(--border))] dark:hover:shadow-[5px_5px_0_hsl(var(--border))]"
+                          className="flex h-9 items-center rounded-xl px-4 nm-primary-btn text-xs font-semibold whitespace-nowrap"
                         >
                           Build Template
                         </button>

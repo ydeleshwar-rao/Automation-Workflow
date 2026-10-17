@@ -9,8 +9,8 @@ interface ConnectorProps {
 
 export function Connector({ onClick }: ConnectorProps) {
   return (
-    <div className="flex flex-col items-center group relative py-2">
-      <div className="w-0.5 h-12 bg-primary/25 group-hover:bg-primary/60 transition-colors" />
+    <div className="flex flex-col items-center group relative py-1">
+      <div className="w-px h-9 bg-primary/25 group-hover:bg-primary/60 transition-colors" />
       <button
         onClick={(event) => {
           event.stopPropagation();
@@ -19,12 +19,12 @@ export function Connector({ onClick }: ConnectorProps) {
         aria-label="Add step"
         className={cn(
           "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2",
-          "flex items-center justify-center w-7 h-7 rounded-full",
+          "flex items-center justify-center w-6 h-6 rounded-full",
           "nm-card text-primary hover:bg-primary hover:text-primary-foreground",
           "transition-all hover:scale-110",
         )}
       >
-        <span className="text-base font-light leading-none">+</span>
+        <span className="text-sm font-light leading-none">+</span>
       </button>
     </div>
   );

@@ -25,7 +25,7 @@ export function Shell({ children, sidebar, topbar }: ShellProps) {
         className={cn(
           "shrink-0 h-full z-50",
           "transition-[width] duration-300 ease-in-out",
-          isOpen ? "w-56" : "w-16"
+          isOpen ? "w-44" : "w-14"
         )}
       >
         {sidebar}

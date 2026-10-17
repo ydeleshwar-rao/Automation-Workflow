@@ -316,6 +316,54 @@
     box-shadow: inset 1px 1px 0 hsl(202 44% 5% / 0.7);
   }
 
+  /* nm-soft: wrap a screen in it to keep the theme colours but use a 1px shadow,
+     so dense screens (dashboard sidebar, workflow builder) stay light. */
+  .nm-soft .nm-btn,
+  .nm-soft .nm-btn:hover {
+    transform: none;
+    box-shadow: 1px 1px 0 hsl(var(--foreground) / 0.78);
+  }
+  .dark .nm-soft .nm-btn,
+  .dark .nm-soft .nm-btn:hover {
+    box-shadow: 1px 1px 0 hsl(202 44% 4% / 0.45);
+  }
+  .nm-soft .nm-btn:active {
+    transform: translate(1px, 1px);
+    box-shadow: none;
+  }
+  .nm-soft .nm-card {
+    box-shadow: 1px 1px 0 hsl(var(--foreground) / 0.72);
+  }
+  .dark .nm-soft .nm-card {
+    box-shadow: 1px 1px 0 hsl(202 44% 4% / 0.50);
+  }
+  .nm-soft .nm-sidebar {
+    box-shadow: 1px 0 0 hsl(var(--foreground) / 0.10);
+  }
+  .dark .nm-soft .nm-sidebar {
+    box-shadow: 1px 0 0 hsl(202 44% 4% / 0.35);
+  }
+
+  /* Solid primary action (Publish, Find new records) — same 1px edge as nm-soft. */
+  .nm-primary-btn {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    border: 1px solid hsl(var(--foreground));
+    box-shadow: 1px 1px 0 hsl(var(--foreground));
+    transition: background-color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+  }
+  .dark .nm-primary-btn {
+    border-color: hsl(var(--border));
+    box-shadow: 1px 1px 0 hsl(var(--border));
+  }
+  .nm-primary-btn:hover {
+    background: hsl(var(--primary) / 0.9);
+  }
+  .nm-primary-btn:active {
+    transform: translate(1px, 1px);
+    box-shadow: none;
+  }
+
   .nm-card {
     background: hsl(var(--card));
     border: 1px solid hsl(var(--foreground) / 0.72);

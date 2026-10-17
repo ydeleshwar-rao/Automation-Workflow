@@ -39,25 +39,25 @@ export default function WorkflowNavbar({
 
   return (
     <header className={cn(
-      "nm-card z-30 flex h-14 shrink-0 items-center justify-between rounded-2xl px-4",
+      "nm-card z-30 flex h-11 shrink-0 items-center justify-between rounded-xl px-3",
     )}>
 
       {/* ── Left: brand + workflow name + view tabs ── */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
 
         {/* Brand icon + workflow name */}
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Zap className="h-3.5 w-3.5" />
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            <Zap className="h-3 w-3" />
           </div>
-          <h1 className="hidden max-w-[180px] truncate text-sm font-semibold text-foreground sm:block">
+          <h1 className="hidden max-w-[180px] truncate text-[13px] font-semibold text-foreground sm:block">
             {workflowName}
           </h1>
         </div>
 
         {/* Builder / Monitor tab pill (nm-inset container, raised active tab) */}
         <div className={cn(
-          "ml-2 hidden items-center gap-0.5 rounded-xl p-1 sm:flex",
+          "ml-1 hidden items-center gap-0.5 rounded-lg p-0.5 sm:flex",
           "nm-inset",
         )}>
           {(["builder", "monitor"] as const).map((view) => (
@@ -65,7 +65,7 @@ export default function WorkflowNavbar({
               key={view}
               onClick={() => setActiveView(view)}
               className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all capitalize",
+                "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all capitalize",
                 activeView === view
                   ? "nm-btn text-foreground"
                   : "text-muted-foreground hover:text-foreground"
@@ -82,14 +82,14 @@ export default function WorkflowNavbar({
       </div>
 
       {/* ── Right: status + templates + test + publish ── */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
 
         {/* Active / Paused status toggle (nm-inset container) */}
         <div
           role="radiogroup"
           aria-label="Workflow status"
           className={cn(
-            "hidden items-center gap-0.5 rounded-xl p-1 sm:flex",
+            "hidden items-center gap-0.5 rounded-lg p-0.5 sm:flex",
             "nm-inset",
           )}
         >
@@ -102,7 +102,7 @@ export default function WorkflowNavbar({
               <label
                 key={value}
                 className={cn(
-                  "flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
+                  "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all",
                   checked
                     ? "nm-btn text-foreground"
                     : "text-muted-foreground hover:text-foreground"
@@ -131,7 +131,7 @@ export default function WorkflowNavbar({
           href="/dashboard/workflow-templates"
           title="Browse workflow templates"
           className={cn(
-            "hidden h-8 items-center gap-1.5 rounded-xl px-3 text-xs font-semibold text-muted-foreground transition-all sm:inline-flex",
+            "hidden h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-muted-foreground transition-all sm:inline-flex",
             "nm-btn hover:text-foreground",
           )}
         >
@@ -150,7 +150,7 @@ export default function WorkflowNavbar({
           onClick={testWorkflow}
           disabled={isTesting}
           className={cn(
-            "flex h-8 items-center gap-1.5 rounded-xl px-3 text-xs font-semibold transition-all",
+            "flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-all",
             "nm-btn text-muted-foreground hover:text-foreground",
             "disabled:opacity-50 disabled:cursor-not-allowed",
           )}
@@ -166,11 +166,7 @@ export default function WorkflowNavbar({
         <button
           onClick={publishWorkflow}
           className={cn(
-            "flex h-8 items-center gap-1.5 rounded-xl px-4 text-xs font-semibold transition-all",
-            "bg-primary text-primary-foreground",
-            "border-2 border-foreground shadow-[3px_3px_0_hsl(var(--foreground))]",
-            "hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-[5px_5px_0_hsl(var(--foreground))]",
-            "dark:border-border dark:shadow-[3px_3px_0_hsl(var(--border))] dark:hover:shadow-[5px_5px_0_hsl(var(--border))]",
+            "nm-primary-btn flex h-7 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold",
           )}
         >
           <Send className="h-3.5 w-3.5" />

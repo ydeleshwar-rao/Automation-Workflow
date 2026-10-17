@@ -226,17 +226,17 @@ export function WorkflowListSidebar({
         onMouseLeave={onCollapseHover}
         className={cn(
           "relative flex h-full shrink-0 flex-col transition-all duration-300 ease-in-out nm-sidebar",
-          isOpen ? "w-[240px]" : "w-[56px]"
+          isOpen ? "w-[200px]" : "w-[52px]"
         )}
       >
         {/* ── Brand header ── */}
-        <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border/30 px-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
-            <Zap className="h-4 w-4" />
+        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border/30 px-3">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm">
+            <Zap className="h-3 w-3" />
           </div>
           {isOpen && (
             <>
-              <span className="overflow-hidden whitespace-nowrap text-sm font-bold text-foreground">
+              <span className="overflow-hidden whitespace-nowrap text-[13px] font-bold text-foreground">
                 Workflows
               </span>
               {hasMounted && isAdmin && (
@@ -246,40 +246,40 @@ export function WorkflowListSidebar({
               )}
               <button
                 onClick={onTogglePinned}
-                className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 aria-label={isPinned ? "Collapse workflow sidebar" : "Pin workflow sidebar"}
               >
-                {isPinned ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+                {isPinned ? <PanelLeftClose className="h-3.5 w-3.5" /> : <PanelLeftOpen className="h-3.5 w-3.5" />}
               </button>
             </>
           )}
         </div>
 
         {/* ── Create Workflow button ── */}
-        <div className="px-3 pt-4 pb-2 shrink-0">
+        <div className="px-2.5 pt-3 pb-1.5 shrink-0">
           {isOpen ? (
             <Button
               onClick={handleCreateClick}
-              className="h-9 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:bg-primary/90"
+              className="h-8 w-full rounded-lg bg-primary text-xs font-semibold text-primary-foreground shadow-sm transition-all hover:bg-primary/90"
             >
-              <Plus className="h-4 w-4 shrink-0" />
+              <Plus className="h-3.5 w-3.5 shrink-0" />
               Create Workflow
             </Button>
           ) : (
             <Button
               onClick={handleCreateClick}
               size="icon"
-              className="mx-auto flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm transition-all hover:bg-primary/90"
+              className="mx-auto flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm transition-all hover:bg-primary/90"
               title="Create Workflow"
             >
-              <Plus className="h-4 w-4 shrink-0" />
+              <Plus className="h-3.5 w-3.5 shrink-0" />
             </Button>
           )}
         </div>
 
         {/* ── Section label + tag filter ── */}
         {isOpen && (
-          <div className="px-4 pt-3 pb-1">
+          <div className="px-3 pt-2 pb-1">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                 My Workflows
@@ -372,7 +372,7 @@ export function WorkflowListSidebar({
         )}
 
         {/* ── Workflow list ── */}
-        <div className="flex-1 overflow-y-auto px-2 pb-4 flex flex-col gap-1">
+        <div className="flex-1 overflow-y-auto px-2 pb-3 flex flex-col gap-1">
           {filteredWorkflows.map((workflow) => (
             <div key={workflow.id} className="relative group/row">
               <div
@@ -388,8 +388,8 @@ export function WorkflowListSidebar({
                 }}
                 title={!isOpen ? workflow.name : undefined}
                 className={cn(
-                  "group/btn flex w-full items-center gap-2.5 rounded-xl text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
-                  isOpen ? "p-2.5" : "p-1.5 justify-center",
+                  "group/btn flex w-full items-center gap-2 rounded-lg text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                  isOpen ? "px-2 py-1.5" : "p-1 justify-center",
                   workflow.id === currentWorkflowId
                     ? "nm-inset text-primary"
                     : "nm-btn text-muted-foreground hover:text-foreground"
@@ -397,20 +397,20 @@ export function WorkflowListSidebar({
               >
                 {/* Icon with status dot */}
                 <div className={cn(
-                  "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
+                  "relative flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors",
                   workflow.id === currentWorkflowId
                     ? "bg-primary/15"
                     : "bg-muted group-hover/btn:bg-primary/10"
                 )}>
                   <Zap className={cn(
-                    "h-4 w-4 transition-colors",
+                    "h-3.5 w-3.5 transition-colors",
                     workflow.id === currentWorkflowId
                       ? "text-primary"
                       : "text-muted-foreground group-hover/btn:text-primary"
                   )} />
                   <span
                     className={cn(
-                      "absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-background",
+                      "absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-background",
                       workflow.status === "active" ? "bg-primary" : "bg-muted-foreground"
                     )}
                   />
@@ -459,7 +459,7 @@ export function WorkflowListSidebar({
                         /* ── Static name + status ── */
                         <>
                           <div
-                            className="truncate text-sm font-medium text-foreground"
+                            className="truncate text-[13px] font-medium text-foreground"
                             onDoubleClick={(event) => startEditing(event, workflow)}
                             title={workflow.name}
                           >

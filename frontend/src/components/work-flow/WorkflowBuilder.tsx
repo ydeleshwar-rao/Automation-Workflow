@@ -89,7 +89,7 @@ export function WorkflowBuilder() {
     ) : null;
 
   return (
-    <div className="flex h-full w-full min-h-0 flex-col gap-2 bg-[hsl(var(--surface))] p-2">
+    <div className="nm-soft flex h-full w-full min-h-0 flex-col gap-1.5 bg-[hsl(var(--surface))] p-1.5">
       <WorkflowNavbar
         workflows={workflow.workflows}
         currentWorkflowId={currentWorkflowId}
@@ -102,7 +102,7 @@ export function WorkflowBuilder() {
         isTesting={workflow.isTesting}
       />
 
-      <div className="nm-card flex min-h-0 flex-1 overflow-hidden rounded-2xl">
+      <div className="nm-card flex min-h-0 flex-1 overflow-hidden rounded-xl">
         <WorkflowListSidebar
           isOpen={workflowSidebar.isOpen}
           isPinned={workflowSidebar.isPinned}

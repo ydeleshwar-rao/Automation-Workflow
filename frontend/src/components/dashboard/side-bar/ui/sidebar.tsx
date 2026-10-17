@@ -5,9 +5,10 @@
  * ─────────────────────────────────────────────────────────────
  * nm-btn / nm-inset / nm-sidebar all embed their own background
  * (hsl(var(--surface))) via CSS, so no inline bg-* classes needed.
+ * nm-soft gives the buttons a 1px shadow (globals.css).
  *
- * Collapsed (w-16): icon only + tooltip
- * Expanded  (w-56): icon + label
+ * Collapsed (w-14): icon only + tooltip
+ * Expanded  (w-44): icon + label
  */
 
 import Link            from "next/link";
@@ -56,23 +57,23 @@ function NavItem({ item, isActive, isOpen }: { item: NavItemConfig; isActive: bo
     <Link
       href={item.href}
       className={cn(
-        "relative flex items-center rounded-2xl transition-all duration-200 select-none",
+        "relative flex items-center rounded-xl transition-all duration-200 select-none",
         // Active → carved into surface
         isActive  && "nm-inset text-primary",
         // Inactive → raised from surface
         !isActive && "nm-btn text-muted-foreground hover:text-foreground",
         // Layout
-        !isOpen && "justify-center w-10 h-10",
-        isOpen  && "w-full gap-3 px-4 py-2.5",
+        !isOpen && "justify-center w-9 h-9",
+        isOpen  && "w-full h-9 gap-2.5 px-3",
       )}
     >
       {/* Left accent for active expanded item */}
       {isActive && isOpen && (
-        <span className="absolute left-0 top-[7px] bottom-[7px] w-[3px] rounded-r-full bg-primary" aria-hidden />
+        <span className="absolute left-0 top-[8px] bottom-[8px] w-[3px] rounded-r-full bg-primary" aria-hidden />
       )}
-      <item.icon className="shrink-0 h-[18px] w-[18px]" strokeWidth={isActive ? 2.5 : 2} />
+      <item.icon className="shrink-0 h-4 w-4" strokeWidth={isActive ? 2.5 : 2} />
       {isOpen && (
-        <span className="truncate text-[13.5px] font-medium leading-none">{item.name}</span>
+        <span className="truncate text-[13px] font-medium leading-none">{item.name}</span>
       )}
     </Link>
   );
@@ -89,9 +90,9 @@ function NavSkeleton({ isOpen }: { isOpen: boolean }) {
         <div
           key={i}
           className={cn(
-            "rounded-2xl bg-black/8 dark:bg-white/5 animate-pulse shrink-0",
-            !isOpen && "w-10 h-10 mx-auto",
-            isOpen  && "w-full h-10",
+            "rounded-xl bg-black/8 dark:bg-white/5 animate-pulse shrink-0",
+            !isOpen && "w-9 h-9 mx-auto",
+            isOpen  && "w-full h-9",
           )}
           style={{ animationDelay: `${i * 80}ms` }}
         />
@@ -122,36 +123,36 @@ export function DashboardSidebar() {
     (appStatusLoading && !appStatusLoaded);
 
   return (
-    <div className="nm-sidebar flex flex-col h-full w-full overflow-hidden">
+    <div className="nm-sidebar nm-soft flex flex-col h-full w-full overflow-hidden">
 
       {/* ── Toggle button at top ── */}
-      <div className="h-14 shrink-0 flex items-center px-3">
+      <div className="h-14 shrink-0 flex items-center px-2.5">
         <Tooltip label={isOpen ? "Collapse" : "Expand"}>
           <button
             onClick={toggle}
             aria-label={isOpen ? "Collapse sidebar" : "Expand sidebar"}
             className={cn(
-              "flex items-center rounded-2xl transition-all duration-200",
+              "flex items-center rounded-xl transition-all duration-200",
               "nm-btn text-muted-foreground hover:text-foreground",
-              isOpen  ? "gap-3 px-3 py-2.5 w-full" : "justify-center w-10 h-10",
+              isOpen  ? "gap-2.5 px-3 h-9 w-full" : "justify-center w-9 h-9",
             )}
           >
             {isOpen
-              ? <PanelLeftClose className="shrink-0 h-[18px] w-[18px]" strokeWidth={2} />
-              : <PanelLeftOpen  className="shrink-0 h-[18px] w-[18px]" strokeWidth={2} />
+              ? <PanelLeftClose className="shrink-0 h-4 w-4" strokeWidth={2} />
+              : <PanelLeftOpen  className="shrink-0 h-4 w-4" strokeWidth={2} />
             }
             {isOpen && (
-              <span className="truncate text-[13.5px] font-medium leading-none">Menu</span>
+              <span className="truncate text-[13px] font-medium leading-none">Menu</span>
             )}
           </button>
         </Tooltip>
       </div>
 
       {/* ── Divider ── */}
-      <div className="h-px mx-3 shrink-0 bg-black/10 dark:bg-white/5" />
+      <div className="h-px mx-2.5 shrink-0 bg-black/10 dark:bg-white/5" />
 
       {/* ── Nav items ── */}
-      <nav className="flex-1 flex flex-col gap-2 py-3 px-3 overflow-y-auto overflow-x-hidden">
+      <nav className="flex-1 flex flex-col gap-1.5 py-2.5 px-2.5 overflow-y-auto overflow-x-hidden">
         {isLoading ? (
           <NavSkeleton isOpen={isOpen} />
         ) : (
