@@ -1,10 +1,13 @@
 export interface CreateWorkflowTagDTO {
   name: string;
-  color?: string;
-  user_id: string;
+  color: string | null;
 }
 
 export interface UpdateWorkflowTagDTO {
   name?: string;
-  color?: string;
+  color?: string | null;
+}
+
+export interface WorkflowTagSettingsDTO {
+  enabled: boolean;
 }

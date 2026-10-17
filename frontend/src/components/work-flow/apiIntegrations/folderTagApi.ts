@@ -3,9 +3,9 @@
  * ─────────────────────────────────────────────────────────────
  * RTK Query API slice for Folders, Tags CRUD, and Tag ↔ Workflow linking.
  *
- * Role behaviour:
- *   - role omitted → returns only the current user's records
- *   - role="admin" → returns all records across all users
+ * Folders: role omitted → the current user's folders; role="admin" → everyone's.
+ * Tags: shared by the whole organization; only admins create, edit or delete them,
+ * and an admin switch (tag settings) turns tagging on or off.
  */
 
 import { baseApi } from "@/src/store/baseApi";
@@ -38,6 +38,17 @@ export interface TagRecord {
     updated_at?: string;
 }
 
+/** GET /automation/tags/filter/:tagId item shape. */
+export interface WorkflowsByTagItem {
+    workflow_id: string;
+    workflows: { id: string; name: string; status: string };
+}
+
+/** Organization-wide admin switch for workflow tags. */
+export interface WorkflowTagSettings {
+    enabled: boolean;
+}
+
 export interface WorkflowTagLink {
     id?: string;
     workflow_id: string;
@@ -47,7 +58,7 @@ export interface WorkflowTagLink {
 
 // ── RTK Query API ────────────────────────────────────────────────────────────
 
-export const folderTagApi = baseApi.enhanceEndpoints({ addTagTypes: ["Folder", "Tag", "WorkflowTags", "WorkflowList"] }).injectEndpoints({
+export const folderTagApi = baseApi.enhanceEndpoints({ addTagTypes: ["Folder", "Tag", "TagSettings", "WorkflowTags", "WorkflowList"] }).injectEndpoints({
   endpoints: (builder) => ({
         // ── Folders ───────────────────────────────────────────────────
 
@@ -109,21 +120,35 @@ export const folderTagApi = baseApi.enhanceEndpoints({ addTagTypes: ["Folder", "
 
         // ── Tags CRUD ────────────────────────────────────────────────
 
-        getTags: builder.query<
-            ApiResponse<TagRecord[]>,
-            { userId: string; role?: string }
-        >({
-            query: ({ userId, role }) => ({
-                url: `/automation/tags/getAll`,
-                method: "GET",
-                params: { userId, ...(role ? { role } : {}) },
-            }),
+        // Tags are shared across the signed-in user's organization (resolved from the auth cookie)
+        getTags: builder.query<ApiResponse<TagRecord[]>, void>({
+            query: () => ({ url: `/automation/tags/getAll`, method: "GET" }),
             providesTags: ["Tag"],
         }),
 
+        getTagSettings: builder.query<ApiResponse<WorkflowTagSettings>, void>({
+            query: () => ({ url: `/automation/tags/settings`, method: "GET" }),
+            providesTags: ["TagSettings"],
+        }),
+
+        /** Admin only. Updates the cached switch immediately; rolls back if the request fails. */
+        updateTagSettings: builder.mutation<ApiResponse<WorkflowTagSettings>, WorkflowTagSettings>({
+            query: (settings) => ({ url: `/automation/tags/settings`, method: "PATCH", data: settings }),
+            async onQueryStarted(settings, { dispatch, queryFulfilled }) {
+                const optimisticPatch = dispatch(
+                    folderTagApi.util.updateQueryData("getTagSettings", undefined, (draftResponse) => {
+                        draftResponse.data = settings;
+                    })
+                );
+                await queryFulfilled.catch(() => optimisticPatch.undo());
+            },
+            invalidatesTags: ["TagSettings"],
+        }),
+
+        /** Admin only. */
         createTag: builder.mutation<
             ApiResponse<TagRecord>,
-            { name: string; color?: string; user_id: string }
+            { name: string; color?: string }
         >({
             query: (data) => ({
                 url: `/automation/tags/create`,
@@ -195,7 +220,7 @@ export const folderTagApi = baseApi.enhanceEndpoints({ addTagTypes: ["Folder", "
             ],
         }),
 
-        getWorkflowsByTag: builder.query<ApiResponse<any[]>, string>({
+        getWorkflowsByTag: builder.query<ApiResponse<WorkflowsByTagItem[]>, string>({
             query: (tagId) => ({
                 url: `/automation/tags/filter/${tagId}`,
                 method: "GET",
@@ -212,6 +237,8 @@ export const {
     useDeleteFolderMutation,
     useReorderFoldersMutation,
     useGetTagsQuery,
+    useGetTagSettingsQuery,
+    useUpdateTagSettingsMutation,
     useCreateTagMutation,
     useUpdateTagMutation,
     useDeleteTagMutation,

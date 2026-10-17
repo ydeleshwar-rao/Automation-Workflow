@@ -7,7 +7,7 @@
  *   useCurrentUserScope   who is signed in / list query args
  *   useWorkflowSelection  selected workflow, view and execution (page state)
  *   useWorkflowList       sidebar list + create / rename / delete
- *   useWorkflowTags       tags for the filter and "new workflow" dialog
+ *   useWorkflowTags       shared tags (when the admin has tagging on)
  *   useNodePanels         which node is open and which panel shows
  *   useWorkflowCanvas     nodes on the canvas + node edits
  *   useStepNavigator      the step sidebar's Continue (saves each step)
@@ -31,7 +31,7 @@ export function useWorkflowOrchestrator() {
   const { selectedWorkflowId, selectWorkflow } = selection;
 
   const workflowList = useWorkflowList({ ownerQueryArgs, userId, selectedWorkflowId, selectWorkflow });
-  const { tags, createTag } = useWorkflowTags(ownerQueryArgs, userId);
+  const { tags, isTagsEnabled } = useWorkflowTags();
   const panels = useNodePanels();
   const canvas = useWorkflowCanvas(selectedWorkflowId, userId, panels);
   const { handleContinue } = useStepNavigator(selectedWorkflowId, userId, canvas, panels);
@@ -59,7 +59,7 @@ export function useWorkflowOrchestrator() {
 
     // Tags & role
     tags,
-    createTag,
+    isTagsEnabled,
     isAdmin,
 
     // View & executions

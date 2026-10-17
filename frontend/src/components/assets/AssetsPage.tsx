@@ -14,12 +14,9 @@ import {
 import {
   ChevronRight,
   ExternalLink,
-  Pencil,
   Plus,
   Search,
   Sparkles,
-  Tag,
-  Trash2,
   Zap,
 } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
@@ -34,12 +31,7 @@ import {
   useCreateFolderMutation,
   useUpdateFolderMutation,
   useDeleteFolderMutation,
-  useGetTagsQuery,
-  useCreateTagMutation,
-  useUpdateTagMutation,
-  useDeleteTagMutation,
   type FolderRecord,
-  type TagRecord,
 } from "@/src/components/work-flow/apiIntegrations/folderTagApi";
 import {
   useGetWorkflowsQuery,
@@ -74,12 +66,8 @@ import {
 } from "@/src/components/workflow-templates/components/TemplateFolderTree";
 import { DeployFolderWizard } from "@/src/components/workflow-templates/components/DeployFolderWizard";
 
-const TAG_COLORS = [
-  "#6366f1", "#8b5cf6", "#ec4899", "#ef4444", "#f97316",
-  "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#6b7280",
-];
-
-type Tab = "workflows" | "tags" | "templates";
+// Tags are managed by admins on the Admin page (/admin/tags)
+type Tab = "workflows" | "templates";
 
 export function AssetsPage() {
   const router = useRouter();
@@ -102,10 +90,6 @@ export function AssetsPage() {
     { userId, ...(isAdmin ? { role: "admin" } : {}) },
     { skip: activeTab !== "workflows" }
   );
-  const { data: tagsData } = useGetTagsQuery({
-    userId,
-    ...(isAdmin ? { role: "admin" } : {}),
-  });
   const { data: workflowsData } = useGetWorkflowsQuery({
     userId,
     ...(isAdmin ? { role: "admin" } : {}),
@@ -119,7 +103,6 @@ export function AssetsPage() {
   );
 
   const folders = useMemo<FolderRecord[]>(() => foldersData?.data ?? [], [foldersData]);
-  const tags = useMemo<TagRecord[]>(() => tagsData?.data ?? [], [tagsData]);
   const workflows = useMemo(() => workflowsData?.data ?? [], [workflowsData]);
   const templates = useMemo<TemplateRecord[]>(() => templatesData?.data ?? [], [templatesData]);
   const templateFolders = useMemo<TemplateFolderRecord[]>(() => tplFoldersData?.data ?? [], [tplFoldersData]);
@@ -128,9 +111,6 @@ export function AssetsPage() {
   const [createFolderMut] = useCreateFolderMutation();
   const [updateFolderMut] = useUpdateFolderMutation();
   const [deleteFolderMut] = useDeleteFolderMutation();
-  const [createTagMut] = useCreateTagMutation();
-  const [updateTagMut] = useUpdateTagMutation();
-  const [deleteTagMut] = useDeleteTagMutation();
   const [updateWorkflowMut] = useUpdateWorkflowMutation();
   const [deleteWorkflowMut] = useDeleteWorkflowMutation();
   const [createWorkflowMut] = useCreateWorkflowMutation();
@@ -150,12 +130,6 @@ export function AssetsPage() {
   const [renamingFolder, setRenamingFolder] = useState<{ id: string; name: string } | null>(null);
   const [confirmDeleteFolderId, setConfirmDeleteFolderId] = useState<string | null>(null);
 
-  // Tag form state (kept from previous version)
-  const [isTagFormOpen, setIsTagFormOpen] = useState(false);
-  const [newTagName, setNewTagName] = useState("");
-  const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
-  const [editingTag, setEditingTag] = useState<{ id: string; name: string; color: string } | null>(null);
-  const [confirmDeleteTagId, setConfirmDeleteTagId] = useState<string | null>(null);
   const [applyingTemplateId, setApplyingTemplateId] = useState<string | null>(null);
 
   // Template folder state
@@ -410,57 +384,6 @@ export function AssetsPage() {
     }
   };
 
-  // ── Tag handlers (kept) ───────────────────────────────────────────────────
-  const handleCreateTag = useCallback(async () => {
-    if (!newTagName.trim()) return;
-    try {
-      await createTagMut({
-        name: newTagName.trim(),
-        color: newTagColor,
-        user_id: userId,
-      }).unwrap();
-      toast.success(`Tag "${newTagName.trim()}" created`);
-      setNewTagName("");
-      setNewTagColor(TAG_COLORS[0]);
-      setIsTagFormOpen(false);
-    } catch {
-      toast.error("Could not create tag");
-    }
-  }, [createTagMut, newTagName, newTagColor, userId]);
-
-  const handleUpdateTag = useCallback(async () => {
-    if (!editingTag) return;
-    try {
-      await updateTagMut({
-        id: editingTag.id,
-        patch: { name: editingTag.name, color: editingTag.color },
-      }).unwrap();
-      toast.success("Tag updated");
-      setEditingTag(null);
-    } catch {
-      toast.error("Could not update tag");
-    }
-  }, [updateTagMut, editingTag]);
-
-  const handleDeleteTag = useCallback(
-    async (id: string) => {
-      try {
-        await deleteTagMut(id).unwrap();
-        toast.success("Tag deleted");
-        setConfirmDeleteTagId(null);
-      } catch {
-        toast.error("Could not delete tag");
-      }
-    },
-    [deleteTagMut]
-  );
-
-  const filteredTags = useMemo(() => {
-    if (!searchQuery.trim()) return tags;
-    const normalizedQuery = searchQuery.toLowerCase();
-    return tags.filter((tag) => tag.name.toLowerCase().includes(normalizedQuery));
-  }, [tags, searchQuery]);
-
   const filteredTemplates = useMemo(() => {
     let list = templates;
     if (selectedTemplateFolder === "unfiled") list = list.filter((template) => !template.template_folder_id);
@@ -628,17 +551,6 @@ export function AssetsPage() {
                 <Pill>{workflows.length}</Pill>
               </TabButton>
               <TabButton
-                active={activeTab === "tags"}
-                onClick={() => {
-                  setActiveTab("tags");
-                  setSearchQuery("");
-                }}
-              >
-                <Tag className="h-3.5 w-3.5" />
-                Tags
-                <Pill>{tags.length}</Pill>
-              </TabButton>
-              <TabButton
                 active={activeTab === "templates"}
                 onClick={() => {
                   setActiveTab("templates");
@@ -655,11 +567,7 @@ export function AssetsPage() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder={
-                  activeTab === "workflows"
-                    ? "Search workflows..."
-                    : activeTab === "tags"
-                    ? "Search tags..."
-                    : "Search templates..."
+                  activeTab === "workflows" ? "Search workflows..." : "Search templates..."
                 }
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
@@ -674,17 +582,6 @@ export function AssetsPage() {
               >
                 <Plus className="h-4 w-4" />
                 New workflow
-              </Button>
-            ) : activeTab === "tags" ? (
-              <Button
-                onClick={() => {
-                  setIsTagFormOpen(true);
-                  setEditingTag(null);
-                }}
-                className="h-9 gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                <Plus className="h-4 w-4" />
-                New tag
               </Button>
             ) : (
               <Button
@@ -729,9 +626,6 @@ export function AssetsPage() {
                 isDragActive={!!activeDragId}
               />
             )}
-            {activeTab === "tags" && (
-              <TagSidebar count={tags.length} />
-            )}
           </aside>
 
           {/* Main content area */}
@@ -768,40 +662,6 @@ export function AssetsPage() {
                   isDragActive={!!activeDragId}
                 />
               </>
-            )}
-
-            {activeTab === "tags" && (
-              <TagsView
-                tags={filteredTags}
-                isFormOpen={isTagFormOpen}
-                newTagName={newTagName}
-                newTagColor={newTagColor}
-                editingTag={editingTag}
-                confirmDeleteId={confirmDeleteTagId}
-                onNewTagNameChange={setNewTagName}
-                onNewTagColorChange={setNewTagColor}
-                onCreateTag={handleCreateTag}
-                onCancelCreate={() => {
-                  setIsTagFormOpen(false);
-                  setNewTagName("");
-                }}
-                onStartEdit={(tag) => {
-                  setEditingTag({
-                    id: tag.id,
-                    name: tag.name,
-                    color: tag.color ?? TAG_COLORS[0],
-                  });
-                  setIsTagFormOpen(false);
-                }}
-                onEditChange={(field, value) =>
-                  setEditingTag((prev) => (prev ? { ...prev, [field]: value } : null))
-                }
-                onSaveEdit={handleUpdateTag}
-                onCancelEdit={() => setEditingTag(null)}
-                onDelete={(id) => setConfirmDeleteTagId(id)}
-                onConfirmDelete={handleDeleteTag}
-                onCancelDelete={() => setConfirmDeleteTagId(null)}
-              />
             )}
 
             {activeTab === "templates" && (
@@ -979,260 +839,6 @@ function DeleteConfirmModal({
           </Button>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Tag sidebar — simple panel shown in the shared sidebar when tags tab is active
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function TagSidebar({ count }: { count: number }) {
-  return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border/60 px-3 py-2.5">
-        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-          Tags
-        </span>
-      </div>
-      <div className="flex-1 overflow-y-auto p-2">
-        <div
-          className="flex cursor-default items-center gap-2 rounded-md bg-primary/10 px-2 py-1.5 text-sm"
-        >
-          <Tag className="h-4 w-4 shrink-0 text-primary" />
-          <span className="flex-1 truncate font-medium text-primary">All tags</span>
-          <span className="rounded-full bg-primary/20 px-1.5 py-px text-[10px] font-bold text-primary">
-            {count}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Tags view (preserved from previous version)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function TagsView({
-  tags,
-  isFormOpen,
-  newTagName,
-  newTagColor,
-  editingTag,
-  confirmDeleteId,
-  onNewTagNameChange,
-  onNewTagColorChange,
-  onCreateTag,
-  onCancelCreate,
-  onStartEdit,
-  onEditChange,
-  onSaveEdit,
-  onCancelEdit,
-  onDelete,
-  onConfirmDelete,
-  onCancelDelete,
-}: {
-  tags: TagRecord[];
-  isFormOpen: boolean;
-  newTagName: string;
-  newTagColor: string;
-  editingTag: { id: string; name: string; color: string } | null;
-  confirmDeleteId: string | null;
-  onNewTagNameChange: (value: string) => void;
-  onNewTagColorChange: (color: string) => void;
-  onCreateTag: () => void;
-  onCancelCreate: () => void;
-  onStartEdit: (tag: TagRecord) => void;
-  onEditChange: (field: "name" | "color", value: string) => void;
-  onSaveEdit: () => void;
-  onCancelEdit: () => void;
-  onDelete: (id: string) => void;
-  onConfirmDelete: (id: string) => void;
-  onCancelDelete: () => void;
-}) {
-  return (
-    <div className="space-y-4">
-      {isFormOpen && (
-        <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
-          <h4 className="mb-3 text-sm font-semibold text-foreground">
-            Create new tag
-          </h4>
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                Name
-              </label>
-              <Input
-                placeholder="e.g., Urgent, Client A"
-                value={newTagName}
-                onChange={(event) => onNewTagNameChange(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") onCreateTag();
-                }}
-                autoFocus
-                className="h-9 text-sm"
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                Color
-              </label>
-              <div className="flex gap-1">
-                {TAG_COLORS.map((tagColor) => (
-                  <button
-                    key={tagColor}
-                    onClick={() => onNewTagColorChange(tagColor)}
-                    className={cn(
-                      "h-7 w-7 rounded-md border-2 transition-all",
-                      newTagColor === tagColor
-                        ? "scale-110 border-foreground"
-                        : "border-transparent hover:scale-105"
-                    )}
-                    style={{ backgroundColor: tagColor }}
-                  />
-                ))}
-              </div>
-            </div>
-            <Button
-              size="sm"
-              className="h-9"
-              onClick={onCreateTag}
-              disabled={!newTagName.trim()}
-            >
-              Create
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-9"
-              onClick={onCancelCreate}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {tags.length === 0 && !isFormOpen && (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/60">
-            <Tag className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <h3 className="text-lg font-semibold text-foreground">No tags yet</h3>
-          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-            Create tags to label and filter your workflows.
-          </p>
-        </div>
-      )}
-
-      {tags.length > 0 && (
-        <div className="space-y-2">
-          {tags.map((tag) => {
-            const isEditing = editingTag?.id === tag.id;
-            const isConfirmingDelete = confirmDeleteId === tag.id;
-
-            return (
-              <div
-                key={tag.id}
-                className="group relative flex items-center gap-3 rounded-xl border border-border/60 bg-background px-4 py-3 transition-all hover:border-border hover:shadow-sm"
-              >
-                {isConfirmingDelete && (
-                  <div className="absolute inset-0 z-10 flex items-center justify-center gap-3 rounded-xl border border-destructive/30 bg-background/95 backdrop-blur-sm">
-                    <span className="text-sm font-medium text-destructive">
-                      Delete this tag?
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      className="h-7 text-xs"
-                      onClick={() => onConfirmDelete(tag.id)}
-                    >
-                      Yes
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs"
-                      onClick={onCancelDelete}
-                    >
-                      No
-                    </Button>
-                  </div>
-                )}
-
-                <span
-                  className="h-4 w-4 shrink-0 rounded-full border border-white shadow-sm"
-                  style={{ backgroundColor: tag.color || TAG_COLORS[0] }}
-                />
-
-                {isEditing ? (
-                  <div className="flex flex-1 items-center gap-3">
-                    <Input
-                      value={editingTag.name}
-                      onChange={(event) => onEditChange("name", event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") onSaveEdit();
-                        if (event.key === "Escape") onCancelEdit();
-                      }}
-                      autoFocus
-                      className="h-8 max-w-[200px] flex-1 text-sm"
-                    />
-                    <div className="flex gap-0.5">
-                      {TAG_COLORS.map((tagColor) => (
-                        <button
-                          key={tagColor}
-                          onClick={() => onEditChange("color", tagColor)}
-                          className={cn(
-                            "h-5 w-5 rounded border-2 transition-all",
-                            editingTag.color === tagColor
-                              ? "scale-110 border-foreground"
-                              : "border-transparent"
-                          )}
-                          style={{ backgroundColor: tagColor }}
-                        />
-                      ))}
-                    </div>
-                    <Button size="sm" className="h-7 text-xs" onClick={onSaveEdit}>
-                      Save
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs"
-                      onClick={onCancelEdit}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <span className="flex-1 text-sm font-medium text-foreground">
-                      {tag.name}
-                    </span>
-                    <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                      <button
-                        onClick={() => onStartEdit(tag)}
-                        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                        title="Edit"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => onDelete(tag.id)}
-                        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                        title="Delete"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }

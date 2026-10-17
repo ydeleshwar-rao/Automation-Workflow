@@ -42,7 +42,7 @@ export function WorkflowBuilder() {
     currentWorkflowId,
     activeView,
     tags,
-    createTag,
+    isTagsEnabled,
     createWorkflow,
     setIsSelectorOpen,
     setIsSidebarOpen,
@@ -187,7 +187,7 @@ export function WorkflowBuilder() {
         onCreate={createWorkflowWithName}
         isLoading={isCreatingWorkflow}
         availableTags={tags}
-        onCreateTag={async (name) => createTag(name)}
+        isTagsEnabled={isTagsEnabled}
       />
     </div>
   );

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
-import { X, ChevronDown, Plus } from "lucide-react";
+import { X, ChevronDown } from "lucide-react";
 
 export interface TagOption {
   id: string;
@@ -17,10 +17,10 @@ interface CreateWorkflowNameModalProps {
   /** Called with the workflow name and selected tag IDs */
   onCreate: (name: string, tagIds: string[]) => void;
   isLoading?: boolean;
-  /** All available tags from the Tags API */
+  /** The organization's tags (admins manage them on the Admin page) */
   availableTags?: TagOption[];
-  /** Callback to create a new tag on the fly — returns the newly created tag or null */
-  onCreateTag?: (name: string) => Promise<TagOption | null>;
+  /** Admin switch: when off, the Tags field is hidden */
+  isTagsEnabled?: boolean;
 }
 
 export function CreateWorkflowNameModal({
@@ -29,13 +29,12 @@ export function CreateWorkflowNameModal({
   onCreate,
   isLoading = false,
   availableTags = [],
-  onCreateTag,
+  isTagsEnabled = false,
 }: CreateWorkflowNameModalProps) {
   const [workflowName, setWorkflowName] = useState("");
   const [selectedTags, setSelectedTags] = useState<TagOption[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false);
-  const [isCreatingTag, setIsCreatingTag] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
   const tagInputRef = useRef<HTMLInputElement>(null);
@@ -68,14 +67,6 @@ export function CreateWorkflowNameModal({
     );
   }, [availableTags, selectedIds, tagInput]);
 
-  // Whether the current input is a brand new tag name
-  const canCreateNewTag = useMemo(() => {
-    const trimmed = tagInput.trim();
-    if (!trimmed || !onCreateTag) return false;
-    const lower = trimmed.toLowerCase();
-    return !availableTags.some((availableTag) => availableTag.name.toLowerCase() === lower);
-  }, [tagInput, availableTags, onCreateTag]);
-
   const handleSelectTag = (tag: TagOption) => {
     if (selectedIds.has(tag.id)) return;
     setSelectedTags((prev) => [...prev, tag]);
@@ -88,28 +79,10 @@ export function CreateWorkflowNameModal({
     setSelectedTags((prev) => prev.filter((tag) => tag.id !== tagId));
   };
 
-  const handleCreateAndSelect = async () => {
-    if (!onCreateTag || !tagInput.trim()) return;
-    setIsCreatingTag(true);
-    try {
-      const newTag = await onCreateTag(tagInput.trim());
-      if (newTag) {
-        setSelectedTags((prev) => [...prev, newTag]);
-        setTagInput("");
-        setIsTagDropdownOpen(false);
-      }
-    } finally {
-      setIsCreatingTag(false);
-      tagInputRef.current?.focus();
-    }
-  };
-
   const handleTagKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
       event.preventDefault();
-      if (canCreateNewTag) {
-        handleCreateAndSelect();
-      } else if (filteredSuggestions.length === 1) {
+      if (filteredSuggestions.length === 1) {
         handleSelectTag(filteredSuggestions[0]);
       }
     } else if (event.key === "Backspace" && tagInput === "" && selectedTags.length > 0) {
@@ -189,7 +162,8 @@ export function CreateWorkflowNameModal({
             />
           </div>
 
-          {/* Tags */}
+          {/* Tags — only when the admin has tagging turned on */}
+          {isTagsEnabled && (
           <div className="mb-6">
             <label className="block text-sm font-medium text-foreground mb-2">
               Tags
@@ -234,7 +208,7 @@ export function CreateWorkflowNameModal({
                   <input
                     ref={tagInputRef}
                     type="text"
-                    placeholder={selectedTags.length === 0 ? "Select or create tags..." : "Add more..."}
+                    placeholder={selectedTags.length === 0 ? "Select tags..." : "Add more..."}
                     value={tagInput}
                     onChange={(event) => {
                       setTagInput(event.target.value);
@@ -243,7 +217,7 @@ export function CreateWorkflowNameModal({
                     onFocus={() => setIsTagDropdownOpen(true)}
                     onKeyDown={handleTagKeyDown}
                     className="w-full border-none outline-none bg-transparent text-sm text-foreground py-0.5 placeholder:text-muted-foreground"
-                    disabled={isLoading || isCreatingTag}
+                    disabled={isLoading || availableTags.length === 0}
                   />
                 </div>
                 <button
@@ -256,21 +230,8 @@ export function CreateWorkflowNameModal({
               </div>
 
               {/* Dropdown */}
-              {isTagDropdownOpen && (filteredSuggestions.length > 0 || canCreateNewTag) && (
+              {isTagDropdownOpen && filteredSuggestions.length > 0 && (
                 <div className="absolute z-50 mt-1 w-full max-h-[180px] overflow-y-auto rounded-lg border border-border bg-popover text-popover-foreground shadow-lg">
-                  {/* Create new tag option */}
-                  {canCreateNewTag && (
-                    <button
-                      type="button"
-                      onClick={handleCreateAndSelect}
-                      disabled={isCreatingTag}
-                      className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors text-primary font-medium border-b border-border"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      {isCreatingTag ? "Creating..." : `Create "${tagInput.trim()}"`}
-                    </button>
-                  )}
-                  {/* Existing tag suggestions */}
                   {filteredSuggestions.map((tag) => (
                     <button
                       key={tag.id}
@@ -291,9 +252,12 @@ export function CreateWorkflowNameModal({
               )}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Press Enter to create a new tag, or select from existing ones
+              {availableTags.length === 0
+                ? "No tags yet. Your admin can create them on the Admin page."
+                : "Select from your company's tags"}
             </p>
           </div>
+          )}
 
           {/* Buttons */}
           <div className="flex gap-3 justify-end">

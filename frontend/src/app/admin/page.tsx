@@ -1,4 +1,4 @@
-import { Users, PlusCircle, ArrowRight, ArrowLeft, Building2 } from "lucide-react";
+import { Users, PlusCircle, ArrowRight, ArrowLeft, Building2, Tags } from "lucide-react";
 import Link from "next/link";
 
 const quickActions = [
@@ -19,6 +19,12 @@ const quickActions = [
     description: "Google Workspace / Microsoft 365 sign-in for your team",
     href: "/admin/sso",
     icon: Building2,
+  },
+  {
+    title: "Workflow Tags",
+    description: "Create tags and turn tagging on or off",
+    href: "/admin/tags",
+    icon: Tags,
   },
 ];
 
