@@ -133,7 +133,7 @@ export interface CreatePollingSubscriptionPayload {
     node_id: string;
     integration_key: string;
     event_key: string;
-    config?: Record<string, any>;
+    config?: Record<string, unknown>;
     poll_interval?: number;
 }
 
@@ -225,6 +225,15 @@ export const workflowApi = baseApi.enhanceEndpoints({ addTagTypes: ["Workflow", 
                 { type: "Workflow", id },
                 "WorkflowList",
             ],
+            async onQueryStarted({ id, patch }, { dispatch, getState, queryFulfilled }) {
+                const { name, status } = patch;
+                if (name === undefined && status === undefined) return;
+                const undoPatch = patchWorkflowInCachedLists(dispatch, getState, id, {
+                    ...(name !== undefined ? { name } : {}),
+                    ...(status !== undefined ? { status } : {}),
+                });
+                await queryFulfilled.catch(undoPatch);
+            },
         }),
 
         bulkMoveWorkflows: builder.mutation<
@@ -265,6 +274,10 @@ export const workflowApi = baseApi.enhanceEndpoints({ addTagTypes: ["Workflow", 
                 method: "POST",
             }),
             invalidatesTags: (_r, _e, id) => [{ type: "Workflow", id }, "WorkflowList"],
+            async onQueryStarted(id, { dispatch, getState, queryFulfilled }) {
+                const undoPatch = patchWorkflowInCachedLists(dispatch, getState, id, { status: "active" });
+                await queryFulfilled.catch(undoPatch);
+            },
         }),
 
         // ── Nodes ─────────────────────────────────────────────────
@@ -477,3 +490,33 @@ export const {
     useGetPollingSubscriptionStatusQuery,
     useTestActionMutation,
 } = workflowApi;
+
+// ── Optimistic list updates ─────────────────────────────────────────────────
+
+type WorkflowListPatch = Partial<Pick<WorkflowRecord, "name" | "status">>;
+type CacheState = Parameters<typeof workflowApi.util.selectCachedArgsForQuery>[0];
+type CacheDispatch = (action: ReturnType<typeof workflowApi.util.updateQueryData>) => { undo: () => void };
+
+/**
+ * Applies a name/status change to every cached workflow list (one per owner/role
+ * argument) so the UI updates before the refetch lands. Returns an undo function
+ * for when the request fails.
+ */
+function patchWorkflowInCachedLists(
+    dispatch: unknown,
+    getState: () => unknown,
+    workflowId: string,
+    listPatch: WorkflowListPatch,
+): () => void {
+    const dispatchPatch = dispatch as CacheDispatch;
+    const cachedListArgs = workflowApi.util.selectCachedArgsForQuery(getState() as CacheState, "getWorkflows");
+    const patchResults = cachedListArgs.map((listArgs) =>
+        dispatchPatch(
+            workflowApi.util.updateQueryData("getWorkflows", listArgs, (draftList) => {
+                const cachedWorkflow = draftList.data?.find((workflow) => workflow.id === workflowId);
+                if (cachedWorkflow) Object.assign(cachedWorkflow, listPatch);
+            }),
+        ),
+    );
+    return () => patchResults.forEach((patchResult) => patchResult.undo());
+}

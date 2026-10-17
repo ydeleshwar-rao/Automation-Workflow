@@ -63,6 +63,11 @@ export interface StepContext {
  */
 export type StepComponent = React.ComponentType<any>;
 
+/** What an integration step asks the sidebar footer to show. */
+export type StepFooterConfig =
+  | { layout: "test-controls"; onTestTrigger: () => void }
+  | { layout?: undefined; label: string; disabled?: boolean };
+
 /**
  * Per-integration lifecycle hooks called by the WorkflowBuilder.
  */
@@ -172,7 +177,7 @@ export interface WorkflowNodeData {
   appLabel?: string
   eventLabel?: string
   // ui
-  appIcon?: any
+  appIcon?: LucideIcon
   appColor?: string
   // important
   config?: Record<string, any>
@@ -231,9 +236,3 @@ export interface ExecutionDetail extends Execution {
 // Field Mapping Domain Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface FieldMapping {
-  id?: string;
-  workflow_node_id: string;
-  source_field: string;
-  destination_field: string;
-}

@@ -16,7 +16,7 @@
  */
 
 import React from "react";
-import type { IntegrationDescriptor, StepContext } from "../uiOrchestrator/types";
+import type { IntegrationDescriptor, StepContext, StepFooterConfig } from "../uiOrchestrator/types";
 import type { ConfigStep } from "./event-sidebar/eventSidebar";
 import { toast } from "sonner";
 
@@ -28,7 +28,24 @@ interface IntegrationStepRendererProps {
   /** Shared context derived from WorkflowBuilder state */
   context: StepContext;
   /** Callback to update the sidebar footer (e.g. for dynamic button labels) */
-  onUpdateFooter?: (footer: any) => void;
+  onUpdateFooter?: (footer: StepFooterConfig | null) => void;
+}
+
+type FooterRef = React.RefObject<StepFooterConfig | null | undefined>;
+
+/**
+ * The footer is only re-sent when it changes structurally (see isFooterEqual), so its
+ * handler is routed through a ref — clicking "Test trigger" always runs the newest handler.
+ */
+function withLatestTestHandler(footer: StepFooterConfig | null, latestFooterRef: FooterRef): StepFooterConfig | null {
+  if (footer?.layout !== "test-controls") return footer;
+  return {
+    ...footer,
+    onTestTrigger: () => {
+      const latestFooter = latestFooterRef.current;
+      if (latestFooter?.layout === "test-controls") latestFooter.onTestTrigger();
+    },
+  };
 }
 
 /** Props for the inner renderer — descriptor is guaranteed non-null here. */
@@ -75,48 +92,34 @@ function RendererInner({
   // Integrations often rebuild `footer` on every render (useMemo deps include
   // unstable parent-provided callbacks), so we structurally compare — otherwise
   // setDynamicFooter fires forever and React throws "Maximum update depth exceeded".
-  const lastFooterRef = React.useRef<unknown>(undefined);
+  const currentFooter = (extraProps.footer ?? null) as StepFooterConfig | null;
+  const lastSentFooterRef = React.useRef<StepFooterConfig | null | undefined>(undefined);
+  const latestFooterRef = React.useRef<StepFooterConfig | null | undefined>(currentFooter);
   React.useEffect(() => {
-    const next = extraProps.footer;
-    if (isFooterEqual(lastFooterRef.current, next)) return;
-    lastFooterRef.current = next;
-    onUpdateFooter?.(next);
-  }, [extraProps.footer, onUpdateFooter]);
+    latestFooterRef.current = currentFooter;
+    if (isFooterEqual(lastSentFooterRef.current, currentFooter)) return;
+    lastSentFooterRef.current = currentFooter;
+    onUpdateFooter?.(withLatestTestHandler(currentFooter, latestFooterRef));
+  }, [currentFooter, onUpdateFooter]);
 
   const { SetupStep, ConfigureStep, TestStep } = descriptor;
 
-  // const sharedProps = {
-  //   selectedApp: {
-  //     label: context.node.appLabel ?? "",
-  //     icon: context.node.appIcon,
-  //     color: context.node.appColor ?? "",
-  //   },
-  //   isTrigger: context.isTrigger,
-  //   selectedEvent: context.selectedEvent,
-  //   events: context.events,
-  //   onEventSelect: context.onEventSelect,
-  //   onChangeApp: context.onChangeApp,
-  //   // Provide dropdown state via extraProps.setup if the integration needs it
-  //   ...(extraProps.setup ?? {}),
-  // };
-
   const sharedProps = {
-  ...(extraProps.setup ?? {}),
-
-  selectedApp: {
-    label: context.node.appLabel ?? "",
-    icon: context.node.appIcon,
-    color: context.node.appColor ?? "",
-  },
-  isTrigger: context.isTrigger,
-  selectedEvent: context.selectedEvent,
-  events: context.events,
-  onEventSelect: context.onEventSelect,
-  onChangeApp: context.onChangeApp,
-  triggerTestPayload: context.triggerTestPayload,
-  triggerTestSamples: context.triggerTestSamples,
-  triggerNodeId: context.triggerNodeId,
-};
+    ...(extraProps.setup ?? {}),
+    selectedApp: {
+      label: context.node.appLabel ?? "",
+      icon: context.node.appIcon,
+      color: context.node.appColor ?? "",
+    },
+    isTrigger: context.isTrigger,
+    selectedEvent: context.selectedEvent,
+    events: context.events,
+    onEventSelect: context.onEventSelect,
+    onChangeApp: context.onChangeApp,
+    triggerTestPayload: context.triggerTestPayload,
+    triggerTestSamples: context.triggerTestSamples,
+    triggerNodeId: context.triggerNodeId,
+  };
 
   if (step === "setup") {
     return <SetupStep {...sharedProps} />;
@@ -137,7 +140,7 @@ function RendererInner({
         }
       : undefined;
 
-  const { _copyUrl: _ignored, ...safeTestProps } = testExtraProps;
+  const safeTestProps = Object.fromEntries(Object.entries(testExtraProps).filter(([propName]) => propName !== "_copyUrl"));
 
   return (
     <TestStep
@@ -152,14 +155,14 @@ function RendererInner({
  * Public component — handles the missing-descriptor fallback gracefully.
  */
 export function IntegrationStepRenderer(props: IntegrationStepRendererProps) {
+  const { descriptor, onUpdateFooter } = props;
+
   // Sync missing descriptor with a cleared footer
   React.useEffect(() => {
-    if (!props.descriptor) {
-      props.onUpdateFooter?.(null);
-    }
-  }, [props.descriptor, props.onUpdateFooter]);
+    if (!descriptor) onUpdateFooter?.(null);
+  }, [descriptor, onUpdateFooter]);
 
-  if (!props.descriptor) {
+  if (!descriptor) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center space-y-4 opacity-50 p-8">
         <p className="text-sm font-medium text-slate-600">
@@ -171,9 +174,9 @@ export function IntegrationStepRenderer(props: IntegrationStepRendererProps) {
 
   return (
     <RendererInner
-      key={props.descriptor.label}
+      key={descriptor.label}
       {...props}
-      descriptor={props.descriptor}
+      descriptor={descriptor}
     />
   );
 }
