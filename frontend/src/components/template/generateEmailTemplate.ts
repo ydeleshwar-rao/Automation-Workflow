@@ -1,4 +1,6 @@
 import { flattenWebhookPayload } from "./autoMapper";
+import { store } from "@/src/store/store";
+import { fieldLabelsApi, type FieldLabels } from "./apiIntegrations/fieldLabelsApi";
 
 export interface EmailTemplateOptions {
   nodeId: string | number;
@@ -41,44 +43,40 @@ function formatLabel(key: string): string {
   return label;
 }
 
-async function generateLabelsWithAI(
-  keys: string[]
-): Promise<Record<string, string>> {
-  const cacheKey = "label_cache_" + [...keys].sort().join(",");
+const LABEL_CACHE_PREFIX = "label_cache_";
+
+function readCachedLabels(cacheKey: string): FieldLabels | null {
   try {
     const cached = localStorage.getItem(cacheKey);
-    if (cached) return JSON.parse(cached);
-  } catch {}
+    return cached ? (JSON.parse(cached) as FieldLabels) : null;
+  } catch {
+    return null;
+  }
+}
 
+function writeCachedLabels(cacheKey: string, labels: FieldLabels) {
   try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.NEXT_PUBLIC_OPENROUTER_API_KEY ?? ""}`,
-        "HTTP-Referer": "http://localhost:3000",
-        "X-Title": "Job Management",
-      },
-      body: JSON.stringify({
-        model: "anthropic/claude-3-haiku",
-        messages: [{
-          role: "user",
-          content: `Convert these form field keys to human-readable labels.
-Return ONLY a valid JSON object, no markdown, no explanation.
-Example: {"firstName": "First Name", "emailaddress": "Email Address"}
-
-Keys: ${keys.join(", ")}`,
-        }],
-      }),
-    });
-    const data = await response.json();
-    const text = data.choices[0].message.content;
-    const clean = text.replace(/```json|```/g, "").trim();
-    const labels = JSON.parse(clean);
     localStorage.setItem(cacheKey, JSON.stringify(labels));
+  } catch {
+    // Storage full or blocked — labels are just regenerated next time
+  }
+}
+
+/** AI labels come from the backend; on any failure the template falls back to formatLabel(). */
+async function fetchFieldLabels(fieldKeys: string[]): Promise<FieldLabels> {
+  const cacheKey = LABEL_CACHE_PREFIX + [...fieldKeys].sort().join(",");
+  const cachedLabels = readCachedLabels(cacheKey);
+  if (cachedLabels) return cachedLabels;
+
+  const request = store.dispatch(fieldLabelsApi.endpoints.generateFieldLabels.initiate(fieldKeys));
+  try {
+    const labels = await request.unwrap();
+    if (Object.keys(labels).length > 0) writeCachedLabels(cacheKey, labels);
     return labels;
   } catch {
     return {};
+  } finally {
+    request.reset();
   }
 }
 
@@ -95,7 +93,7 @@ export async function generateEmailTemplate({
   logoUrl,
 }: EmailTemplateOptions): Promise<string> {
   const flat = flattenWebhookPayload(payload);
-  const aiLabels = await generateLabelsWithAI(Object.keys(flat));
+  const aiLabels = await fetchFieldLabels(Object.keys(flat));
   const id = String(nodeId);
   const skipKeys = new Set([
     "web_mail_color_code",

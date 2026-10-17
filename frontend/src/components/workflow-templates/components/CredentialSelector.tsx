@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
-import { getSmtpConnections } from "@/src/components/work-flow/appEvents/mail/apiIntegrations/mailApis/createSmtpConnection.api";
+import { useGetSmtpConnectionsQuery } from "@/src/components/work-flow/appEvents/mail/apiIntegrations/mailApi";
+import type { SmtpConnection } from "@/src/components/work-flow/appEvents/mail/apiIntegrations/types/mailApis.type";
 
 interface Props {
   /** Credential type hint (e.g. "smtp", "webhook", "oauth") */
@@ -14,6 +15,11 @@ interface Props {
 }
 
 type SmtpOption = { id: string; label: string };
+
+function toSmtpOption(connection: SmtpConnection): SmtpOption {
+  const label = connection.name && connection.host ? `${connection.name} (${connection.host})` : connection.name || connection.host || connection.id;
+  return { id: connection.id, label };
+}
 
 /**
  * Renders the correct picker for a credential field required by a template
@@ -47,36 +53,9 @@ function SmtpPicker({
   onChange: (value: string) => void;
   fieldKey: string;
 }) {
-  const [options, setOptions] = useState<SmtpOption[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const rows = await getSmtpConnections();
-        if (cancelled) return;
-        setOptions(
-          (rows ?? []).map((row: any) => ({
-            id: row.id,
-            label:
-              row.from_name && row.from_email
-                ? `${row.from_name} <${row.from_email}>`
-                : row.from_email || row.smtp_host || row.id,
-          }))
-        );
-      } catch {
-        if (!cancelled) setError("Could not load SMTP connections");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data: connections, isLoading: loading, isError } = useGetSmtpConnectionsQuery();
+  const options = useMemo(() => (connections ?? []).map(toSmtpOption), [connections]);
+  const error = isError ? "Could not load SMTP connections" : null;
 
   if (loading) {
     return (

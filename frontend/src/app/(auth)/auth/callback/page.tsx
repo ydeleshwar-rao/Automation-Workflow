@@ -35,16 +35,16 @@ export default function AuthCallbackPage() {
           return;
         }
 
-        persistLoginResponse(result.data as Parameters<typeof persistLoginResponse>[0]);
+        persistLoginResponse(result.data);
         router.replace("/dashboard");
-      } catch (err: unknown) {
+      } catch (signInError: unknown) {
         if (cancelled) return;
         clearTimeout(slowTimer);
         // Send the user back to where the sign-in started
         const intent = lastSsoIntent();
         if (intent === "connect") setBackHref("/admin/sso");
         if (intent === "company-setup") setBackHref("/sign-up?type=company");
-        setError(err instanceof Error ? err.message : "Sign-in failed");
+        setError(signInError instanceof Error ? signInError.message : "Sign-in failed");
       }
     }
 

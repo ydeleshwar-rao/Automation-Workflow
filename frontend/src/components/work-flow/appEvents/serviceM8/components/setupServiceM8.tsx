@@ -5,7 +5,7 @@ import { Link2 } from "lucide-react";
 import { Sm8EventSelectorPopup } from "./Sm8EventSelectorPopup";
 import { AppSection, SelectSection } from "@/src/components/work-flow/appEvents/mail/components/shared/SelectorFields";
 import { useServiceM8Status } from "@/src/components/app-connections/servicem8/hooks/useServiceM8Status";
-import { useServiceM8ActionEventTypes } from "@/src/components/app-connections/servicem8/hooks/useServiceM8ActionEventTypes";
+import { ACTION_EVENT_INTEGRATION_SLUGS, useActionEventOptions } from "@/src/components/work-flow/apiIntegrations/actionEventTypesApi";
 import { ConnectInlineSection } from "@/src/components/work-flow/appEvents/shared/ConnectInlineSection";
 
 interface ServiceM8SetupStepProps {
@@ -26,7 +26,7 @@ export function ServiceM8SetupStep({
   const [isEventPopupOpen, setIsEventPopupOpen] = useState(false);
 
   const { connected: isConnected } = useServiceM8Status();
-  const { events, isLoading } = useServiceM8ActionEventTypes(isTrigger);
+  const { events, isLoading } = useActionEventOptions(ACTION_EVENT_INTEGRATION_SLUGS.SERVICE_M8, isTrigger);
 
   const AppIcon = selectedApp.icon || Link2;
   const displayLabel = events.find((event) => event.id === selectedEvent)?.label ?? selectedEvent;

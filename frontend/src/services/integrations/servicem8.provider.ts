@@ -1,6 +1,6 @@
-import axiosInstance from "@/src/services/apiClient";
 import { API_ROUTES } from "@/src/constants/api.constants";
 import type { JobsDataProvider } from "./types";
+import { buildJobsQueryParams, toNumber, unwrapJobsPayload } from "./jobsProvider.helpers";
 import type { JobsFilters, NormalizedJob } from "@/src/types/dashboard.types";
 
 /**
@@ -63,26 +63,18 @@ interface ServiceM8ContactBlock {
   jobs?: ServiceM8JobItem[];
 }
 
-const toNumber = (value: unknown): number => {
-  if (value === null || value === undefined || value === "") return 0;
-  const parsed = parseFloat(String(value));
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const buildParams = (filters: JobsFilters): Record<string, string> => {
-  const p: Record<string, string> = {};
-  if (filters.period)        p.period = filters.period;
-  if (filters.date_from)     p.date_from = filters.date_from;
-  if (filters.date_to)       p.date_to = filters.date_to;
-  if (filters.status)        p.status = filters.status;
-  if (filters.category_uuid) p.category_uuid = filters.category_uuid;
-  if (filters.category_name) p.category_name = filters.category_name;
-  if (filters.queue_uuid)    p.queue_uuid = filters.queue_uuid;
-  if (filters.queue_name)    p.queue_name = filters.queue_name;
-  if (filters.staff_uuid)    p.staff_uuid = filters.staff_uuid;
-  if (filters.company_uuid)  p.company_uuid = filters.company_uuid;
-  return p;
-};
+const SUPPORTED_FILTER_KEYS: readonly (keyof JobsFilters)[] = [
+  "period",
+  "date_from",
+  "date_to",
+  "status",
+  "category_uuid",
+  "category_name",
+  "queue_uuid",
+  "queue_name",
+  "staff_uuid",
+  "company_uuid",
+];
 
 const normalize = (block: ServiceM8ContactBlock, item: ServiceM8JobItem): NormalizedJob => {
   const job = item.job ?? {};
@@ -106,26 +98,21 @@ const normalize = (block: ServiceM8ContactBlock, item: ServiceM8JobItem): Normal
   };
 };
 
+// Each element is a contact/site group containing a `jobs[]` array — flatten it.
+const normaliseContactBlocks = (contactBlocks: ServiceM8ContactBlock[]): NormalizedJob[] =>
+  contactBlocks
+    .flatMap((contactBlock) => (contactBlock.jobs ?? []).map((jobItem) => normalize(contactBlock, jobItem)))
+    .filter((normalizedJob) => normalizedJob.id);
+
 export const servicem8Provider: JobsDataProvider = {
   appId: "servicem8",
   label: "ServiceM8",
 
-  async fetchJobs(filters) {
-    const { data } = await axiosInstance.get(API_ROUTES.SERVICEM8.GET_ALL_JOBS, {
-      params: buildParams(filters),
-    });
-    // ApiResponse wraps payload as { success, message, data: { success, data: [...] } }
-    // Each element is a contact/site group containing a `jobs[]` array.
-    const groups: ServiceM8ContactBlock[] =
-      data?.data?.data ?? data?.data ?? [];
-    if (!Array.isArray(groups)) return [];
-    const normalized: NormalizedJob[] = [];
-    for (const block of groups) {
-      for (const item of block.jobs ?? []) {
-        const n = normalize(block, item);
-        if (n.id) normalized.push(n);
-      }
-    }
-    return normalized;
-  },
+  buildJobsRequest: (filters) => ({
+    url: API_ROUTES.SERVICEM8.GET_ALL_JOBS,
+    params: buildJobsQueryParams(filters, SUPPORTED_FILTER_KEYS),
+  }),
+
+  normaliseJobs: (response) =>
+    normaliseContactBlocks(unwrapJobsPayload<ServiceM8ContactBlock>(response)),
 };

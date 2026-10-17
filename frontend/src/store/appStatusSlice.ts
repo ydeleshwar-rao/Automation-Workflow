@@ -1,127 +1,41 @@
 /**
  * appStatusSlice.ts
  * ─────────────────────────────────────────────────────────────
- * Tracks which third-party integrations are currently connected
- * for the logged-in user (per-user, not per-client).
- *
- * Architecture change:
- *   - Removed clientkey header — all requests use the JWT Bearer token only
- *   - Status is user-scoped (each user has their own integration credentials)
+ * UI state for the integration shown on the dashboard, plus selectors over the
+ * integration statuses cached by RTK Query (`integrationsApi.getIntegrationStatuses`).
+ * Connection status itself is server state and lives only in the RTK Query cache.
  */
 
+import { createSelector, createSlice, type PayloadAction } from "@reduxjs/toolkit";
+import { QueryStatus } from "@reduxjs/toolkit/query";
 import {
-  createSlice,
-  createAsyncThunk,
-  createSelector,
-  PayloadAction,
-} from "@reduxjs/toolkit";
-import axiosInstance from "@/src/services/apiClient";
-import { API_ROUTES } from "@/src/constants/api.constants";
+  DISCONNECTED_STATUS,
+  INTEGRATION_APP_IDS,
+  integrationsApi,
+  type IntegrationAppId,
+  type IntegrationStatusMap,
+} from "@/src/components/app-connections/apiIntegrations/integrationsApi";
+import type { AppDispatch } from "./store";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type AppId = "servicem8" | "commusoft" | "leadshub" | "simpro";
+export type AppId = IntegrationAppId;
 
 export interface AppStatusState {
-  servicem8:           boolean;
-  servicem8NeedsReauth: boolean;
-  commusoft:           boolean;
-  leadshub:            boolean;
-  simpro:              boolean;
-  isLoading:           boolean;
-  hasLoadedOnce:       boolean;
-  /** Only the most recent requestId's response is applied — prevents races. */
-  lastRequestId:       string | null;
-  /** Currently focused integration in the dashboard. */
-  activeApp:           AppId | null;
+  /** Integration the user picked in the dashboard switcher (may since have been disconnected). */
+  selectedApp: AppId | null;
 }
 
 const initialState: AppStatusState = {
-  servicem8:            false,
-  servicem8NeedsReauth: false,
-  commusoft:            false,
-  leadshub:             false,
-  simpro:               false,
-  isLoading:            false,
-  hasLoadedOnce:        false,
-  lastRequestId:        null,
-  activeApp:            null,
+  selectedApp: null,
 };
 
-// Priority order when auto-picking activeApp
+// Priority order when auto-picking the active app
 const APP_PRIORITY: readonly AppId[] = ["servicem8", "commusoft", "simpro", "leadshub"];
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-interface StatusResponse {
-  connected?:        boolean;
-  alreadyConnected?: boolean;
-  needs_reauth?:     boolean;
-  data?: {
-    connected?:        boolean;
-    alreadyConnected?: boolean;
-    needs_reauth?:     boolean;
-  };
-}
-
-const parseConnected = (res: StatusResponse | null | undefined): boolean =>
-  res?.data?.connected === true ||
-  res?.data?.alreadyConnected === true ||
-  res?.connected === true ||
-  res?.alreadyConnected === true;
-
-const parseNeedsReauth = (res: StatusResponse | null | undefined): boolean =>
-  res?.data?.needs_reauth === true || res?.needs_reauth === true;
-
-/** Fetch a single integration status. No clientkey — JWT-only. */
-const fetchOne = async (endpoint: string): Promise<boolean> => {
-  try {
-    const { data } = await axiosInstance.get(endpoint);
-    return parseConnected(data);
-  } catch {
-    return false;
-  }
-};
-
-const fetchServiceM8Status = async (
-  endpoint: string,
-): Promise<{ connected: boolean; needsReauth: boolean }> => {
-  try {
-    const { data } = await axiosInstance.get(endpoint);
-    const connected   = parseConnected(data);
-    const needsReauth = connected && parseNeedsReauth(data);
-    return { connected: connected && !needsReauth, needsReauth };
-  } catch {
-    return { connected: false, needsReauth: false };
-  }
-};
-
-// ── Thunk: fetch all integration statuses in parallel ────────────────────────
-
-type AppFlags = Pick<
-  AppStatusState,
-  "servicem8" | "servicem8NeedsReauth" | "commusoft" | "leadshub" | "simpro"
->;
-
-export const fetchAppStatus = createAsyncThunk<
-  AppFlags,
-  void,
-  { state: { appStatus: AppStatusState } }
->("appStatus/fetchAll", async () => {
-  const [sm8, commusoft, leadshub, simpro] = await Promise.all([
-    fetchServiceM8Status(API_ROUTES.SERVICEM8.STATUS),
-    fetchOne(API_ROUTES.COMMUSOFT.STATUS),
-    fetchOne(API_ROUTES.GHL.STATUS),
-    fetchOne(API_ROUTES.SIMPRO.STATUS),
-  ]);
-  return {
-    servicem8:            sm8.connected,
-    servicem8NeedsReauth: sm8.needsReauth,
-    commusoft,
-    leadshub,
-    simpro,
-  };
-});
+const DISCONNECTED_STATUSES = Object.fromEntries(
+  INTEGRATION_APP_IDS.map((appId) => [appId, DISCONNECTED_STATUS]),
+) as IntegrationStatusMap;
 
 // ── Slice ─────────────────────────────────────────────────────────────────────
 
@@ -129,82 +43,68 @@ const appStatusSlice = createSlice({
   name: "appStatus",
   initialState,
   reducers: {
-    resetAppStatus: () => initialState,
-    setAppConnected(
-      state,
-      action: PayloadAction<{ app: AppId; connected: boolean }>,
-    ) {
-      state[action.payload.app] = action.payload.connected;
-    },
+    clearSelectedApp: () => initialState,
     setActiveApp(state, action: PayloadAction<AppId | null>) {
-      state.activeApp = action.payload;
+      state.selectedApp = action.payload;
     },
-  },
-  extraReducers: (builder) => {
-    builder
-      .addCase(fetchAppStatus.pending, (state, action) => {
-        state.isLoading    = true;
-        state.lastRequestId = action.meta.requestId;
-      })
-      .addCase(fetchAppStatus.fulfilled, (state, action) => {
-        if (action.meta.requestId !== state.lastRequestId) return;
-        state.isLoading           = false;
-        state.hasLoadedOnce       = true;
-        state.servicem8           = action.payload.servicem8;
-        state.servicem8NeedsReauth = action.payload.servicem8NeedsReauth;
-        state.commusoft           = action.payload.commusoft;
-        state.leadshub            = action.payload.leadshub;
-        state.simpro              = action.payload.simpro;
-
-        // Auto-pick activeApp
-        const isConnected = (app: AppId): boolean => action.payload[app];
-        if (state.activeApp && !isConnected(state.activeApp)) {
-          state.activeApp = null;
-        }
-        if (!state.activeApp) {
-          const next = APP_PRIORITY.find(isConnected);
-          state.activeApp = next ?? null;
-        }
-      })
-      .addCase(fetchAppStatus.rejected, (state, action) => {
-        if (action.meta.requestId !== state.lastRequestId) return;
-        state.isLoading     = false;
-        state.hasLoadedOnce = true;
-      });
   },
 });
 
-export const { resetAppStatus, setAppConnected, setActiveApp } =
-  appStatusSlice.actions;
+export const { setActiveApp } = appStatusSlice.actions;
 export default appStatusSlice.reducer;
+
+/**
+ * Logout: forget the selected app and mark every integration disconnected, so the
+ * next user never sees the previous user's statuses before their own load.
+ */
+export const resetAppStatus = () => (dispatch: AppDispatch) => {
+  dispatch(appStatusSlice.actions.clearSelectedApp());
+  dispatch(integrationsApi.util.upsertQueryData("getIntegrationStatuses", undefined, DISCONNECTED_STATUSES));
+};
 
 // ── Selectors ─────────────────────────────────────────────────────────────────
 
-type HasAppStatus = { appStatus: AppStatusState };
+const selectStatusesFromIntegrationsState = integrationsApi.endpoints.getIntegrationStatuses.select();
 
-export const selectAppStatus           = (state: HasAppStatus) => state.appStatus;
-export const selectIsServiceM8Connected = (state: HasAppStatus) => state.appStatus.servicem8;
-export const selectServiceM8NeedsReauth = (state: HasAppStatus) => state.appStatus.servicem8NeedsReauth;
-export const selectIsCommusoftConnected = (state: HasAppStatus) => state.appStatus.commusoft;
-export const selectIsLeadsHubConnected  = (state: HasAppStatus) => state.appStatus.leadshub;
-export const selectIsSimProConnected    = (state: HasAppStatus) => state.appStatus.simpro;
-export const selectAppStatusLoading     = (state: HasAppStatus) => state.appStatus.isLoading;
-export const selectAppStatusLoaded      = (state: HasAppStatus) => state.appStatus.hasLoadedOnce;
-export const selectActiveApp            = (state: HasAppStatus) => state.appStatus.activeApp;
+type IntegrationsApiState = Parameters<typeof selectStatusesFromIntegrationsState>[0];
 
-export const selectConnectedServices = createSelector(
-  [
-    selectIsServiceM8Connected,
-    selectIsCommusoftConnected,
-    selectIsLeadsHubConnected,
-    selectIsSimProConnected,
-  ],
-  (sm8, cs, lh, sp): string[] => {
-    const out: string[] = [];
-    if (sm8) out.push("servicem8");
-    if (cs)  out.push("commusoft");
-    if (lh)  out.push("leadshub");
-    if (sp)  out.push("simpro");
-    return out;
+interface HasAppStatus {
+  api: unknown;
+  appStatus: AppStatusState;
+}
+
+// The store's RootState types `api` from the bare baseApi (without injected tag types);
+// at runtime it is the same cache slice, so the cast only bridges the static types.
+const selectIntegrationStatusesResult = (state: HasAppStatus) =>
+  selectStatusesFromIntegrationsState(state as IntegrationsApiState);
+
+const selectIntegrationStatuses = (state: HasAppStatus): IntegrationStatusMap =>
+  selectIntegrationStatusesResult(state).data ?? DISCONNECTED_STATUSES;
+
+const selectSelectedApp = (state: HasAppStatus) => state.appStatus.selectedApp;
+
+/** Connected flag per integration, e.g. `{ servicem8: true, commusoft: false, … }`. */
+export const selectAppStatus = createSelector(
+  [selectIntegrationStatuses],
+  (statuses) =>
+    Object.fromEntries(
+      INTEGRATION_APP_IDS.map((appId) => [appId, statuses[appId].isConnected]),
+    ) as Record<AppId, boolean>,
+);
+
+export const selectAppStatusLoading = (state: HasAppStatus): boolean =>
+  selectIntegrationStatusesResult(state).status === QueryStatus.pending;
+
+export const selectAppStatusLoaded = (state: HasAppStatus): boolean => {
+  const statusesResult = selectIntegrationStatusesResult(state);
+  return statusesResult.data !== undefined || statusesResult.isError;
+};
+
+/** The user's pick while it stays connected, otherwise the highest-priority connected app. */
+export const selectActiveApp = createSelector(
+  [selectSelectedApp, selectAppStatus],
+  (selectedApp, connectedApps): AppId | null => {
+    if (selectedApp && connectedApps[selectedApp]) return selectedApp;
+    return APP_PRIORITY.find((appId) => connectedApps[appId]) ?? null;
   },
 );

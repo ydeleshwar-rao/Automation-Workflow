@@ -5,7 +5,7 @@ import { Link2 } from "lucide-react";
 import { LcEventSelectorPopup } from "./LcEventSelectorPopup";
 import { AppSection, SelectSection } from "@/src/components/work-flow/appEvents/mail/components/shared/SelectorFields";
 import { useLeadsHubStatus } from "@/src/components/app-connections/leadshubs/hooks/useLeadsHubStatus";
-import { useActionEventTypes } from "@/src/components/app-connections/leadshubs/hooks/useActionEventTypes";
+import { ACTION_EVENT_INTEGRATION_SLUGS, useActionEventOptions } from "@/src/components/work-flow/apiIntegrations/actionEventTypesApi";
 import { ConnectInlineSection } from "@/src/components/work-flow/appEvents/shared/ConnectInlineSection";
 
 interface LeadConnectorSetupStepProps {
@@ -26,7 +26,7 @@ export function LeadConnectorSetupStep({
   const [isEventPopupOpen, setIsEventPopupOpen] = useState(false);
 
   const { connected: isConnected } = useLeadsHubStatus();
-  const { events, isLoading } = useActionEventTypes(isTrigger);
+  const { events, isLoading } = useActionEventOptions(ACTION_EVENT_INTEGRATION_SLUGS.LEADSHUB, isTrigger);
 
   const AppIcon = selectedApp.icon || Link2;
   const displayLabel = events.find((event) => event.id === selectedEvent)?.label ?? selectedEvent;

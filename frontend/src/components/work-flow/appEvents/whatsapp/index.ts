@@ -5,34 +5,88 @@ import type { IntegrationDescriptor, StepContext } from "../../uiOrchestrator/ty
 import type { ConfigStep } from "../../components/event-sidebar/eventSidebar";
 import { useWhatsAppStatus } from "@/src/components/app-connections/whatsapp/hooks/useWhatsAppStatus";
 import {
-  sendWhatsAppDocument,
-  sendWhatsAppImage,
-  sendWhatsAppLocation,
-  sendWhatsAppText,
-} from "@/src/components/app-connections/whatsapp/api/whatsapp.api";
+  useSendWhatsAppDocumentMutation,
+  useSendWhatsAppImageMutation,
+  useSendWhatsAppLocationMutation,
+  useSendWhatsAppTextMutation,
+} from "./apiIntegrations/whatsappApi";
 import { WhatsAppSetupStep } from "./components/setupWhatsApp";
 import { WhatsAppConfigureStep } from "./components/configureWhatsApp";
 import { WhatsAppTestStep } from "./components/testWhatsApp";
+
+type TestStatus = "idle" | "testing" | "success" | "failed";
+type SendMessage = (config: Record<string, unknown>, to: string) => Promise<unknown>;
+
+const DEFAULT_SEND_EVENT = "send_text";
 
 function resolveTokens(value: unknown): unknown {
   if (typeof value !== "string") return value;
   return value.replace(/\{\{map:[^|]*\|[^|]*\|([^}]*)\}\}/g, "$1").trim();
 }
 
+/** Resolve a config field's map tokens into the plain string the send routes expect. */
+function resolveField(config: Record<string, unknown>, fieldName: string): string {
+  return String(resolveTokens(config[fieldName]) ?? "");
+}
+
+function buildSampleIncomingMessage() {
+  return {
+    from: "919876543210",
+    message: "Sample incoming WhatsApp message",
+    received_at: new Date().toISOString(),
+  };
+}
+
+/** One sender per action event; unknown events fall back to a text message. */
+function useWhatsAppSenders(): Record<string, SendMessage> {
+  const [sendWhatsAppText] = useSendWhatsAppTextMutation();
+  const [sendWhatsAppImage] = useSendWhatsAppImageMutation();
+  const [sendWhatsAppDocument] = useSendWhatsAppDocumentMutation();
+  const [sendWhatsAppLocation] = useSendWhatsAppLocationMutation();
+
+  return useMemo(
+    () => ({
+      send_text: (config, to) =>
+        sendWhatsAppText({ to, message: resolveField(config, "message") }).unwrap(),
+      send_image: (config, to) =>
+        sendWhatsAppImage({
+          to,
+          url: resolveField(config, "url"),
+          caption: resolveField(config, "caption"),
+          mimetype: resolveField(config, "mimetype"),
+        }).unwrap(),
+      send_document: (config, to) =>
+        sendWhatsAppDocument({
+          to,
+          url: resolveField(config, "url"),
+          filename: resolveField(config, "filename"),
+          caption: resolveField(config, "caption"),
+          mimetype: resolveField(config, "mimetype"),
+        }).unwrap(),
+      send_location: (config, to) =>
+        sendWhatsAppLocation({
+          to,
+          lat: resolveField(config, "lat"),
+          lng: resolveField(config, "lng"),
+          name: resolveField(config, "name"),
+          address: resolveField(config, "address"),
+        }).unwrap(),
+    }),
+    [sendWhatsAppText, sendWhatsAppImage, sendWhatsAppDocument, sendWhatsAppLocation]
+  );
+}
+
 function useWhatsAppStepProps(step: ConfigStep, context: StepContext) {
   const { connected } = useWhatsAppStatus();
-  const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "failed">("idle");
+  const [testStatus, setTestStatus] = useState<TestStatus>("idle");
   const [sampleData, setSampleData] = useState<Record<string, unknown> | null>(null);
+  const senders = useWhatsAppSenders();
 
   const handleTestTrigger = useCallback(async () => {
     setTestStatus("testing");
     try {
       if (context.isTrigger) {
-        const sample = {
-          from: "919876543210",
-          message: "Sample incoming WhatsApp message",
-          received_at: new Date().toISOString(),
-        };
+        const sample = buildSampleIncomingMessage();
         setSampleData(sample);
         context.onFormDataChange({ ...context.node.config, testPayload: sample });
         setTestStatus("success");
@@ -40,48 +94,17 @@ function useWhatsAppStepProps(step: ConfigStep, context: StepContext) {
       }
 
       const rawConfig = context.node.config || {};
-      const to = String(resolveTokens(rawConfig.to) ?? "");
-      const eventKey = context.node.eventLabel;
-      const previewPayload = { ...rawConfig, to };
-      let result: unknown;
-
-      if (eventKey === "send_image") {
-        result = await sendWhatsAppImage({
-          to,
-          url: String(resolveTokens(rawConfig.url) ?? ""),
-          caption: String(resolveTokens(rawConfig.caption) ?? ""),
-          mimetype: String(resolveTokens(rawConfig.mimetype) ?? ""),
-        });
-      } else if (eventKey === "send_document") {
-        result = await sendWhatsAppDocument({
-          to,
-          url: String(resolveTokens(rawConfig.url) ?? ""),
-          filename: String(resolveTokens(rawConfig.filename) ?? ""),
-          caption: String(resolveTokens(rawConfig.caption) ?? ""),
-          mimetype: String(resolveTokens(rawConfig.mimetype) ?? ""),
-        });
-      } else if (eventKey === "send_location") {
-        result = await sendWhatsAppLocation({
-          to,
-          lat: String(resolveTokens(rawConfig.lat) ?? ""),
-          lng: String(resolveTokens(rawConfig.lng) ?? ""),
-          name: String(resolveTokens(rawConfig.name) ?? ""),
-          address: String(resolveTokens(rawConfig.address) ?? ""),
-        });
-      } else {
-        const payload = {
-          to,
-          message: String(resolveTokens(rawConfig.message) ?? ""),
-        };
-        result = await sendWhatsAppText(payload);
-      }
-      setSampleData((result as Record<string, unknown>) ?? previewPayload);
+      const to = resolveField(rawConfig, "to");
+      const eventKey = context.node.eventLabel ?? DEFAULT_SEND_EVENT;
+      const send = senders[eventKey] ?? senders[DEFAULT_SEND_EVENT];
+      const result = await send(rawConfig, to);
+      setSampleData((result as Record<string, unknown>) ?? { ...rawConfig, to });
       setTestStatus("success");
     } catch (error) {
       console.error("WhatsApp test failed:", error);
       setTestStatus("failed");
     }
-  }, [context]);
+  }, [context, senders]);
 
   const footer = useMemo(() => {
     if (step === "setup") {

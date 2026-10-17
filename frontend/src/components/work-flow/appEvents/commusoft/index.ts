@@ -1,19 +1,18 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import axiosInstance from "@/src/services/apiClient";
 import { CommusoftSetupStep } from "./components/setupCommusoft";
 import { CommusoftConfigureStep } from "./components/configureCommusoft";
 import { CommusoftTestStep } from "./components/testCommusoft";
 import type { IntegrationDescriptor, StepContext } from "../../uiOrchestrator/types";
 import type { ConfigStep } from "../../components/event-sidebar/eventSidebar";
-import { API_ROUTES } from "@/src/constants/api.constants";
 import { useCommusoftStatus } from "@/src/components/app-connections/commusoft/hooks/useCommusoftStatus";
+import { usePollingTriggerSamples } from "../../apiIntegrations/usePollingTriggerSamples";
+import { stripInternalConfigKeys } from "../../apiIntegrations/nodeConfig.utils";
+import type { PollingSample } from "../../apiIntegrations/workflowApi";
+import { useCreateCommusoftCustomerMutation } from "./apiIntegrations/commusoftApi";
 
-/** Map action event keys to their backend endpoints */
-const ACTION_ENDPOINTS: Record<string, string> = {
-  create_client: API_ROUTES.COMMUSOFT.CREATE_CUSTOMER,
-};
+const COMMUSOFT_INTEGRATION_KEY = "commusoft";
 
 /** Trigger event keys handled by the polling engine (integration_key = "commusoft") */
 const POLLING_TRIGGER_EVENTS = new Set([
@@ -23,27 +22,32 @@ const POLLING_TRIGGER_EVENTS = new Set([
   "new_job",
 ]);
 
+type TestStatus = "idle" | "testing" | "success" | "failed";
+type ActionTestRunner = (payload: Record<string, unknown>) => Promise<unknown>;
+
 function useCommusoftStepProps(step: ConfigStep, context: StepContext) {
   const { connected } = useCommusoftStatus();
-
-  const [pollingSubId, setPollingSubId] = useState<string | null>(
+  const [pollingSubscriptionId, setPollingSubscriptionId] = useState<string | null>(
     context.node.config?._pollingSubscriptionId ?? null
   );
-  const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "failed">("idle");
-  const [sampleData, setSampleData] = useState<Record<string, any>[] | null>(null);
+  const [testStatus, setTestStatus] = useState<TestStatus>("idle");
+  const [sampleData, setSampleData] = useState<PollingSample[] | null>(null);
 
-  const runTest = useCallback(async () => {
-    const config = context.node.config || {};
-    const { _formIsValid, _pollingSubscriptionId, ...payload } = config;
+  const fetchPollingSamples = usePollingTriggerSamples();
+  const [createCommusoftCustomer] = useCreateCommusoftCustomerMutation();
 
-    const eventKey =
-      context.node.eventLabel?.toLowerCase().replace(/\s+/g, "_") ?? "";
+  /** Action event keys mapped to the backend call that runs them. */
+  const actionTestRunners = useMemo<Record<string, ActionTestRunner>>(
+    () => ({
+      create_client: (payload) => createCommusoftCustomer(payload).unwrap(),
+    }),
+    [createCommusoftCustomer]
+  );
 
-    // ── Trigger path: subscribe to polling, then poll-now to fetch samples ──
-    if (context.isTrigger && POLLING_TRIGGER_EVENTS.has(eventKey)) {
+  const runTriggerTest = useCallback(
+    async (eventKey: string, payload: Record<string, unknown>) => {
       const workflowId = context.node.workflowId;
       const nodeId = context.node.id;
-
       if (!workflowId || !nodeId) {
         console.error("Missing subscription fields:", { workflowId, nodeId });
         setTestStatus("failed");
@@ -52,79 +56,67 @@ function useCommusoftStepProps(step: ConfigStep, context: StepContext) {
 
       setTestStatus("testing");
       try {
-        const upsertRes = await axiosInstance.post(
-          "/automation/polling/subscriptions",
+        const samples = await fetchPollingSamples(
           {
             workflow_id: workflowId,
             node_id: nodeId,
-            integration_key: "commusoft",
+            integration_key: COMMUSOFT_INTEGRATION_KEY,
             event_key: eventKey,
             config: payload,
+          },
+          (subscriptionId) => {
+            if (subscriptionId === pollingSubscriptionId) return;
+            setPollingSubscriptionId(subscriptionId);
+            context.onFormDataChange({ ...context.node.config, _pollingSubscriptionId: subscriptionId });
           }
         );
-
-        const subId: string | undefined = upsertRes.data?.data?.id;
-        if (!subId) {
+        if (!samples || samples.length === 0) {
           setTestStatus("failed");
           return;
         }
-
-        if (subId !== pollingSubId) {
-          setPollingSubId(subId);
-          context.onFormDataChange({
-            ...context.node.config,
-            _pollingSubscriptionId: subId,
-          });
-        }
-
-        const pollRes = await axiosInstance.post(
-          `/automation/polling/subscriptions/${subId}/poll-now`,
-          {}
-        );
-
-        const result = pollRes.data?.data;
-        // Backend returns `data` as an array (Zapier-style multi-sample preview).
-        const samples: Record<string, any>[] = Array.isArray(result?.data)
-          ? result.data
-          : result?.data
-          ? [result.data]
-          : [];
-
-        if (result?.found && samples.length > 0) {
-          setSampleData(samples);
-          setTestStatus("success");
-          // Persist first sample for flat variable picker, full list for multi-record picker.
-          context.onFormDataChange({
-            testPayload: samples[0],
-            testSamples: samples,
-          });
-        } else {
-          setTestStatus("failed");
-        }
+        setSampleData(samples);
+        setTestStatus("success");
+        // Persist first sample for flat variable picker, full list for multi-record picker.
+        context.onFormDataChange({ testPayload: samples[0], testSamples: samples });
       } catch (error) {
         console.error("Commusoft trigger test failed:", error);
         setTestStatus("failed");
       }
+    },
+    [context, fetchPollingSamples, pollingSubscriptionId]
+  );
+
+  const runActionTest = useCallback(
+    async (eventKey: string, payload: Record<string, unknown>) => {
+      const runActionTestCall = actionTestRunners[eventKey];
+      if (!runActionTestCall) {
+        console.error(`No endpoint configured for action: ${eventKey}`);
+        setTestStatus("failed");
+        return;
+      }
+
+      setTestStatus("testing");
+      try {
+        await runActionTestCall(payload);
+        setTestStatus("success");
+      } catch (error) {
+        console.error("Commusoft test trigger failed:", error);
+        setTestStatus("failed");
+      }
+    },
+    [actionTestRunners]
+  );
+
+  const runTest = useCallback(async () => {
+    const payload = stripInternalConfigKeys(context.node.config || {});
+    const eventKey = context.node.eventLabel?.toLowerCase().replace(/\s+/g, "_") ?? "";
+
+    if (context.isTrigger && POLLING_TRIGGER_EVENTS.has(eventKey)) {
+      await runTriggerTest(eventKey, payload);
       return;
     }
-
-    // ── Action path: hit the configured endpoint ──
-    const endpoint = ACTION_ENDPOINTS[eventKey];
-    if (!endpoint) {
-      console.error(`No endpoint configured for action: ${eventKey}`);
-      setTestStatus("failed");
-      return;
-    }
-
-    setTestStatus("testing");
-    try {
-      await axiosInstance.post(endpoint, payload);
-      setTestStatus("success");
-    } catch (error) {
-      console.error("Commusoft test trigger failed:", error);
-      setTestStatus("failed");
-    }
-  }, [context, pollingSubId]);
+    await runActionTest(eventKey, payload);
+  }, [context.node.config, context.node.eventLabel, context.isTrigger, runTriggerTest, runActionTest]);
 
   const footer = useMemo(() => {
     if (step === "setup") {
@@ -193,7 +185,7 @@ function useCommusoftStepProps(step: ConfigStep, context: StepContext) {
       },
       configure: {
         data: context.node.config || {},
-        onChange: (data: any, isValid: boolean) => {
+        onChange: (data: Record<string, unknown>, isValid: boolean) => {
           context.onFormDataChange({ ...data, _formIsValid: isValid });
         },
         webhookId: context.triggerWebhookId,

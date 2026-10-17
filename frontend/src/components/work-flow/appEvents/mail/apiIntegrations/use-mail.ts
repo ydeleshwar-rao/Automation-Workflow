@@ -1,11 +1,20 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { flattenWebhookPayload } from '@/src/components/template/autoMapper';
-import { SmtpConnection } from './types/mailApis.type';
-import { createSmtpConnection, getSmtpConnections } from './mailApis/createSmtpConnection.api';
-import { getSmtpPublicKey } from './mailApis/getPublicKey.api';
 import { encryptWithPublicKey } from '@/src/lib/smtp-crypto.util';
+import { useAppDispatch } from '@/src/store/hooks';
+import { SmtpConnection } from './types/mailApis.type';
+import {
+  mailApi,
+  useCreateSmtpConnectionMutation,
+  useGetSmtpConnectionsQuery,
+  useLazyGetSmtpPublicKeyQuery,
+  useSendEmailMutation,
+} from './mailApi';
+
+const NO_ACCOUNTS: MailAccount[] = [];
+const TEST_RECIPIENT_NAME = 'Test User';
 
 function resolveTemplateVars(html: string, payload: Record<string, unknown>): string {
   return html.replace(/\{\{[^}]+?__([^}]+)\}\}/g, (match, key) => {
@@ -26,6 +35,12 @@ function buildCleanedFlatFromTriggerPayload(triggerTestPayload: unknown): Record
   );
 }
 
+/** Strip {{map:id|label|value}} tokens → value (3rd segment). */
+function resolveMapTokens(value: unknown): string {
+  if (typeof value !== 'string') return value == null ? '' : String(value);
+  return value.replace(/\{\{map:[^|]*\|[^|]*\|([^}]*)\}\}/g, '$1').trim();
+}
+
 export interface SmtpConfig {
   host: string;
   user: string;
@@ -39,92 +54,49 @@ export type MailAccount = SmtpConnection & {
   config?: SmtpConfig;
 };
 
+type TestStatus = 'idle' | 'testing' | 'success' | 'failed';
+
 export function useMail() {
-  const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
-  const [selectedAccount, setSelectedAccount] = useState<MailAccount | null>(null);
-  const [accounts, setAccounts] = useState<MailAccount[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchAccounts = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      // Global connections — no location ID needed
-      const resp = await getSmtpConnections();
-
-      let connections: MailAccount[] = [];
-      const rawData = (resp as any)?.data || resp;
-
-      if (Array.isArray(rawData)) {
-        connections = rawData;
-      } else if (rawData && typeof rawData === 'object') {
-        connections = [rawData as MailAccount];
-      }
-
-      setAccounts(connections);
-
-      if (!selectedAccount && connections.length > 0) {
-        const active = connections.find(connection => connection.status === 'active') ?? connections[0];
-        setSelectedAccount(active);
-      }
-    } catch (fetchError: any) {
-      console.error('[useMail] fetchAccounts error:', fetchError.message);
-      setError(fetchError.message);
-      setAccounts([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedAccount]);
-
-  useEffect(() => {
-    fetchAccounts();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const dispatch = useAppDispatch();
+  const { data: accounts = NO_ACCOUNTS, isLoading } = useGetSmtpConnectionsQuery();
+  const [fetchSmtpPublicKey] = useLazyGetSmtpPublicKeyQuery();
+  const [createSmtpConnection] = useCreateSmtpConnectionMutation();
+  const [sendEmail] = useSendEmailMutation();
+  const [testStatus, setTestStatus] = useState<TestStatus>('idle');
 
   const addAccount = useCallback(async (config: SmtpConfig) => {
     // Encrypt password with server's RSA public key before it leaves the browser
-    const publicKey = await getSmtpPublicKey();
+    const publicKey = await fetchSmtpPublicKey().unwrap();
     const encryptedPassword = await encryptWithPublicKey(publicKey, config.pass);
 
-    const payload = {
+    // The mutation invalidates the connection list, so it refetches on its own.
+    return createSmtpConnection({
       name: config.user,
       host: config.host.trim(),
       port: config.port,
       username: config.user.trim(),
       encrypted_password: encryptedPassword,
       use_tls: config.tls,
-    };
+    }).unwrap();
+  }, [fetchSmtpPublicKey, createSmtpConnection]);
 
-    const newAccountData = await createSmtpConnection(payload);
-    const newAccount = (newAccountData as any)?.data || newAccountData;
+  // Hides the account in this session only — there is no delete route for global connections.
+  const removeAccount = useCallback((accountId: string) => {
+    dispatch(
+      mailApi.util.updateQueryData('getSmtpConnections', undefined, (cachedAccounts) =>
+        cachedAccounts.filter((account) => account.id !== accountId)
+      )
+    );
+  }, [dispatch]);
 
-    await fetchAccounts();
-    return newAccount;
-  }, [fetchAccounts]);
-
-  const removeAccount = useCallback((id: string) => {
-    setAccounts((prev) => prev.filter((account) => account.id !== id));
-    setSelectedAccount((prev) => (prev?.id === id ? null : prev));
-  }, []);
-
-  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
-
-  const sendTest = useCallback(async (config: any, triggerTestPayload?: unknown) => {
+  const sendTest = useCallback(async (config: Record<string, unknown>, triggerTestPayload?: unknown) => {
     setTestStatus('testing');
     try {
-      const { sendEmail } = await import('./mailApis/sendEmail.api');
-
-      const mapResolve = (value: any): string => {
-        if (typeof value !== "string") return value == null ? "" : String(value);
-        return value.replace(/\{\{map:[^|]*\|[^|]*\|([^}]*)\}\}/g, "$1").trim();
-      };
-
       const cleanedFlat = buildCleanedFlatFromTriggerPayload(triggerTestPayload);
-      const withNodeTokens = (value: any) => resolveTemplateVars(mapResolve(value), cleanedFlat);
+      const withNodeTokens = (value: unknown) => resolveTemplateVars(resolveMapTokens(value), cleanedFlat);
 
-      const payload = {
-        smtp_id: config.accountId,
+      await sendEmail({
+        smtp_id: config.accountId as string,
         name: withNodeTokens(config.fromName),
         subject: withNodeTokens(config.subject),
         html_template: withNodeTokens(config.htmlBody || config.body),
@@ -132,33 +104,24 @@ export function useMail() {
         cc: config.cc ? [withNodeTokens(config.cc)] : [],
         bcc: config.bcc ? [withNodeTokens(config.bcc)] : [],
         data: {
-          name: "Test User",
+          name: TEST_RECIPIENT_NAME,
           ...config,
         },
-      };
-
-      await sendEmail(payload);
+      }).unwrap();
       setTestStatus('success');
-    } catch (sendError: any) {
-      console.error('[useMail] sendTest error:', sendError.message);
+    } catch (sendError) {
+      console.error('[useMail] sendTest error:', sendError);
       setTestStatus('failed');
       throw sendError;
     }
-  }, []);
+  }, [sendEmail]);
 
   return useMemo(() => ({
-    selectedEvent,
-    setSelectedEvent,
-    selectedAccount,
-    setSelectedAccount,
     accounts,
     isLoading,
-    error,
     addAccount,
     removeAccount,
-    refetch: fetchAccounts,
     testStatus,
-    setTestStatus,
     sendTest,
-  }), [selectedEvent, selectedAccount, accounts, isLoading, error, addAccount, removeAccount, fetchAccounts, testStatus, sendTest]);
+  }), [accounts, isLoading, addAccount, removeAccount, testStatus, sendTest]);
 }

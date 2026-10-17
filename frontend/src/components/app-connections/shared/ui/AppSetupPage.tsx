@@ -12,25 +12,21 @@
  * app pages stay as thin wrappers.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Loader2, Unplug, CheckCircle2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
-import { useAppSelector, useAppDispatch } from "@/src/store/hooks";
-import {
-  selectConnectedServices,
-  selectServiceM8NeedsReauth,
-  selectAppStatusLoading,
-  fetchAppStatus,
-} from "@/src/store/appStatusSlice";
+import { useAppDispatch } from "@/src/store/hooks";
 import { Button } from "@/src/components/ui/button";
 import { CredentialsInlinePanel } from "./credentials-inline-panel";
-import { commusoftApi }  from "@/src/components/app-connections/commusoft/api/commusoft.api";
-import { servicem8Api }  from "@/src/components/app-connections/servicem8/api/servicem8.api";
-import { leadshubApi }   from "@/src/components/app-connections/leadshubs/api/leadshub.api";
-import { openAuthPopup, openSimproOAuthPopup } from "@/src/lib/open-auth-popup";
-import axiosInstance from "@/src/services/apiClient";
-import { API_ROUTES } from "@/src/constants/api.constants";
+import { openSimproOAuthPopup } from "@/src/lib/open-auth-popup";
+import {
+  INTEGRATION_STATUS_TAG,
+  integrationsApi,
+  isIntegrationAppId,
+  useDisconnectIntegrationMutation,
+  useGetIntegrationStatusesQuery,
+} from "@/src/components/app-connections/apiIntegrations/integrationsApi";
+import { useOAuthConnect } from "@/src/components/app-connections/hooks/useOAuthConnect";
 import type { AppDef } from "../types/app-def.types";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -60,7 +56,8 @@ function ConnectCard({
 
   const handleSuccess = useCallback(() => {
     setShowCredentials(false);
-    void dispatch(fetchAppStatus());
+    // The credentials panel connects outside RTK Query, so the cached statuses are refreshed here.
+    dispatch(integrationsApi.util.invalidateTags([INTEGRATION_STATUS_TAG]));
     toast.success(`Connected to ${app.name}!`);
   }, [app.name, dispatch]);
 
@@ -208,129 +205,34 @@ function ConnectedHeader({
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export function AppSetupPage({ app, DataView }: AppSetupPageProps) {
-  const dispatch         = useAppDispatch();
-  const queryClient      = useQueryClient();
-  const connectedServices = useAppSelector(selectConnectedServices);
-  const needsReauth       = useAppSelector(selectServiceM8NeedsReauth) && app.id === "servicem8";
-  const isLoading         = useAppSelector(selectAppStatusLoading);
+  const { data: integrationStatuses, isLoading } = useGetIntegrationStatusesQuery();
+  const [disconnectIntegration, { isLoading: isDisconnecting }] = useDisconnectIntegrationMutation();
+  const { startConnect, isConnecting } = useOAuthConnect(app.id, app.name);
 
-  const isConnected = connectedServices.includes(app.id) && !needsReauth;
+  const appStatus   = isIntegrationAppId(app.id) ? integrationStatuses?.[app.id] : undefined;
+  const needsReauth = appStatus?.needsReauth ?? false;
+  const isConnected = appStatus?.isConnected ?? false;
 
-  const [isConnecting,    setIsConnecting]    = useState(false);
-  const [isDisconnecting, setIsDisconnecting] = useState(false);
-
-  // Fetch status on mount
-  useEffect(() => {
-    void dispatch(fetchAppStatus());
-  }, [dispatch]);
-
-  // Listen for OAuth popup results
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-
-      const successTypes: Record<string, boolean> = {
-        GHL_CONNECT_SUCCESS:       true,
-        SERVICEM8_CONNECT_SUCCESS: true,
-        SIMPRO_CONNECT_SUCCESS:    true,
-        OAUTH_SUCCESS:             true,
-      };
-
-      if (successTypes[event.data?.type]) {
-        setIsConnecting(false);
-        void dispatch(fetchAppStatus());
-        queryClient.invalidateQueries({ queryKey: ["integration-status"] });
-        toast.success(`Connected to ${app.name}!`);
-      }
-      if (event.data?.type === "GHL_CONNECT_ERROR") {
-        setIsConnecting(false);
-        toast.error(event.data.message ?? "Connection failed");
-      }
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [app.name, dispatch, queryClient]);
-
-  const handleConnect = async () => {
-    setIsConnecting(true);
-    try {
-      if (app.id === "leadshub") {
-        const popup = openAuthPopup("LeadsHub");
-        const returnUrl = window.location.origin + "/dashboard/connections/ghl-callback";
-        const result = await leadshubApi.connect(returnUrl);
-        const authUrl = result?.data?.url ?? result?.data?.data?.url ?? result?.url;
-        if (authUrl && popup) {
-          popup.location.href = authUrl;
-          window.addEventListener("focus", () => {
-            void dispatch(fetchAppStatus());
-            queryClient.invalidateQueries({ queryKey: ["integration-status"] });
-          }, { once: true });
-        } else {
-          popup?.close();
-          toast.error(result.message || "Failed to start connection");
-          setIsConnecting(false);
-        }
-        return;
-      }
-
-      if (app.id === "servicem8") {
-        const popup = openAuthPopup("ServiceM8");
-        const returnUrl = window.location.origin + "/dashboard/servicem8";
-        const result = await servicem8Api.connect(returnUrl);
-        const authUrl = result?.data?.url ?? result?.data?.data?.url ?? result?.url;
-        if (authUrl && popup) {
-          popup.location.href = authUrl;
-          const checkClosed = setInterval(() => {
-            if (popup.closed) {
-              clearInterval(checkClosed);
-              void dispatch(fetchAppStatus());
-              queryClient.invalidateQueries({ queryKey: ["integration-status"] });
-              setIsConnecting(false);
-            }
-          }, 1000);
-        } else {
-          popup?.close();
-          toast.error(result.message || "Failed to start connection");
-          setIsConnecting(false);
-        }
-        return;
-      }
-
-      if (app.id === "simpro" && app.href) {
-        openSimproOAuthPopup(app.href);
-        setIsConnecting(false);
-        return;
-      }
-
-      setIsConnecting(false);
-    } catch (err) {
-      setIsConnecting(false);
-      toast.error(err instanceof Error ? err.message : "Connection failed");
+  const handleConnect = () => {
+    if (app.id === "simpro" && app.href) {
+      openSimproOAuthPopup(app.href);
+      return;
     }
+    void startConnect();
   };
 
   const handleDisconnect = async () => {
-    setIsDisconnecting(true);
+    if (!isIntegrationAppId(app.id)) return;
     try {
-      if (app.id === "servicem8") await servicem8Api.disconnect();
-      else if (app.id === "commusoft") await commusoftApi.disconnect();
-      else if (app.id === "leadshub") await leadshubApi.disconnect();
-      else if (app.id === "simpro") {
-        await axiosInstance.post(API_ROUTES.SIMPRO.DISCONNECT, {});
-      }
-
+      await disconnectIntegration(app.id).unwrap();
       toast.success(`Disconnected from ${app.name}`);
-      void dispatch(fetchAppStatus());
-      queryClient.invalidateQueries({ queryKey: ["integration-status"] });
     } catch {
       toast.error("Failed to disconnect");
-    } finally {
-      setIsDisconnecting(false);
     }
   };
 
   // Status loading skeleton
-  if (isLoading && !connectedServices.length) {
+  if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center min-h-[60vh]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -343,7 +245,7 @@ export function AppSetupPage({ app, DataView }: AppSetupPageProps) {
     return (
       <ConnectCard
         app={app}
-        onConnect={() => void handleConnect()}
+        onConnect={handleConnect}
         isConnecting={isConnecting}
         needsReauth={needsReauth}
       />

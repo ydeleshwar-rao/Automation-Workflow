@@ -1,12 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Building2, Loader2, ShieldCheck, Trash2, User } from "lucide-react";
 import { toast } from "sonner";
-import axios from "axios";
-import axiosInstance from "@/src/services/apiClient";
-import { API_ROUTES } from "@/src/constants/api.constants";
 import { Switch } from "@/src/components/ui/switch";
 import { GoogleLogo, MicrosoftLogo } from "@/src/components/onboarding/shared/SsoButtons";
 import {
@@ -15,46 +12,44 @@ import {
   startSsoSignIn,
   type SsoProvider,
 } from "@/src/lib/auth/provider";
-
-type SsoSettings = {
-  organization: { id: string; name: string; type: "individual" | "company"; ssoRequired: boolean };
-  connections: { id: string; provider: SsoProvider; domain: string; tenantKey: string; createdAt: string }[];
-  canRequireSso: boolean;
-};
+import {
+  useDeleteSsoConnectionMutation,
+  useGetSsoSettingsQuery,
+  useUpdateSsoRequiredMutation,
+} from "@/src/components/auth/apiIntegrations/companySsoApi";
+import { getApiErrorMessage } from "@/src/lib/api-error";
 
 const LOGOS = { google: GoogleLogo, microsoft: MicrosoftLogo };
 
-const errorMessage = (err: unknown) =>
-  axios.isAxiosError(err) ? err.response?.data?.message ?? err.message : err instanceof Error ? err.message : "Something went wrong";
+const DEFAULT_ERROR_MESSAGE = "Something went wrong";
+const SSO_PAGE_PATH = "/admin/sso";
+/** Set by /auth/callback after a successful "connect" round-trip to Google / Microsoft. */
+const CONNECTED_QUERY_PARAM = "connected";
+
+const errorMessage = (error: unknown) => getApiErrorMessage(error, DEFAULT_ERROR_MESSAGE);
 
 export default function CompanySsoPage() {
-  const [settings, setSettings] = useState<SsoSettings | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const { data: settingsResponse, error: settingsError } = useGetSsoSettingsQuery();
+  const [updateSsoRequired] = useUpdateSsoRequiredMutation();
+  const [deleteSsoConnection] = useDeleteSsoConnectionMutation();
   const [busy, setBusy] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const { data } = await axiosInstance.get(API_ROUTES.SSO.SETTINGS);
-      setSettings(data.data);
-    } catch (err) {
-      setLoadError(errorMessage(err));
-    }
-  }, []);
+  const settings = settingsResponse?.data ?? null;
+  const loadError = settingsError ? errorMessage(settingsError) : null;
 
   useEffect(() => {
-    load();
-    if (new URLSearchParams(window.location.search).get("connected")) {
+    if (new URLSearchParams(window.location.search).get(CONNECTED_QUERY_PARAM)) {
       toast.success("Company sign-in connected");
-      window.history.replaceState(null, "", "/admin/sso");
+      window.history.replaceState(null, "", SSO_PAGE_PATH);
     }
-  }, [load]);
+  }, []);
 
   const connect = async (provider: SsoProvider) => {
     setBusy(`connect-${provider}`);
     try {
       await startSsoSignIn(provider, { intent: "connect" });
-    } catch (err) {
-      toast.error(errorMessage(err));
+    } catch (connectError) {
+      toast.error(errorMessage(connectError));
       setBusy(null);
     }
   };
@@ -62,11 +57,10 @@ export default function CompanySsoPage() {
   const toggleRequired = async (required: boolean) => {
     setBusy("required");
     try {
-      const { data } = await axiosInstance.patch(API_ROUTES.SSO.SETTINGS, { sso_required: required });
-      setSettings(data.data);
+      await updateSsoRequired(required).unwrap();
       toast.success(required ? "Employees must now sign in with company SSO" : "Password sign-in allowed again");
-    } catch (err) {
-      toast.error(errorMessage(err));
+    } catch (updateError) {
+      toast.error(errorMessage(updateError));
     } finally {
       setBusy(null);
     }
@@ -76,11 +70,10 @@ export default function CompanySsoPage() {
     if (!window.confirm(`Disconnect ${label}? Employees from it won't be able to join automatically any more.`)) return;
     setBusy(`remove-${id}`);
     try {
-      const { data } = await axiosInstance.delete(API_ROUTES.SSO.CONNECTION(id));
-      setSettings(data.data);
+      await deleteSsoConnection(id).unwrap();
       toast.success("Disconnected");
-    } catch (err) {
-      toast.error(errorMessage(err));
+    } catch (removeError) {
+      toast.error(errorMessage(removeError));
     } finally {
       setBusy(null);
     }

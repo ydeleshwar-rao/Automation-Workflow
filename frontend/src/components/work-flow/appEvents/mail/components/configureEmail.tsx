@@ -9,7 +9,7 @@ import { generateEmailTemplate } from "@/src/components/template/generateEmailTe
 import { useAutoMap } from "@/src/components/template/useAutoMap";
 import { Plus, X } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
-import axiosInstance from "@/src/services/apiClient";
+import { useUpdateNodeMutation } from "@/src/components/work-flow/apiIntegrations/workflowApi";
 import { ConfigField, ConfigTextArea } from "../../../components/ChipTextField";
 import { WorkflowSection } from "../../../components/SectionWrapper";
 import {
@@ -167,6 +167,7 @@ export function MailConfigureStep({
   triggerNodeId,
 }: MailConfigureStepProps) {
   const activeNodeId = nodeId;
+  const [updateNode] = useUpdateNodeMutation();
   const {
     control,
     watch,
@@ -428,8 +429,8 @@ export function MailConfigureStep({
             void Promise.resolve(onChange(updatedValues, result.success)).catch(() => {});
 
             if (activeNodeId) {
-              void axiosInstance
-                .patch(`/automation/nodes/update/${activeNodeId}`, { config: updatedValues })
+              void updateNode({ id: activeNodeId, patch: { config: updatedValues } })
+                .unwrap()
                 .catch(console.error);
             }
           }}

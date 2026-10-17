@@ -7,8 +7,9 @@
  * Needs NEXT_PUBLIC_GOOGLE_CLIENT_ID and/or NEXT_PUBLIC_MICROSOFT_CLIENT_ID.
  */
 
-import axios from "axios";
-import { API_ROUTES } from "@/src/constants/api.constants";
+import { store } from "@/src/store/store";
+import { authApi, type AuthSessionResponse, type SsoTokenRequest } from "@/src/components/auth/apiIntegrations/authApi";
+import { getApiErrorMessage } from "@/src/lib/api-error";
 
 export type SsoProvider = "google" | "microsoft";
 
@@ -33,6 +34,7 @@ export const PROVIDER_LABEL: Record<SsoProvider, { personal: string; company: st
 
 const SSO_STATE_KEY = "sso_request";
 const SSO_LAST_INTENT_KEY = "sso_last_intent";
+const SSO_FAILED_MESSAGE = "Sign-in failed";
 
 /** Intent of the most recent SSO redirect (for "back" links after a failure). */
 export function lastSsoIntent(): SsoIntent {
@@ -53,9 +55,13 @@ type SsoRequest = {
 
 const callbackUrl = () => `${window.location.origin}/auth/callback`;
 
-function apiError(err: unknown, fallback: string): Error {
-  if (axios.isAxiosError(err)) return new Error(err.response?.data?.message ?? err.message);
-  return err instanceof Error ? err : new Error(fallback);
+/** Callers show `error.message`, so backend failures are rethrown as plain Errors. */
+async function requestOrThrow<Result>(request: Promise<Result>, fallbackMessage: string): Promise<Result> {
+  try {
+    return await request;
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error, fallbackMessage));
+  }
 }
 
 // ── Google / Microsoft sign-in ─────────────────────────────────────────────
@@ -115,7 +121,7 @@ export async function startSsoSignIn(
 export const startGoogleSignIn = () => startSsoSignIn("google");
 
 export type SsoCallbackResult =
-  | { intent: "signin" | "company-setup"; data: unknown }
+  | { intent: "signin" | "company-setup"; data: AuthSessionResponse }
   | { intent: "connect"; data: unknown };
 
 /**
@@ -124,9 +130,34 @@ export type SsoCallbackResult =
  * current workspace.
  */
 export async function completeSsoCallback(): Promise<SsoCallbackResult> {
+  const request = readSsoRedirect();
+  const body: SsoTokenRequest = {
+    provider: request.provider,
+    id_token: request.idToken,
+    nonce: request.nonce,
+    intent: request.intent === "connect" ? undefined : request.intent,
+    organization_name: request.organizationName,
+  };
+
+  if (request.intent === "connect") {
+    const response = await requestOrThrow(
+      store.dispatch(authApi.endpoints.connectSso.initiate(body)).unwrap(),
+      SSO_FAILED_MESSAGE,
+    );
+    return { intent: "connect", data: response.data };
+  }
+  const response = await requestOrThrow(
+    store.dispatch(authApi.endpoints.ssoSignIn.initiate(body)).unwrap(),
+    SSO_FAILED_MESSAGE,
+  );
+  return { intent: request.intent, data: response.data };
+}
+
+/** Reads the provider's redirect, clears it from the URL and checks it answers the request we started. */
+function readSsoRedirect(): SsoRequest & { idToken: string } {
   const hash = new URLSearchParams(window.location.hash.slice(1));
   const query = new URLSearchParams(window.location.search);
-  const raw = sessionStorage.getItem(SSO_STATE_KEY);
+  const storedRequest = sessionStorage.getItem(SSO_STATE_KEY);
   sessionStorage.removeItem(SSO_STATE_KEY);
   window.history.replaceState(null, "", window.location.pathname);
 
@@ -138,30 +169,12 @@ export async function completeSsoCallback(): Promise<SsoCallbackResult> {
       : `Sign-in failed: ${description ?? oauthError}`);
   }
 
-  const request = raw ? (JSON.parse(raw) as SsoRequest) : null;
+  const request = storedRequest ? (JSON.parse(storedRequest) as SsoRequest) : null;
   const idToken = hash.get("id_token");
   if (!request || !idToken || hash.get("state") !== request.state) {
     throw new Error("Sign-in could not be verified. Please try again.");
   }
-
-  const body = {
-    provider: request.provider,
-    id_token: idToken,
-    nonce: request.nonce,
-    intent: request.intent === "connect" ? undefined : request.intent,
-    organization_name: request.organizationName,
-  };
-
-  try {
-    if (request.intent === "connect") {
-      const { data: apiRes } = await axios.post(API_ROUTES.SSO.CONNECT, body, { withCredentials: true });
-      return { intent: "connect", data: apiRes.data };
-    }
-    const { data: apiRes } = await axios.post(API_ROUTES.SSO.CALLBACK, body, { withCredentials: true });
-    return { intent: request.intent, data: apiRes.data };
-  } catch (err) {
-    throw apiError(err, "Sign-in failed");
-  }
+  return { ...request, idToken };
 }
 
 // ── Company SSO discovery ──────────────────────────────────────────────────
@@ -169,38 +182,37 @@ export async function completeSsoCallback(): Promise<SsoCallbackResult> {
 export type SsoDiscovery = { domain: string; providers: SsoProvider[]; organizationName: string | null };
 
 export async function discoverCompanySso(email: string): Promise<SsoDiscovery> {
-  try {
-    const { data } = await axios.get(API_ROUTES.SSO.DISCOVER, { params: { email } });
-    return data.data as SsoDiscovery;
-  } catch (err) {
-    throw apiError(err, "Could not look up company sign-in");
-  }
+  const response = await requestOrThrow(
+    store.dispatch(authApi.endpoints.discoverCompanySso.initiate(email, { subscribe: false, forceRefetch: true })).unwrap(),
+    "Could not look up company sign-in",
+  );
+  return response.data;
 }
 
 // ── Password reset ─────────────────────────────────────────────────────────
 
+const RESET_TOKEN_PARAM = "token";
+
 export async function requestPasswordReset(email: string): Promise<void> {
-  try {
-    await axios.post(API_ROUTES.AUTH.FORGOT_PASSWORD, { email });
-  } catch (err) {
-    throw apiError(err, "Could not send the reset email");
-  }
+  await requestOrThrow(
+    store.dispatch(authApi.endpoints.requestPasswordReset.initiate(email)).unwrap(),
+    "Could not send the reset email",
+  );
 }
 
 /** On /update-password: throws if the reset link is missing, invalid or expired. */
 export async function checkPasswordResetLink(): Promise<void> {
-  if (!new URLSearchParams(window.location.search).get("token")) {
+  if (!new URLSearchParams(window.location.search).get(RESET_TOKEN_PARAM)) {
     throw new Error("Invalid or expired reset link. Please request a new one.");
   }
 }
 
 export async function updatePasswordFromResetLink(password: string): Promise<void> {
-  try {
-    const token = new URLSearchParams(window.location.search).get("token") ?? "";
-    await axios.post(API_ROUTES.AUTH.RESET_PASSWORD, { token, password });
-  } catch (err) {
-    throw apiError(err, "Could not update the password");
-  }
+  const token = new URLSearchParams(window.location.search).get(RESET_TOKEN_PARAM) ?? "";
+  await requestOrThrow(
+    store.dispatch(authApi.endpoints.resetPassword.initiate({ token, password })).unwrap(),
+    "Could not update the password",
+  );
 }
 
 /** Where to send the user after a successful reset: they must log in with the new password. */

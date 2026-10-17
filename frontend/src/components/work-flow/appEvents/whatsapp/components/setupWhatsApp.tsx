@@ -4,9 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Link2, Loader2, LucideIcon, MessageCircle, QrCode } from "lucide-react";
 import { AppSection, SelectSection } from "@/src/components/work-flow/appEvents/mail/components/shared/SelectorFields";
 import { SelectionPopup } from "@/src/components/ui/selection-popup";
-import { connectWhatsApp, getWhatsAppQr } from "@/src/components/app-connections/whatsapp/api/whatsapp.api";
 import { useWhatsAppStatus } from "@/src/components/app-connections/whatsapp/hooks/useWhatsAppStatus";
 import { WHATSAPP_ACTION_EVENTS, WHATSAPP_TRIGGER_EVENTS } from "./whatsappEvents";
+import { useConnectWhatsAppMutation, useLazyGetWhatsAppQrQuery } from "../apiIntegrations/whatsappApi";
+
+/** How often to re-check the session (and refresh the QR) while the user scans it. */
+const CONNECTION_POLL_INTERVAL_MS = 15000;
 
 interface WhatsAppSetupStepProps {
   selectedEvent: string | null;
@@ -30,6 +33,8 @@ export function WhatsAppSetupStep({
   const [statusText, setStatusText] = useState("Disconnected");
   const [error, setError] = useState<string | null>(null);
   const { connected, data, refetch } = useWhatsAppStatus();
+  const [connectWhatsApp] = useConnectWhatsAppMutation();
+  const [fetchWhatsAppQr] = useLazyGetWhatsAppQrQuery();
 
   const events = isTrigger ? WHATSAPP_TRIGGER_EVENTS : WHATSAPP_ACTION_EVENTS;
   const AppIcon = selectedApp.icon || MessageCircle;
@@ -51,8 +56,8 @@ export function WhatsAppSetupStep({
     setError(null);
     setStatusText("Starting WhatsApp session...");
     try {
-      await connectWhatsApp({ reset: true });
-      const qrData = await getWhatsAppQr();
+      await connectWhatsApp({ reset: true }).unwrap();
+      const qrData = await fetchWhatsAppQr().unwrap();
       setQr(qrData.qr ?? qrData.qrCode ?? qrData.qr_code ?? null);
       setStatusText(qrData.message ?? qrData.status ?? "Waiting for QR...");
       const latest = await refetch();
@@ -83,15 +88,15 @@ export function WhatsAppSetupStep({
           setStatusText(`Connected${latest.phone_number ? `: ${latest.phone_number}` : ""}`);
           return;
         }
-        const qrData = await getWhatsAppQr().catch(() => null);
+        const qrData = await fetchWhatsAppQr().unwrap().catch(() => null);
         setQr(qrData?.qr ?? qrData?.qrCode ?? qrData?.qr_code ?? null);
         if (qrData?.message) setStatusText(qrData.message);
       } catch (statusError) {
         setError(statusError instanceof Error ? statusError.message : "Could not check WhatsApp status");
       }
-    }, 15000);
+    }, CONNECTION_POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [connected, data?.phone_number, hasStartedConnect, refetch]);
+  }, [connected, data?.phone_number, hasStartedConnect, refetch, fetchWhatsAppQr]);
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">

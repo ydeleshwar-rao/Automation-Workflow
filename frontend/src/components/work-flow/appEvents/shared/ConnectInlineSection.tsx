@@ -7,37 +7,38 @@
  * Handles OAuth (popup) and Credentials-based connections inline.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { Loader2, Plug, Lock, User, Info } from "lucide-react";
 import { toast }         from "sonner";
 import { Button }        from "@/src/components/ui/button";
 import { Input }         from "@/src/components/ui/input";
-import { useAppDispatch } from "@/src/store/hooks";
-import { fetchAppStatus } from "@/src/store/appStatusSlice";
-import { useQueryClient } from "@tanstack/react-query";
-import { servicem8Api }  from "@/src/components/app-connections/servicem8/api/servicem8.api";
-import { leadshubApi }   from "@/src/components/app-connections/leadshubs/api/leadshub.api";
-import { commusoftApi }  from "@/src/components/app-connections/commusoft/api/commusoft.api";
-import { openAuthPopup } from "@/src/lib/open-auth-popup";
+import { getApiErrorMessage } from "@/src/lib/api-error";
+import {
+  useConnectCommusoftMutation,
+  type IntegrationAppId,
+} from "@/src/components/app-connections/apiIntegrations/integrationsApi";
+import { useOAuthConnect } from "@/src/components/app-connections/hooks/useOAuthConnect";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type AppConnectId = "servicem8" | "commusoft" | "leadshub" | "simpro";
-
 interface ConnectInlineSectionProps {
-  appId:     AppConnectId;
+  appId:     IntegrationAppId;
   appName:   string;
   accentColor?: string;
   appImage?: string;
 }
 
+const COMMUSOFT_BRAND_COLOR = "#f58320";
+const DEFAULT_ACCENT_COLOR = "#6366f1";
+
 // ── Commusoft credentials form ────────────────────────────────────────────────
 
-function CommusoftConnectForm({ onSuccess }: { onSuccess: () => void }) {
+/** Commusoft uses credentials, not OAuth; a successful connect refreshes the statuses itself. */
+function CommusoftConnectForm() {
+  const [connectCommusoft, { isLoading }] = useConnectCommusoftMutation();
   const [clientId,  setClientId]  = useState("");
   const [username,  setUsername]  = useState("");
   const [password,  setPassword]  = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [error,     setError]     = useState<string | null>(null);
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -46,16 +47,12 @@ function CommusoftConnectForm({ onSuccess }: { onSuccess: () => void }) {
       setError("Please fill in all fields.");
       return;
     }
-    setIsLoading(true);
     setError(null);
     try {
-      await commusoftApi.connect({ clientId, username, password });
+      await connectCommusoft({ clientId, username, password }).unwrap();
       toast.success("Commusoft connected successfully!");
-      onSuccess();
     } catch (connectError) {
-      setError(connectError instanceof Error ? connectError.message : "Failed to connect. Check your credentials.");
-    } finally {
-      setIsLoading(false);
+      setError(getApiErrorMessage(connectError, "Failed to connect. Check your credentials."));
     }
   };
 
@@ -109,7 +106,7 @@ function CommusoftConnectForm({ onSuccess }: { onSuccess: () => void }) {
         size="sm"
         disabled={isLoading}
         className="w-full h-9 gap-2 text-xs font-bold"
-        style={{ background: "#f58320" }}
+        style={{ background: COMMUSOFT_BRAND_COLOR }}
       >
         {isLoading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Connecting…</> : "Authorize Connection"}
       </Button>
@@ -122,85 +119,11 @@ function CommusoftConnectForm({ onSuccess }: { onSuccess: () => void }) {
 export function ConnectInlineSection({
   appId,
   appName,
-  accentColor = "#6366f1",
+  accentColor = DEFAULT_ACCENT_COLOR,
   appImage,
 }: ConnectInlineSectionProps) {
-  const dispatch     = useAppDispatch();
-  const queryClient  = useQueryClient();
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [showForm,     setShowForm]     = useState(false);
-
-  const refresh = useCallback(() => {
-    void dispatch(fetchAppStatus());
-    queryClient.invalidateQueries({ queryKey: ["integration-status"] });
-  }, [dispatch, queryClient]);
-
-  // Listen for OAuth popup success messages
-  useEffect(() => {
-    const handler = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      const successTypes = ["GHL_CONNECT_SUCCESS", "SERVICEM8_CONNECT_SUCCESS", "SIMPRO_CONNECT_SUCCESS", "OAUTH_SUCCESS"];
-      if (successTypes.includes(event.data?.type)) {
-        setIsConnecting(false);
-        toast.success(`${appName} connected!`);
-        refresh();
-      }
-      if (event.data?.type === "GHL_CONNECT_ERROR") {
-        setIsConnecting(false);
-        toast.error(event.data.message ?? "Connection failed");
-      }
-    };
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, [appName, refresh]);
-
-  const handleOAuthConnect = async () => {
-    setIsConnecting(true);
-    try {
-      if (appId === "servicem8") {
-        const popup = openAuthPopup("ServiceM8");
-        const returnUrl = window.location.origin + "/dashboard/servicem8";
-        const result = await servicem8Api.connect(returnUrl);
-        const authUrl = result?.data?.url ?? result?.data?.data?.url ?? result?.url;
-        if (authUrl && popup) {
-          popup.location.href = authUrl;
-          const check = setInterval(() => {
-            if (popup.closed) {
-              clearInterval(check);
-              setIsConnecting(false);
-              refresh();
-            }
-          }, 1000);
-        } else {
-          popup?.close();
-          setIsConnecting(false);
-          toast.error(result?.message ?? "Failed to start connection");
-        }
-        return;
-      }
-
-      if (appId === "leadshub") {
-        const popup = openAuthPopup("LeadsHub");
-        const returnUrl = window.location.origin + "/dashboard/connections/ghl-callback";
-        const result = await leadshubApi.connect(returnUrl);
-        const authUrl = result?.data?.url ?? result?.data?.data?.url ?? result?.url;
-        if (authUrl && popup) {
-          popup.location.href = authUrl;
-          window.addEventListener("focus", () => { setIsConnecting(false); refresh(); }, { once: true });
-        } else {
-          popup?.close();
-          setIsConnecting(false);
-          toast.error(result?.message ?? "Failed to start connection");
-        }
-        return;
-      }
-
-      setIsConnecting(false);
-    } catch (error) {
-      setIsConnecting(false);
-      toast.error(error instanceof Error ? error.message : "Connection failed");
-    }
-  };
+  const { startConnect, isConnecting } = useOAuthConnect(appId, appName);
+  const [showForm, setShowForm] = useState(false);
 
   return (
     <div
@@ -228,7 +151,7 @@ export function ConnectInlineSection({
       {/* Commusoft: credentials form toggle */}
       {appId === "commusoft" ? (
         showForm ? (
-          <CommusoftConnectForm onSuccess={refresh} />
+          <CommusoftConnectForm />
         ) : (
           <Button
             size="sm"
@@ -246,7 +169,7 @@ export function ConnectInlineSection({
           size="sm"
           className="w-full h-9 gap-2 text-xs font-bold text-white"
           style={{ background: accentColor }}
-          onClick={() => void handleOAuthConnect()}
+          onClick={() => void startConnect()}
           disabled={isConnecting}
         >
           {isConnecting ? (

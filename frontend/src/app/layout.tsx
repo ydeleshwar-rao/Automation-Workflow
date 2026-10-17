@@ -2,11 +2,9 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "sonner";
-// @ts-ignore
 import "./globals.css";
-import { QueryProvider } from "../providers/QueryProvider";
 import StoreProviders from "../providers/StoreProvder";
-import { IntegrationProvider } from "../components/app-connections/context/IntegrationContext";
+import { IntegrationStatusProvider } from "../components/app-connections/context/IntegrationStatusProvider";
 import { CrossTabLogoutProvider } from "../components/providers/cross-tab-logout";
 
 // ── Fonts ─────────────────────────────────────────────────────
@@ -56,16 +54,14 @@ export default function RootLayout({
         >
           <StoreProviders>
             <CrossTabLogoutProvider>
-            <IntegrationProvider>
-              <QueryProvider>
-                {children}
-                <Toaster
-                  richColors
-                  position="top-right"
-                  offset="1rem"
-                />
-              </QueryProvider>
-            </IntegrationProvider>
+            <IntegrationStatusProvider>
+              {children}
+              <Toaster
+                richColors
+                position="top-right"
+                offset="1rem"
+              />
+            </IntegrationStatusProvider>
             </CrossTabLogoutProvider>
           </StoreProviders>
         </ThemeProvider>

@@ -19,6 +19,8 @@ import type { RootState }               from "@/src/store/store";
 import { useAppDispatch }               from "@/src/store/hooks";
 import { resetAppStatus }               from "@/src/store/appStatusSlice";
 import { clearAccess }                  from "@/src/store/accessSlice";
+import { baseApi }                      from "@/src/store/baseApi";
+import { useLogoutMutation }            from "@/src/components/auth/apiIntegrations/authApi";
 import {
   loadProfile,
   clearProfile,
@@ -41,6 +43,7 @@ export function useUser() {
 
   const router   = useRouter();
   const dispatch = useAppDispatch();
+  const [logoutRequest] = useLogoutMutation();
   const { user } = useSelector((state: RootState) => state.access);
 
   useEffect(() => {
@@ -83,6 +86,9 @@ export function useUser() {
   }, [profile]);
 
   const logout = async () => {
+    // Clears the HttpOnly auth cookies; best effort so a network error never traps the user signed in
+    await logoutRequest().unwrap().catch(() => undefined);
+
     // Signal all other open tabs to log out too
     broadcastLogout();
 
@@ -90,6 +96,8 @@ export function useUser() {
     clearProfile();
     dispatch(resetAppStatus());
     dispatch(clearAccess());
+    // Drop every cached server response so the next user never sees this user's data
+    dispatch(baseApi.util.resetApiState());
     await clearBrowserDataOnLogout();
     router.push("/login");
   };

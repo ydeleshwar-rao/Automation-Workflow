@@ -10,7 +10,7 @@
 
 import axios from "axios"
 import { loadSession, saveSession, clearSession, isSessionValid } from "@/src/store/localStorage"
-import { API_BASE_URL } from "@/src/constants/api.constants"
+import { API_BASE_URL, API_ROUTES } from "@/src/constants/api.constants"
 
 const BASE_URL = API_BASE_URL
 
@@ -26,6 +26,30 @@ const axiosInstance = axios.create({
 
 // ── Response interceptor: silent token refresh on 401 ────────────────────────
 
+/**
+ * Endpoints called without a session (or that are the refresh itself). A 401 from them is
+ * a real answer (wrong password, invalid SSO token, expired reset link) — refreshing would
+ * loop or bounce the user to /login, so the error goes straight back to the caller.
+ */
+const ENDPOINTS_WITHOUT_TOKEN_REFRESH: readonly string[] = [
+  API_ROUTES.AUTH.LOGIN,
+  API_ROUTES.AUTH.GOOGLE,
+  API_ROUTES.AUTH.REGISTER,
+  API_ROUTES.AUTH.REFRESH,
+  API_ROUTES.AUTH.SETUP,
+  API_ROUTES.AUTH.FORGOT_PASSWORD,
+  API_ROUTES.AUTH.RESET_PASSWORD,
+  API_ROUTES.SSO.CALLBACK,
+  API_ROUTES.SSO.DISCOVER,
+]
+
+const ABSOLUTE_URL_PATTERN = /^https?:\/\//
+
+function shouldSkipTokenRefresh(requestUrl: string): boolean {
+  const absoluteUrl = ABSOLUTE_URL_PATTERN.test(requestUrl) ? requestUrl : `${BASE_URL}${requestUrl}`
+  return ENDPOINTS_WITHOUT_TOKEN_REFRESH.some((endpoint) => absoluteUrl.startsWith(endpoint))
+}
+
 let isRefreshing = false
 type QueueEntry = { resolve: () => void; reject: (err: unknown) => void }
 let refreshQueue: QueueEntry[] = []
@@ -38,9 +62,7 @@ axiosInstance.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    // Skip refresh for auth endpoints to prevent loops
-    const url: string = originalRequest.url ?? ""
-    if (url.includes("/auth/login") || url.includes("/auth/google") || url.includes("/auth/refresh")) {
+    if (shouldSkipTokenRefresh(originalRequest.url ?? "")) {
       return Promise.reject(error)
     }
 
@@ -64,11 +86,8 @@ axiosInstance.interceptors.response.use(
 
     try {
       // POST /auth/refresh. Refresh token is sent only via HttpOnly cookie.
-      const { data } = await axios.post(
-        `${BASE_URL}/auth/refresh`,
-        {},
-        { withCredentials: true }
-      )
+      // Plain axios (not axiosInstance) so a 401 here cannot recurse into this interceptor
+      const { data } = await axios.post(API_ROUTES.AUTH.REFRESH, {}, { withCredentials: true })
 
       const refreshed = data?.data
       if (!refreshed?.user) throw new Error("No user in refresh response")

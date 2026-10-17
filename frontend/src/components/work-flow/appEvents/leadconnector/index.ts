@@ -1,13 +1,17 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import axiosInstance from "@/src/services/apiClient";
-import { API_ROUTES } from "@/src/constants/api.constants";
 import { LeadConnectorSetupStep } from "./components/setupLeadConnector";
 import { LeadConnectorConfigureStep } from "./components/configureLeadConnector";
 import { LeadConnectorTestStep } from "./components/testLeadConnector";
 import type { IntegrationDescriptor, StepContext } from "../../uiOrchestrator/types";
 import type { ConfigStep } from "../../components/event-sidebar/eventSidebar";
+import { usePollingTriggerSamples } from "../../apiIntegrations/usePollingTriggerSamples";
+import { stripInternalConfigKeys } from "../../apiIntegrations/nodeConfig.utils";
+import type { PollingSample } from "../../apiIntegrations/workflowApi";
+import { useTestAddUpdateOpportunityMutation } from "./apiIntegrations/leadConnectorApi";
+
+const LEADSHUB_INTEGRATION_KEY = "leadshub";
 
 /** Trigger event keys handled by the polling engine (integration_key = "leadshub") */
 const POLLING_TRIGGER_EVENTS = new Set([
@@ -15,30 +19,39 @@ const POLLING_TRIGGER_EVENTS = new Set([
   "pipeline_stage_changed",
 ]);
 
-/** Map action event keys to their backend test endpoints */
-const ACTION_ENDPOINTS: Record<string, string> = {
-  add_update_opportunity: API_ROUTES.GHL.TEST_ADD_UPDATE_OPPORTUNITY,
-};
+type TestStatus = "idle" | "testing" | "success" | "failed";
+type ActionTestRunner = (payload: Record<string, unknown>) => Promise<unknown>;
+
+/** Some test routes wrap the result in `{ data }`, others return it bare. */
+function unwrapActionResult(response: unknown): unknown {
+  if (response && typeof response === "object" && "data" in response) {
+    return (response as { data: unknown }).data ?? response;
+  }
+  return response;
+}
 
 function useLeadConnectorStepProps(step: ConfigStep, context: StepContext) {
-  const [pollingSubId, setPollingSubId] = useState<string | null>(
+  const [pollingSubscriptionId, setPollingSubscriptionId] = useState<string | null>(
     context.node.config?._pollingSubscriptionId ?? null
   );
-  const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "failed">("idle");
-  const [sampleData, setSampleData] = useState<Record<string, any>[] | null>(null);
+  const [testStatus, setTestStatus] = useState<TestStatus>("idle");
+  const [sampleData, setSampleData] = useState<PollingSample[] | null>(null);
 
-  const runTest = useCallback(async () => {
-    const config = context.node.config || {};
-    const { _formIsValid, _pollingSubscriptionId, ...payload } = config;
+  const fetchPollingSamples = usePollingTriggerSamples();
+  const [testAddUpdateOpportunity] = useTestAddUpdateOpportunityMutation();
 
-    // eventLabel holds the action_key (see setupLeadConnector — onEventSelect passes id).
-    const eventKey = context.node.eventLabel ?? "";
+  /** Action event keys mapped to the backend test call that runs them. */
+  const actionTestRunners = useMemo<Record<string, ActionTestRunner>>(
+    () => ({
+      add_update_opportunity: (payload) => testAddUpdateOpportunity(payload).unwrap(),
+    }),
+    [testAddUpdateOpportunity]
+  );
 
-    // ── Trigger path: subscribe to polling, then poll-now to fetch samples ──
-    if (context.isTrigger && POLLING_TRIGGER_EVENTS.has(eventKey)) {
+  const runTriggerTest = useCallback(
+    async (eventKey: string, payload: Record<string, unknown>) => {
       const workflowId = context.node.workflowId;
       const nodeId = context.node.id;
-
       if (!workflowId || !nodeId) {
         console.error("Missing subscription fields:", { workflowId, nodeId });
         setTestStatus("failed");
@@ -47,79 +60,68 @@ function useLeadConnectorStepProps(step: ConfigStep, context: StepContext) {
 
       setTestStatus("testing");
       try {
-        const upsertRes = await axiosInstance.post(
-          "/automation/polling/subscriptions",
+        const samples = await fetchPollingSamples(
           {
             workflow_id: workflowId,
             node_id: nodeId,
-            integration_key: "leadshub",
+            integration_key: LEADSHUB_INTEGRATION_KEY,
             event_key: eventKey,
             config: payload,
+          },
+          (subscriptionId) => {
+            if (subscriptionId === pollingSubscriptionId) return;
+            setPollingSubscriptionId(subscriptionId);
+            context.onFormDataChange({ ...context.node.config, _pollingSubscriptionId: subscriptionId });
           }
         );
-
-        const subId: string | undefined = upsertRes.data?.data?.id;
-        if (!subId) {
+        if (!samples || samples.length === 0) {
           setTestStatus("failed");
           return;
         }
-
-        if (subId !== pollingSubId) {
-          setPollingSubId(subId);
-          context.onFormDataChange({
-            ...context.node.config,
-            _pollingSubscriptionId: subId,
-          });
-        }
-
-        const pollRes = await axiosInstance.post(
-          `/automation/polling/subscriptions/${subId}/poll-now`,
-          {}
-        );
-
-        const result = pollRes.data?.data;
-        const samples: Record<string, any>[] = Array.isArray(result?.data)
-          ? result.data
-          : result?.data
-          ? [result.data]
-          : [];
-
-        if (result?.found && samples.length > 0) {
-          setSampleData(samples);
-          setTestStatus("success");
-          context.onFormDataChange({
-            testPayload: samples[0],
-            testSamples: samples,
-          });
-        } else {
-          setTestStatus("failed");
-        }
+        setSampleData(samples);
+        setTestStatus("success");
+        context.onFormDataChange({ testPayload: samples[0], testSamples: samples });
       } catch (error) {
         console.error("LeadsHub trigger test failed:", error);
         setTestStatus("failed");
       }
+    },
+    [context, fetchPollingSamples, pollingSubscriptionId]
+  );
+
+  const runActionTest = useCallback(
+    async (eventKey: string, payload: Record<string, unknown>) => {
+      const runActionTestCall = actionTestRunners[eventKey];
+      if (!runActionTestCall) {
+        console.error(`No endpoint configured for LeadConnector action: ${eventKey}`);
+        setTestStatus("failed");
+        return;
+      }
+
+      setTestStatus("testing");
+      try {
+        const result = unwrapActionResult(await runActionTestCall(payload));
+        setSampleData(result ? [result as PollingSample] : null);
+        setTestStatus("success");
+      } catch (error) {
+        console.error("LeadConnector action test failed:", error);
+        setTestStatus("failed");
+      }
+    },
+    [actionTestRunners]
+  );
+
+  const runTest = useCallback(async () => {
+    const payload = stripInternalConfigKeys(context.node.config || {});
+    // eventLabel holds the action_key (see setupLeadConnector — onEventSelect passes id).
+    const eventKey = context.node.eventLabel ?? "";
+
+    if (context.isTrigger && POLLING_TRIGGER_EVENTS.has(eventKey)) {
+      await runTriggerTest(eventKey, payload);
       return;
     }
-
-    // ── Action path: hit the configured endpoint ──
-    const endpoint = ACTION_ENDPOINTS[eventKey];
-    if (!endpoint) {
-      console.error(`No endpoint configured for LeadConnector action: ${eventKey}`);
-      setTestStatus("failed");
-      return;
-    }
-
-    setTestStatus("testing");
-    try {
-      const response = await axiosInstance.post(endpoint, payload);
-      const result = response.data?.data ?? response.data;
-      setSampleData(result ? [result] : null);
-      setTestStatus("success");
-    } catch (error) {
-      console.error("LeadConnector action test failed:", error);
-      setTestStatus("failed");
-    }
-  }, [context, pollingSubId]);
+    await runActionTest(eventKey, payload);
+  }, [context.node.config, context.node.eventLabel, context.isTrigger, runTriggerTest, runActionTest]);
 
   const footer = useMemo(() => {
     if (step === "setup") {
@@ -174,7 +176,7 @@ function useLeadConnectorStepProps(step: ConfigStep, context: StepContext) {
       },
       configure: {
         data: context.node.config || {},
-        onChange: (data: any, isValid: boolean) => {
+        onChange: (data: Record<string, unknown>, isValid: boolean) => {
           context.onFormDataChange({ ...data, _formIsValid: isValid });
         },
         webhookId: context.triggerWebhookId,

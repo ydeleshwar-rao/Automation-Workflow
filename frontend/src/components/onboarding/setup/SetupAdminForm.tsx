@@ -2,25 +2,11 @@
 
 import { useState } from "react";
 import { Building2, Eye, EyeOff, Loader2, ShieldCheck, User, Mail, Lock } from "lucide-react";
-import axios from "axios";
-import { API_ROUTES } from "@/src/constants/api.constants";
 import { persistLoginResponse } from "@/src/services/auth.service";
-
-// ── Password strength ─────────────────────────────────────────────────────────
-function getStrength(password: string): { score: number; label: string; color: string } {
-  if (!password) return { score: 0, label: "", color: "" };
-  let score = 0;
-  if (password.length >= 8)            score++;
-  if (password.length >= 12)           score++;
-  if (/[A-Z]/.test(password))         score++;
-  if (/[0-9]/.test(password))         score++;
-  if (/[^A-Za-z0-9]/.test(password)) score++;
-  if (score <= 1) return { score, label: "Weak",        color: "bg-red-500"     };
-  if (score <= 2) return { score, label: "Fair",        color: "bg-amber-400"   };
-  if (score <= 3) return { score, label: "Good",        color: "bg-yellow-400"  };
-  if (score <= 4) return { score, label: "Strong",      color: "bg-emerald-400" };
-  return           { score,       label: "Very strong", color: "bg-emerald-500" };
-}
+import { useSetupAdminMutation } from "@/src/components/auth/apiIntegrations/authApi";
+import { getApiErrorMessage } from "@/src/lib/api-error";
+import { PasswordStrengthMeter } from "../shared/PasswordStrengthMeter";
+import { MIN_PASSWORD_LENGTH, validateNewPassword } from "../shared/password.utils";
 
 export function SetupAdminForm() {
   const [fullName, setFullName]         = useState("");
@@ -31,20 +17,17 @@ export function SetupAdminForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm]   = useState(false);
   const [error, setError]               = useState<string | null>(null);
+  // Local flag (not the mutation's) so the button stays busy while the dashboard loads
   const [isLoading, setIsLoading]       = useState(false);
-
-  const strength = getStrength(password);
+  const [setupAdmin]                    = useSetupAdminMutation();
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (isLoading) return;
 
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+    const validationError = validateNewPassword(password, confirmPassword);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -52,28 +35,20 @@ export function SetupAdminForm() {
     setError(null);
 
     try {
-      const { data } = await axios.post(API_ROUTES.AUTH.SETUP, {
+      const setupResponse = await setupAdmin({
         email:     email.trim().toLowerCase(),
         password,
         full_name: fullName.trim(),
         organization_name: organizationName.trim(),
-      }, {
-        withCredentials: true,
-      });
+      }).unwrap();
+      if (!setupResponse.success) throw new Error(setupResponse.message || "Setup failed");
 
-      if (!data?.success) throw new Error(data?.message || "Setup failed");
-
-      persistLoginResponse(data.data);
+      persistLoginResponse(setupResponse.data);
 
       // Navigate to dashboard — full page load to hydrate everything
       window.location.assign("/dashboard");
-    } catch (err: unknown) {
-      const message = axios.isAxiosError(err)
-        ? err.response?.data?.message ?? err.message
-        : err instanceof Error
-        ? err.message
-        : "An error occurred";
-      setError(message);
+    } catch (setupError: unknown) {
+      setError(getApiErrorMessage(setupError, "An error occurred"));
       setIsLoading(false);
     }
   };
@@ -168,7 +143,7 @@ export function SetupAdminForm() {
             <input
               id="setup-password"
               type={showPassword ? "text" : "password"}
-              placeholder="Min. 8 characters"
+              placeholder={`Min. ${MIN_PASSWORD_LENGTH} characters`}
               required
               autoComplete="new-password"
               value={password}
@@ -185,29 +160,7 @@ export function SetupAdminForm() {
             </button>
           </div>
 
-          {/* Strength bar */}
-          {password && (
-            <div className="space-y-1.5 mt-0.5 animate-in fade-in duration-200">
-              <div className="flex gap-1">
-                {[1, 2, 3, 4, 5].map((segment) => (
-                  <div
-                    key={segment}
-                    className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-                      segment <= strength.score ? strength.color : "bg-border"
-                    }`}
-                  />
-                ))}
-              </div>
-              <p className={`text-[11px] font-medium ${
-                strength.score <= 1 ? "text-red-500"
-                : strength.score <= 2 ? "text-amber-500"
-                : strength.score <= 3 ? "text-yellow-600"
-                : "text-emerald-500"
-              }`}>
-                {strength.label}
-              </p>
-            </div>
-          )}
+          <PasswordStrengthMeter password={password} />
         </div>
 
         {/* Confirm password */}

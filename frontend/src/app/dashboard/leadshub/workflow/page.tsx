@@ -1,126 +1,64 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { API_BASE_URL } from "@/src/constants/api.constants";
+import { useState, useMemo } from "react";
+import { toast } from "sonner";
+import {
+  LocationCustomField,
+  useCreateLocationLeadMutation,
+  useGetLocationCustomFieldsQuery,
+  useLazyGetLocationLeadInputQuery,
+} from "@/src/components/work-flow/appEvents/leadconnector/apiIntegrations/leadConnectorApi";
 
-interface CustomField {
-  id?: string;
-  key: string;
-  name: string;
-  dataType: string;
-  standard?: boolean;
-  model: string;
+/**
+ * LeadsHub (GoHighLevel) location this test page reads from and writes to.
+ * Hard-coded until the page gets a location picker.
+ */
+const LEADSHUB_TEST_LOCATION_ID = "6QckpJiSCvacZ7Vcnkxk";
+
+const NO_FIELDS: LocationCustomField[] = [];
+
+function getFieldIdentifier(field: LocationCustomField): string {
+  return field.id || field.key;
+}
+
+/** Drop empty inputs so only fields the user actually filled are sent. */
+function pickFilledValues(formData: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(formData).filter(([, value]) => value !== undefined && value !== "")
+  );
 }
 
 export default function CustomFieldsPage() {
-  const [fields, setFields] = useState<CustomField[]>([]);
   const [search, setSearch] = useState("");
-  const [formData, setFormData] = useState<Record<string, any>>({});
-  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState<Record<string, string>>({});
 
-  const [leadData, setLeadData] = useState<Record<string, any> | null>(null);
-  const [leadLoading, setLeadLoading] = useState(false);
+  const { data: fields = NO_FIELDS, isLoading: loading } = useGetLocationCustomFieldsQuery(LEADSHUB_TEST_LOCATION_ID);
+  const [fetchLeadInput, { data: leadData, isFetching: leadLoading }] = useLazyGetLocationLeadInputQuery();
+  const [createLocationLead] = useCreateLocationLeadMutation();
 
-  useEffect(() => {
-    async function fetchFields() {
-      try {
-        setLoading(true);
-
-        const baseUrl = API_BASE_URL;
-        const res = await fetch(
-          `${baseUrl}/customFields/all/6QckpJiSCvacZ7Vcnkxk`
-        );
-        const result = await res.json();
-
-        if (result.success) {
-          const allFields = [
-            ...(result.data.contact || []),
-            ...(result.data.opportunity || []),
-            ...(result.data.business || []),
-          ];
-
-          setFields(allFields);
-        }
-      } catch (error) {
-        console.error("Error fetching fields", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchFields();
-  }, []);
-
-  const fetchLeadInput = async () => {
-    try {
-      setLeadLoading(true);
-
-      const baseUrl = API_BASE_URL;
-      const res = await fetch(
-        `${baseUrl}/webhooks/getleadinput/6QckpJiSCvacZ7Vcnkxk`
-      );
-
-      const result = await res.json();
-
-      if (result?.data?.payload) {
-        setLeadData(result.data.payload);
-      } else {
-        setLeadData(null);
-      }
-    } catch (error) {
-      console.error("Error fetching lead input", error);
-    } finally {
-      setLeadLoading(false);
-    }
+  const handleFetchLead = () => {
+    fetchLeadInput(LEADSHUB_TEST_LOCATION_ID)
+      .unwrap()
+      .catch((error) => console.error("Error fetching lead input", error));
   };
 
-  const handleChange = (field: CustomField, value: any) => {
-    const fieldIdentifier = field.id || field.key;
-
-    setFormData((prev) => ({
-      ...prev,
-      [fieldIdentifier]: value,
-    }));
-  };
-
-  const getFilledFields = () => {
-    const filled: Record<string, any> = {};
-
-    Object.entries(formData).forEach(([key, value]) => {
-      if (value !== undefined && value !== "") {
-        filled[key] = value;
-      }
-    });
-
-    return filled;
+  const handleChange = (field: LocationCustomField, value: string) => {
+    setFormData((previous) => ({ ...previous, [getFieldIdentifier(field)]: value }));
   };
 
   const handleSave = async () => {
-    const filledData = getFilledFields();
-
+    const filledData = pickFilledValues(formData);
     if (Object.keys(filledData).length === 0) {
-      alert("No filled fields to save");
+      toast.error("No filled fields to save");
       return;
     }
 
     try {
-      const baseUrl = API_BASE_URL;
-      const res = await fetch(
-        `${baseUrl}/contacts/createlead/6QckpJiSCvacZ7Vcnkxk`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(filledData),
-        }
-      );
-
-      await res.json();
-      alert("Data Saved Successfully ✅");
+      await createLocationLead({ locationId: LEADSHUB_TEST_LOCATION_ID, lead: filledData }).unwrap();
+      toast.success("Data saved successfully");
     } catch (error) {
       console.error("Save Error:", error);
-      alert("Error saving data");
+      toast.error("Error saving data");
     }
   };
 
@@ -139,7 +77,7 @@ export default function CustomFieldsPage() {
 
         <div className="flex gap-4 mb-6">
           <button
-            onClick={fetchLeadInput}
+            onClick={handleFetchLead}
             className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg transition"
           >
             Fetch Lead
@@ -216,7 +154,7 @@ export default function CustomFieldsPage() {
 
         <div className="h-96 overflow-y-auto space-y-4 pr-2">
           {filteredFields.map((field, index) => {
-            const fieldIdentifier = field.id || field.key;
+            const fieldIdentifier = getFieldIdentifier(field);
 
             return (
               <div

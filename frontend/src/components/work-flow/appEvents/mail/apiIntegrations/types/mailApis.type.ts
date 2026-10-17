@@ -17,6 +17,7 @@ export interface SmtpConnection {
   id: string;
   created_by: string;
   name: string;
+  username?: string;
   host: string;
   port: number;
   use_tls: boolean;
@@ -51,7 +52,7 @@ export interface SendEmailPayload {
   cc?: string[];
   bcc?: string[];
   attachments?: string[];
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
 }
 
 export interface SendEmailResponse {

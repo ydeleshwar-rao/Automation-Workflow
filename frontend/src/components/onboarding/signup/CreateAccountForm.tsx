@@ -3,26 +3,11 @@
 import { useState } from "react";
 import { Eye, EyeOff, Loader2, CheckCircle2, User, Mail, Lock } from "lucide-react";
 import Link from "next/link";
-import axios from "axios";
-import { API_ROUTES } from "@/src/constants/api.constants";
+import { useRegisterMutation } from "@/src/components/auth/apiIntegrations/authApi";
+import { getApiErrorMessage } from "@/src/lib/api-error";
 import { SsoButtons } from "../shared/SsoButtons";
-
-// ── Password strength ─────────────────────────────────────────────────────────
-function getStrength(password: string): { score: number; label: string; color: string } {
-  if (!password) return { score: 0, label: "", color: "" };
-  let score = 0;
-  if (password.length >= 8)            score++;
-  if (password.length >= 12)           score++;
-  if (/[A-Z]/.test(password))         score++;
-  if (/[0-9]/.test(password))         score++;
-  if (/[^A-Za-z0-9]/.test(password)) score++;
-
-  if (score <= 1) return { score,  label: "Weak",   color: "bg-red-500"    };
-  if (score <= 2) return { score,  label: "Fair",   color: "bg-amber-400"  };
-  if (score <= 3) return { score,  label: "Good",   color: "bg-yellow-400" };
-  if (score <= 4) return { score,  label: "Strong", color: "bg-emerald-400" };
-  return           { score,        label: "Very strong", color: "bg-emerald-500" };
-}
+import { PasswordStrengthMeter } from "../shared/PasswordStrengthMeter";
+import { MIN_PASSWORD_LENGTH, validateNewPassword } from "../shared/password.utils";
 
 // ── Success screen ────────────────────────────────────────────────────────────
 function SuccessScreen({ email }: { email: string }) {
@@ -58,49 +43,31 @@ export function CreateAccountForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm]   = useState(false);
   const [error, setError]               = useState<string | null>(null);
-  const [isLoading, setIsLoading]       = useState(false);
   const [success, setSuccess]           = useState(false);
-
-  const strength = getStrength(password);
+  const [registerAccount, { isLoading }] = useRegisterMutation();
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (isLoading) return;
 
-    // Client-side validation
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    const validationError = validateNewPassword(password, confirmPassword);
+    if (validationError) {
+      setError(validationError);
       return;
     }
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-
-    setIsLoading(true);
     setError(null);
 
     try {
-      const { data } = await axios.post(API_ROUTES.AUTH.REGISTER, {
+      const registerResponse = await registerAccount({
         email:     email.trim().toLowerCase(),
         password,
         full_name: fullName.trim(),
-      });
-
-      if (!data?.success) {
-        throw new Error(data?.message || "Registration failed");
-      }
+      }).unwrap();
+      if (!registerResponse.success) throw new Error(registerResponse.message || "Registration failed");
 
       setSuccess(true);
-    } catch (err: unknown) {
-      const message = axios.isAxiosError(err)
-        ? err.response?.data?.message ?? err.message
-        : err instanceof Error
-        ? err.message
-        : "An error occurred";
-      setError(message);
-    } finally {
-      setIsLoading(false);
+    } catch (registerError: unknown) {
+      setError(getApiErrorMessage(registerError, "An error occurred"));
     }
   };
 
@@ -166,7 +133,7 @@ export function CreateAccountForm() {
             <input
               id="password"
               type={showPassword ? "text" : "password"}
-              placeholder="Min. 8 characters"
+              placeholder={`Min. ${MIN_PASSWORD_LENGTH} characters`}
               required
               autoComplete="new-password"
               value={password}
@@ -183,29 +150,7 @@ export function CreateAccountForm() {
             </button>
           </div>
 
-          {/* Password strength bar */}
-          {password && (
-            <div className="space-y-1.5 mt-0.5 animate-in fade-in duration-200">
-              <div className="flex gap-1">
-                {[1, 2, 3, 4, 5].map((segment) => (
-                  <div
-                    key={segment}
-                    className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-                      segment <= strength.score ? strength.color : "bg-border"
-                    }`}
-                  />
-                ))}
-              </div>
-              <p className={`text-[11px] font-medium ${
-                strength.score <= 1 ? "text-red-500"
-                : strength.score <= 2 ? "text-amber-500"
-                : strength.score <= 3 ? "text-yellow-600"
-                : "text-emerald-500"
-              }`}>
-                {strength.label}
-              </p>
-            </div>
-          )}
+          <PasswordStrengthMeter password={password} />
         </div>
 
         {/* Confirm password */}

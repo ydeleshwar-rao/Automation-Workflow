@@ -10,17 +10,18 @@ import { commusoftProvider } from "./commusoft.provider";
  * SimPro / LeadsHub providers can be added the same way once their backend
  * `/getalljobs` endpoints are finalised.
  */
-const PROVIDERS: Partial<Record<AppId, JobsDataProvider>> = {
+const PROVIDERS = {
   servicem8: servicem8Provider,
   commusoft: commusoftProvider,
-  // simpro:   simproProvider,    // TODO: add when /api/integration/simpro/jobs is ready
-  // leadshub: leadshubProvider,  // (LeadsHub doesn't track jobs in the same sense)
-};
+} satisfies Partial<Record<AppId, JobsDataProvider>>;
 
-export const getJobsProvider = (appId: AppId | null): JobsDataProvider | null =>
-  appId ? PROVIDERS[appId] ?? null : null;
+/** Apps that have a registered jobs provider — the only valid keys for a jobs query. */
+export type JobsProviderAppId = keyof typeof PROVIDERS;
 
-export const listAvailableProviders = (): JobsDataProvider[] =>
-  Object.values(PROVIDERS).filter(
-    (p): p is JobsDataProvider => p !== undefined,
-  );
+export const isJobsProviderAppId = (appId: AppId | null): appId is JobsProviderAppId =>
+  appId !== null && appId in PROVIDERS;
+
+export const getRegisteredJobsProvider = (appId: JobsProviderAppId): JobsDataProvider =>
+  PROVIDERS[appId];
+
+export const listAvailableProviders = (): JobsDataProvider[] => Object.values(PROVIDERS);

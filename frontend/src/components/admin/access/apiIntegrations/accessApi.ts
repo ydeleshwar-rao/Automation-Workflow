@@ -24,6 +24,7 @@
  */
 
 import { baseApi } from "@/src/store/baseApi";
+import { API_ROUTES } from "@/src/constants/api.constants";
 import type { ApiResponse } from "@/src/components/work-flow/apiIntegrations/types/integration.types";
 import type { AccessRole } from "@/src/store/accessSlice";
 
@@ -76,20 +77,20 @@ export const accessApi = baseApi.enhanceEndpoints({ addTagTypes: ["Developers", 
     // ── Developers ────────────────────────────────────────────
 
     listDevelopers: builder.query<ApiResponse<DeveloperRecord[]>, void>({
-      query: () => ({ url: "/access/developers", method: "GET" }),
+      query: () => ({ url: API_ROUTES.ACCESS.DEVELOPERS, method: "GET" }),
       providesTags: [{ type: "Developers", id: "LIST" }],
     }),
 
     getDeveloper: builder.query<ApiResponse<DeveloperRecord>, string>({
-      query: (id) => ({ url: `/access/developers/${id}`, method: "GET" }),
-      providesTags: (_r, _e, id) => [{ type: "Developers", id }],
+      query: (id) => ({ url: API_ROUTES.ACCESS.DEVELOPER(id), method: "GET" }),
+      providesTags: (_result, _error, id) => [{ type: "Developers", id }],
     }),
 
     createDeveloper: builder.mutation<
       ApiResponse<{ profile: DeveloperRecord; temp_password?: string }>,
       CreateDeveloperDto
     >({
-      query: (data) => ({ url: "/access/developers", method: "POST", data }),
+      query: (data) => ({ url: API_ROUTES.ACCESS.DEVELOPERS, method: "POST", data }),
       invalidatesTags: [{ type: "Developers", id: "LIST" }],
     }),
 
@@ -98,19 +99,19 @@ export const accessApi = baseApi.enhanceEndpoints({ addTagTypes: ["Developers", 
       { id: string; is_active: boolean }
     >({
       query: ({ id, is_active }) => ({
-        url:    `/access/developers/${id}/status`,
+        url:    API_ROUTES.ACCESS.DEVELOPER_STATUS(id),
         method: "PATCH",
         data:   { is_active },
       }),
-      invalidatesTags: (_r, _e, { id }) => [
+      invalidatesTags: (_result, _error, { id }) => [
         { type: "Developers", id },
         { type: "Developers", id: "LIST" },
       ],
     }),
 
     deleteDeveloper: builder.mutation<ApiResponse<unknown>, string>({
-      query: (id) => ({ url: `/access/developers/${id}`, method: "DELETE" }),
-      invalidatesTags: (_r, _e, id) => [
+      query: (id) => ({ url: API_ROUTES.ACCESS.DEVELOPER(id), method: "DELETE" }),
+      invalidatesTags: (_result, _error, id) => [
         { type: "Developers", id },
         { type: "Developers", id: "LIST" },
       ],
@@ -119,12 +120,12 @@ export const accessApi = baseApi.enhanceEndpoints({ addTagTypes: ["Developers", 
     // ── Admin Management ──────────────────────────────────────
 
     listAdmins: builder.query<ApiResponse<DeveloperRecord[]>, void>({
-      query: () => ({ url: "/access/admins", method: "GET" }),
+      query: () => ({ url: API_ROUTES.ACCESS.ADMINS, method: "GET" }),
       providesTags: [{ type: "Developers", id: "ADMINS" }],
     }),
 
     deleteAdmin: builder.mutation<ApiResponse<unknown>, string>({
-      query: (id) => ({ url: `/access/admins/${id}`, method: "DELETE" }),
+      query: (id) => ({ url: API_ROUTES.ACCESS.ADMIN(id), method: "DELETE" }),
       invalidatesTags: [{ type: "Developers", id: "ADMINS" }],
     }),
 
@@ -135,10 +136,10 @@ export const accessApi = baseApi.enhanceEndpoints({ addTagTypes: ["Developers", 
       string
     >({
       query: (developerId) => ({
-        url:    `/access/developers/${developerId}/permissions`,
+        url:    API_ROUTES.ACCESS.PERMISSIONS(developerId),
         method: "GET",
       }),
-      providesTags: (_r, _e, developerId) => [
+      providesTags: (_result, _error, developerId) => [
         { type: "Permissions", id: developerId },
       ],
     }),
@@ -149,11 +150,11 @@ export const accessApi = baseApi.enhanceEndpoints({ addTagTypes: ["Developers", 
       { developerId: string; data: UpdatePermissionsDto }
     >({
       query: ({ developerId, data }) => ({
-        url:    `/access/developers/${developerId}/permissions`,
+        url:    API_ROUTES.ACCESS.PERMISSIONS(developerId),
         method: "PUT",
         data,
       }),
-      invalidatesTags: (_r, _e, { developerId }) => [
+      invalidatesTags: (_result, _error, { developerId }) => [
         { type: "Permissions", id: developerId },
       ],
     }),
@@ -164,11 +165,11 @@ export const accessApi = baseApi.enhanceEndpoints({ addTagTypes: ["Developers", 
       { developerId: string; pageKey: string; data: UpsertPagePermissionDto }
     >({
       query: ({ developerId, pageKey, data }) => ({
-        url:    `/access/developers/${developerId}/permissions/${pageKey}`,
+        url:    API_ROUTES.ACCESS.PERMISSION(developerId, pageKey),
         method: "PATCH",
         data,
       }),
-      invalidatesTags: (_r, _e, { developerId }) => [
+      invalidatesTags: (_result, _error, { developerId }) => [
         { type: "Permissions", id: developerId },
       ],
     }),
@@ -178,10 +179,10 @@ export const accessApi = baseApi.enhanceEndpoints({ addTagTypes: ["Developers", 
       { developerId: string; pageKey: string }
     >({
       query: ({ developerId, pageKey }) => ({
-        url:    `/access/developers/${developerId}/permissions/${pageKey}`,
+        url:    API_ROUTES.ACCESS.PERMISSION(developerId, pageKey),
         method: "DELETE",
       }),
-      invalidatesTags: (_r, _e, { developerId }) => [
+      invalidatesTags: (_result, _error, { developerId }) => [
         { type: "Permissions", id: developerId },
       ],
     }),

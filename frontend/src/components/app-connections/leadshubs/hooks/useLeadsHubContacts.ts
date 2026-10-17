@@ -1,75 +1,58 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { leadshubApi } from "../api/leadshub.api";
+import { useMemo, useState } from "react";
+import { getApiErrorMessage } from "@/src/lib/api-error";
+import {
+  useGetLeadsHubContactsQuery,
+  type LeadsHubContact,
+} from "../../apiIntegrations/integrationsApi";
 
+const DEFAULT_ITEMS_PER_PAGE = 10;
+const FIRST_PAGE = 1;
+const NO_CONTACTS: LeadsHubContact[] = [];
+
+function matchesSearch(contact: LeadsHubContact, searchQuery: string): boolean {
+  const lowerCaseQuery = searchQuery.toLowerCase();
+  const fullName = `${contact.first_name} ${contact.last_name}`.toLowerCase();
+  return (
+    fullName.includes(lowerCaseQuery) ||
+    Boolean(contact.email?.toLowerCase().includes(lowerCaseQuery)) ||
+    Boolean(contact.phone?.includes(searchQuery))
+  );
+}
+
+/** LeadsHub contacts (fetched live through the backend) with client-side search and pagination. */
 export function useLeadsHubContacts() {
-  const [contacts, setContacts] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  
+  const { data: contacts = NO_CONTACTS, isLoading, isFetching, error: fetchError, refetch } =
+    useGetLeadsHubContactsQuery();
+
   const [searchQuery, setSearchQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [currentPage, setCurrentPage] = useState(FIRST_PAGE);
+  const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE);
 
-  const fetchContacts = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const data = await leadshubApi.getContacts();
-      setContacts(data);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(`Failed to fetch contacts: ${msg}`);
-      setContacts([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Contacts are fetched live from LeadsHub, so syncing just reloads them.
-  const handleSync = async () => {
-    setIsSyncing(true);
-    setError(null);
-    try {
-      await fetchContacts();
-    } catch (syncError) {
-      const message = syncError instanceof Error ? syncError.message : String(syncError);
-      setError(`Sync error: ${message}`);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchContacts();
-  }, []);
-
-  const filteredContacts = useMemo(() => {
-    if (!searchQuery) return contacts;
-    const lower = searchQuery.toLowerCase();
-    return contacts.filter(contact => 
-      (contact.first_name + " " + contact.last_name).toLowerCase().includes(lower) ||
-      contact.email?.toLowerCase().includes(lower) ||
-      contact.phone?.includes(searchQuery)
-    );
-  }, [contacts, searchQuery]);
+  const filteredContacts = useMemo(
+    () => (searchQuery ? contacts.filter((contact) => matchesSearch(contact, searchQuery)) : contacts),
+    [contacts, searchQuery],
+  );
 
   const totalItems = filteredContacts.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage);
-  
+
   const paginatedContacts = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    return filteredContacts.slice(start, start + itemsPerPage);
+    const pageStart = (currentPage - 1) * itemsPerPage;
+    return filteredContacts.slice(pageStart, pageStart + itemsPerPage);
   }, [filteredContacts, currentPage, itemsPerPage]);
+
+  const error = fetchError
+    ? `Failed to fetch contacts: ${getApiErrorMessage(fetchError, "Unknown error")}`
+    : null;
 
   return {
     contacts,
     filteredContacts,
     paginatedContacts,
     isLoading,
-    isSyncing,
+    isFetching,
     error,
     searchQuery,
     setSearchQuery,
@@ -79,7 +62,6 @@ export function useLeadsHubContacts() {
     setItemsPerPage,
     totalItems,
     totalPages,
-    handleSync,
-    refreshContacts: fetchContacts,
+    refetch,
   };
 }

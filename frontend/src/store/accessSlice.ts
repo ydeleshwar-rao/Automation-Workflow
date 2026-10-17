@@ -1,7 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit"
-import axios from "axios"
-import axiosInstance from "@/src/services/apiClient"
-import { API_ROUTES } from "@/src/constants/api.constants"
+import { accessApi } from "@/src/components/admin/access/apiIntegrations/accessApi"
+import { getApiErrorMessage } from "@/src/lib/api-error"
 import { loadSession } from "./localStorage"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -37,22 +36,42 @@ const initialState: AccessState = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/** Admins carry this single entry instead of a page list. */
+const ALL_PAGES_PERMISSION = "*"
+
+type PagePermissionItem = {
+  page_key?:   string
+  pageKey?:    string
+  can_view?:   boolean
+  can_edit?:   boolean
+  can_delete?: boolean
+}
+
 /**
  * Normalize backend page_permissions array → Record<page_key, PagePermission>
  * Backend returns: [{ page_key, can_view, can_edit, can_delete }]
  */
-function normalizePermissions(raw: unknown): Record<string, PagePermission> {
-  if (!raw || !Array.isArray(raw)) return {}
-  return raw.reduce<Record<string, PagePermission>>((acc, item) => {
-    const key = (item as { page_key?: string; pageKey?: string }).page_key
-                ?? (item as { pageKey?: string }).pageKey
-    if (!key) return acc
-    acc[key] = {
-      can_view:   !!(item as { can_view?: boolean }).can_view,
-      can_edit:   !!(item as { can_edit?: boolean }).can_edit,
-      can_delete: !!(item as { can_delete?: boolean }).can_delete,
+function normalizePermissions(items: unknown): Record<string, PagePermission> {
+  if (!Array.isArray(items)) return {}
+  return items.reduce<Record<string, PagePermission>>((permissionsByPage, item: PagePermissionItem) => {
+    const pageKey = item.page_key ?? item.pageKey
+    if (!pageKey) return permissionsByPage
+    permissionsByPage[pageKey] = {
+      can_view:   !!item.can_view,
+      can_edit:   !!item.can_edit,
+      can_delete: !!item.can_delete,
     }
-    return acc
+    return permissionsByPage
+  }, {})
+}
+
+/** View-only access to every page listed in the session token (used when the detailed fetch fails). */
+function viewOnlyPermissions(pageKeys: string[]): Record<string, PagePermission> {
+  return pageKeys.reduce<Record<string, PagePermission>>((permissionsByPage, pageKey) => {
+    if (pageKey !== ALL_PAGES_PERMISSION) {
+      permissionsByPage[pageKey] = { can_view: true, can_edit: false, can_delete: false }
+    }
+    return permissionsByPage
   }, {})
 }
 
@@ -62,61 +81,50 @@ function normalizePermissions(raw: unknown): Record<string, PagePermission> {
  * Developer: only if page_key is in their permissions
  */
 export function hasPageAccess(permissions: string[], pageKey: string): boolean {
-  return permissions.includes("*") || permissions.includes(pageKey)
+  return permissions.includes(ALL_PAGES_PERMISSION) || permissions.includes(pageKey)
 }
 
-// ── Thunk: bootstrap from JWT + optional API call ────────────────────────────
+function readSessionUser(): AccessUser {
+  const session = loadSession()
+  if (!session?.userId) throw new Error("No session found — please log in")
+  return {
+    id:          session.userId,
+    email:       session.email,
+    role:        session.role as AccessRole,
+    permissions: session.permissions,
+  }
+}
+
+// ── Thunk: bootstrap from stored session + RTK Query permissions ─────────────
 
 /**
  * Bootstrap access state.
- * 1. Read user + role + permissions from stored JWT (no API call for admin)
- * 2. For developer: optionally re-fetch permissions from API to get can_edit/can_delete
+ * 1. Read user + role + permissions from the stored session (no API call for admin)
+ * 2. For developer: fetch page permissions (can_view/can_edit/can_delete) through accessApi
  */
 export const bootstrapAccess = createAsyncThunk<
   { user: AccessUser; permissions: Record<string, PagePermission> },
   void,
   { rejectValue: string }
->("access/bootstrap", async (_, { rejectWithValue }) => {
+>("access/bootstrap", async (_, { dispatch, rejectWithValue }) => {
+  let user: AccessUser
   try {
-    // Step 1: Get user info from stored session (JWT already decoded on login)
-    const session = loadSession()
-    if (!session?.userId) throw new Error("No session found — please log in")
+    user = readSessionUser()
+  } catch (error: unknown) {
+    return rejectWithValue(getApiErrorMessage(error, "Failed to bootstrap access"))
+  }
 
-    const user: AccessUser = {
-      id:          session.userId,
-      email:       session.email,
-      role:        session.role as AccessRole,
-      permissions: session.permissions,
-    }
+  // Admin has ['*'] and can do everything, so only developers need the detailed list
+  if (user.role !== "developer") return { user, permissions: {} }
 
-    // Step 2: Fetch detailed permissions (can_view/can_edit/can_delete) from API
-    // Admin: skip (has ['*'], can do everything)
-    // Developer: fetch their specific page permissions
-    let permissions: Record<string, PagePermission> = {}
-
-    if (user.role === "developer") {
-      try {
-        const res = await axiosInstance.get(API_ROUTES.ACCESS.PERMISSIONS(user.id))
-        permissions = normalizePermissions(res.data?.data ?? res.data)
-      } catch {
-        // Gracefully degrade — use JWT permissions array for view access at minimum
-        permissions = user.permissions.reduce<Record<string, PagePermission>>((acc, key) => {
-          if (key !== "*") {
-            acc[key] = { can_view: true, can_edit: false, can_delete: false }
-          }
-          return acc
-        }, {})
-      }
-    }
-
-    return { user, permissions }
-  } catch (err: unknown) {
-    const message = axios.isAxiosError(err)
-      ? err.response?.data?.message ?? err.message
-      : err instanceof Error
-      ? err.message
-      : "Failed to bootstrap access"
-    return rejectWithValue(message)
+  try {
+    const response = await dispatch(
+      accessApi.endpoints.getPermissions.initiate(user.id, { subscribe: false, forceRefetch: true }),
+    ).unwrap()
+    return { user, permissions: normalizePermissions(response.data) }
+  } catch {
+    // Degrade gracefully: the session's page list still grants view access
+    return { user, permissions: viewOnlyPermissions(user.permissions) }
   }
 })
 

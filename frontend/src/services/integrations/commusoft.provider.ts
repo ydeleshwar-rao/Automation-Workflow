@@ -1,6 +1,6 @@
-import axiosInstance from "@/src/services/apiClient";
 import { API_ROUTES } from "@/src/constants/api.constants";
 import type { JobsDataProvider } from "./types";
+import { buildJobsQueryParams, toNumber, unwrapJobsPayload } from "./jobsProvider.helpers";
 import type { JobsFilters, NormalizedJob } from "@/src/types/dashboard.types";
 
 /**
@@ -41,21 +41,13 @@ interface CommusoftBlock {
   } | null;
 }
 
-const toNumber = (value: unknown): number => {
-  if (value === null || value === undefined || value === "") return 0;
-  const parsed = parseFloat(String(value));
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const buildParams = (filters: JobsFilters): Record<string, string> => {
-  const p: Record<string, string> = {};
-  if (filters.period)        p.period = filters.period;
-  if (filters.date_from)     p.date_from = filters.date_from;
-  if (filters.date_to)       p.date_to = filters.date_to;
-  if (filters.status)        p.status = filters.status;
-  if (filters.company_uuid)  p.company_uuid = filters.company_uuid;
-  return p;
-};
+const SUPPORTED_FILTER_KEYS: readonly (keyof JobsFilters)[] = [
+  "period",
+  "date_from",
+  "date_to",
+  "status",
+  "company_uuid",
+];
 
 const normalize = (block: CommusoftBlock): NormalizedJob => {
   const job = block.job ?? {};
@@ -82,18 +74,10 @@ export const commusoftProvider: JobsDataProvider = {
   appId: "commusoft",
   label: "Commusoft",
 
-  async fetchJobs(filters) {
-    try {
-      const { data } = await axiosInstance.get(API_ROUTES.COMMUSOFT.GET_ALL_JOBS, {
-        params: buildParams(filters),
-      });
-      // Response shape: { success, message, data: { success, data: JobDetailDataBlock[] } }
-      const blocks: CommusoftBlock[] =
-        data?.data?.data ?? data?.data ?? [];
-      return Array.isArray(blocks) ? blocks.map(normalize) : [];
-    } catch (err) {
-      console.error("[commusoftProvider] fetchJobs failed:", err);
-      return [];
-    }
-  },
+  buildJobsRequest: (filters) => ({
+    url: API_ROUTES.COMMUSOFT.GET_ALL_JOBS,
+    params: buildJobsQueryParams(filters, SUPPORTED_FILTER_KEYS),
+  }),
+
+  normaliseJobs: (response) => unwrapJobsPayload<CommusoftBlock>(response).map(normalize),
 };

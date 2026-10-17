@@ -66,9 +66,9 @@ export function LeadConnectorConfigureStep({
   const pipelineStageOptions = useMemo(() => {
     if (!formValues.pipelineId) return [];
     return allStages
-      .filter((stage: any) => stage.pipeline_id === formValues.pipelineId)
-      .sort((firstStage: any, secondStage: any) => firstStage.position - secondStage.position)
-      .map((stage: any) => ({ label: stage.name, value: stage.id }));
+      .filter((stage) => stage.pipeline_id === formValues.pipelineId)
+      .sort((firstStage, secondStage) => firstStage.position - secondStage.position)
+      .map((stage) => ({ label: stage.name, value: stage.id }));
   }, [allStages, formValues.pipelineId]);
 
   const resolvedActionFields = useMemo(() => {
@@ -81,8 +81,8 @@ export function LeadConnectorConfigureStep({
     return actionFields.map(field => ({
       ...field,
       // If the field uses a dynamic source, resolve it; otherwise keep its own options (e.g. markAsLead radio)
-      options: (field as any).optionsSource
-        ? optionsBySource[(field as any).optionsSource] ?? []
+      options: field.optionsSource
+        ? optionsBySource[field.optionsSource] ?? []
         : field.options,
     }));
   }, [actionFields, pipelineOptions, pipelineStageOptions]);

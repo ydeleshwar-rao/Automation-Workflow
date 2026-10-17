@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import axios from "axios";
 import { Loader2, CheckCircle2, AlertCircle, ArrowLeft } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
@@ -17,8 +16,8 @@ import {
   CardDescription,
   CardContent,
 } from "@/src/components/ui/card";
-import axiosInstance from "@/src/services/apiClient";
-import { API_ROUTES } from "@/src/constants/api.constants";
+import { useCreateDeveloperMutation } from "@/src/components/admin/access/apiIntegrations/accessApi";
+import { getApiErrorMessage, getApiErrorStatus } from "@/src/lib/api-error";
 
 const MINIMUM_PASSWORD_LENGTH = 8;
 const HTTP_CONFLICT = 409;
@@ -41,7 +40,7 @@ const inputClassName = "bg-background border-border text-foreground placeholder:
  * New developers start with no page access; the admin grants it on the Access page.
  */
 export function CreateUserForm() {
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createDeveloper, { isLoading: isSubmitting }] = useCreateDeveloperMutation();
   const [isCreated, setIsCreated] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const router = useRouter();
@@ -58,12 +57,13 @@ export function CreateUserForm() {
   });
 
   const showCreateUserError = (error: unknown) => {
-    if (!axios.isAxiosError(error) || !error.response) {
+    const status = getApiErrorStatus(error);
+    if (status === undefined) {
       setServerError("A network error occurred.");
       return;
     }
-    const errorMessage: string = error.response.data?.message ?? "Failed to create user";
-    if (error.response.status === HTTP_CONFLICT) {
+    const errorMessage = getApiErrorMessage(error, "Failed to create user");
+    if (status === HTTP_CONFLICT) {
       setError("email", { message: errorMessage });
     } else {
       setServerError(errorMessage);
@@ -71,23 +71,20 @@ export function CreateUserForm() {
   };
 
   const onSubmit = async (formData: CreateUserFormData) => {
-    setIsSubmitting(true);
     setIsCreated(false);
     setServerError(null);
 
     try {
-      await axiosInstance.post(API_ROUTES.ACCESS.DEVELOPERS, {
+      await createDeveloper({
         email: formData.email,
         full_name: `${formData.first_name} ${formData.last_name}`,
         password: formData.password,
-      });
+      }).unwrap();
       setIsCreated(true);
       reset();
       setTimeout(() => router.push(ACCESS_PAGE_PATH), REDIRECT_DELAY_MS);
     } catch (error) {
       showCreateUserError(error);
-    } finally {
-      setIsSubmitting(false);
     }
   };
 

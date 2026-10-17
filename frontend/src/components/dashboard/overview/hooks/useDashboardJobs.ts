@@ -1,9 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
+import type { SerializedError } from "@reduxjs/toolkit";
+import { skipToken } from "@reduxjs/toolkit/query/react";
 import { useAppSelector } from "@/src/store/hooks";
 import { selectActiveApp } from "@/src/store/appStatusSlice";
-import { getJobsProvider } from "@/src/services/integrations/registry";
+import type { AxiosBaseQueryError } from "@/src/store/axiosBaseQuery";
+import {
+  getRegisteredJobsProvider,
+  isJobsProviderAppId,
+} from "@/src/services/integrations/registry";
+import { useGetIntegrationJobsQuery } from "../apiIntegrations/dashboardJobsApi";
 import { aggregate } from "../utils/aggregate";
 import type {
   DashboardAggregates,
@@ -30,70 +37,54 @@ const EMPTY_AGGREGATES: DashboardAggregates = {
   pending_by_day: [],
 };
 
+const NO_JOBS: NormalizedJob[] = [];
+const UNAUTHORIZED_STATUS = 401;
+const INTEGRATION_TOKEN_INVALID = "invalid_token";
+const DEFAULT_ERROR_MESSAGE = "Failed to load jobs";
+const INTEGRATION_EXPIRED_MESSAGE =
+  "Your ServiceM8 connection has expired. Please reconnect from the Connections page.";
+const SESSION_EXPIRED_MESSAGE = "Your session has expired. Please log in again.";
+
+const readErrorMessage = (errorBody: unknown): string | undefined => {
+  if (typeof errorBody !== "object" || errorBody === null) return undefined;
+  const message = (errorBody as { message?: unknown }).message;
+  return typeof message === "string" ? message : undefined;
+};
+
+/** Turns an RTK Query error into the message shown in the dashboard banner. */
+const describeJobsError = (
+  queryError: AxiosBaseQueryError | SerializedError | undefined,
+): string | null => {
+  if (!queryError) return null;
+  if ("status" in queryError && queryError.status === UNAUTHORIZED_STATUS) {
+    // The backend reports an expired integration token as 401 + "invalid_token"; any other 401 is our own session.
+    return readErrorMessage(queryError.data) === INTEGRATION_TOKEN_INVALID
+      ? INTEGRATION_EXPIRED_MESSAGE
+      : SESSION_EXPIRED_MESSAGE;
+  }
+  if ("data" in queryError && typeof queryError.data === "string") return queryError.data;
+  if ("message" in queryError && queryError.message) return queryError.message;
+  return DEFAULT_ERROR_MESSAGE;
+};
+
 /**
  * Single source of truth for the dashboard's data layer.
- * Resolves the active integration's provider, fetches normalized jobs with the
- * supplied filters, and returns aggregated chart data + raw jobs (for drill-down).
- *
- * Refetches on:
- *   • activeApp change
- *   • any filter field change
- *   • manual `refetch()` invocation
+ * Resolves the active integration's provider, fetches its normalized jobs with
+ * the supplied filters through RTK Query, and returns aggregated chart data +
+ * raw jobs (for drill-down). RTK Query refetches whenever the app or any filter
+ * value changes, and on manual `refetch()`.
  */
 export function useDashboardJobs(filters: JobsFilters): UseDashboardJobsResult {
   const activeApp = useAppSelector(selectActiveApp);
-  const provider = useMemo(() => getJobsProvider(activeApp), [activeApp]);
+  const jobsAppId = isJobsProviderAppId(activeApp) ? activeApp : null;
+  const provider = jobsAppId ? getRegisteredJobsProvider(jobsAppId) : null;
 
-  const [jobs, setJobs] = useState<NormalizedJob[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [refetchTick, setRefetchTick] = useState(0);
+  const { data, error: queryError, isError, isFetching, refetch } = useGetIntegrationJobsQuery(
+    jobsAppId ? { appId: jobsAppId, filters } : skipToken,
+  );
 
-  // Stable filter signature for the dep array — avoids refetching on every
-  // render just because the parent built a fresh object literal.
-  const filterKey = useMemo(() => JSON.stringify(filters), [filters]);
-
-  // Tracks the most recent fetch so a stale resolution can't overwrite a newer one.
-  const requestIdRef = useRef(0);
-
-  useEffect(() => {
-    if (!provider) {
-      setJobs([]);
-      setError(null);
-      setIsLoading(false);
-      return;
-    }
-
-    const requestId = ++requestIdRef.current;
-    setIsLoading(true);
-    setError(null);
-
-    provider
-      .fetchJobs(filters)
-      .then((rows) => {
-        if (requestId !== requestIdRef.current) return;
-        setJobs(rows);
-        setIsLoading(false);
-      })
-      .catch((fetchError) => {
-        if (requestId !== requestIdRef.current) return;
-        const errorResponse = (fetchError as { response?: { status?: number; data?: { message?: string } } })?.response;
-        let errorMessage = "Failed to load jobs";
-        if (errorResponse?.status === 401) {
-          errorMessage = errorResponse.data?.message === "invalid_token"
-            ? "Your ServiceM8 connection has expired. Please reconnect from the Connections page."
-            : "Your session has expired. Please log in again.";
-        } else if (fetchError instanceof Error) {
-          errorMessage = fetchError.message;
-        }
-        setError(errorMessage);
-        setJobs([]);
-        setIsLoading(false);
-      });
-    // filters is captured via filterKey — adding it directly would make the
-    // effect run on every parent render even when values are unchanged.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider, filterKey, refetchTick]);
+  // `data` keeps the previous result while new filters load (no flicker), but must not survive an error.
+  const jobs = isError || !data ? NO_JOBS : data;
 
   const aggregates = useMemo(
     () => (jobs.length ? aggregate(jobs, filters.period ?? "month") : EMPTY_AGGREGATES),
@@ -103,10 +94,12 @@ export function useDashboardJobs(filters: JobsFilters): UseDashboardJobsResult {
   return {
     jobs,
     aggregates,
-    isLoading,
-    error,
+    isLoading: isFetching,
+    error: describeJobsError(queryError),
     appId: provider?.appId ?? null,
     appLabel: provider?.label ?? null,
-    refetch: () => setRefetchTick((tick) => tick + 1),
+    refetch: () => {
+      if (jobsAppId) refetch();
+    },
   };
 }

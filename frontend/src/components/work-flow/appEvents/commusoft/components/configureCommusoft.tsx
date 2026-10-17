@@ -16,10 +16,11 @@ import {
 } from "@/src/components/work-flow/components/WebhookVariablePicker";
 
 import { COMMUSOFT_EVENT_FIELDS, CommusoftFieldDef } from "./configure/fields";
-import axiosInstance from "@/src/services/apiClient";
-import { API_ROUTES } from "@/src/constants/api.constants";
+import { CommusoftSelectOption, useGetCommusoftCustomerTypeOptionsQuery } from "../apiIntegrations/commusoftApi";
 import { useCommusoftStatus } from "@/src/components/app-connections/commusoft/hooks/useCommusoftStatus";
 import { Link2 } from "lucide-react";
+
+const NO_CUSTOMER_TYPE_OPTIONS: CommusoftSelectOption[] = [];
 
 // ─── Select field ─────────────────────────────────────────────────────────────
 
@@ -117,23 +118,10 @@ export function CommusoftConfigureStep({
 }: CommusoftConfigureStepProps) {
   const { connected: isCommusoftConnected, isLoading: isCheckingConnection } = useCommusoftStatus();
 
-  const [customerTypeOptions, setCustomerTypeOptions] = useState<{ label: string; value: string }[]>([]);
-
-  useEffect(() => {
-    if (!isCommusoftConnected) return;
-    axiosInstance
-      .get(API_ROUTES.COMMUSOFT.CUSTOMER_TYPES)
-      .then((response) => {
-        const descriptions: string[] = response.data?.data ?? [];
-        // Value must equal the raw description — backend does an ilike lookup
-        // against commusoft_customertype.description, and ilike does not
-        // normalise underscores vs spaces. Transforming breaks the lookup.
-        setCustomerTypeOptions(
-          descriptions.map((description) => ({ label: description, value: description }))
-        );
-      })
-      .catch(() => {});
-  }, [isCommusoftConnected]);
+  const { data: customerTypeOptions = NO_CUSTOMER_TYPE_OPTIONS } = useGetCommusoftCustomerTypeOptionsQuery(
+    undefined,
+    { skip: !isCommusoftConnected }
+  );
 
   const fields: CommusoftFieldDef[] = useMemo(() => {
     const base = selectedEvent ? COMMUSOFT_EVENT_FIELDS[selectedEvent] ?? [] : [];

@@ -22,9 +22,7 @@ export const API_ROUTES = {
     REGISTER:      `${B}/auth/register`,
     REFRESH:       `${B}/auth/refresh`,
     LOGOUT:        `${B}/auth/logout`,
-    PROFILE:       `${B}/auth/profile`,
     SETUP:         `${B}/auth/setup`,
-    SETUP_STATUS:  `${B}/auth/setup/status`,
     FORGOT_PASSWORD: `${B}/auth/forgot-password`,
     RESET_PASSWORD:  `${B}/auth/reset-password`,
   },
@@ -40,7 +38,6 @@ export const API_ROUTES = {
 
   // ── Access / Developer Management ─────────────────────────────────────────
   ACCESS: {
-    ME:               `${B}/access/me`,
     DEVELOPERS:       `${B}/access/developers`,
     DEVELOPER:        (id: string) => `${B}/access/developers/${id}`,
     DEVELOPER_STATUS: (id: string) => `${B}/access/developers/${id}/status`,
@@ -57,13 +54,8 @@ export const API_ROUTES = {
     DISCONNECT: "/servicem8/disconnect",
     STATUS:     "/servicem8/status",
     GET_ALL_JOBS: "/servicem8/getalljobs",
-    JOBS:         "/servicem8/listjobs",
     QUEUES:       "/servicem8/listqueues",
     CATEGORIES:   "/servicem8/listcategories",
-    // Workflow action event types (for workflow builder)
-    ACTION_EVENT_TYPES:    "/automation/action-event-types/servicem8",
-    ACTION_EVENT_TRIGGERS: "/automation/action-event-types/servicem8/triggers",
-    ACTION_EVENT_ACTIONS:  "/automation/action-event-types/servicem8/actions",
   },
 
   // ── Commusoft ─────────────────────────────────────────────────────────────
@@ -74,9 +66,6 @@ export const API_ROUTES = {
     GET_ALL_JOBS:    "/commusoft/getalljobs",
     CUSTOMER_TYPES:  "/commusoft/customertypes",
     CREATE_CUSTOMER: "/commusoft/customers/create",
-    ACTION_EVENT_TYPES:    "/automation/action-event-types/commusoft",
-    ACTION_EVENT_TRIGGERS: "/automation/action-event-types/commusoft/triggers",
-    ACTION_EVENT_ACTIONS:  "/automation/action-event-types/commusoft/actions",
   },
 
   // ── simPRO ────────────────────────────────────────────────────────────────
@@ -86,9 +75,6 @@ export const API_ROUTES = {
     STATUS:       "/simpro/status",
     GET_ALL_JOBS: "/simpro/getalljobs",
     JOBS:         "/simpro/jobs",
-    ACTION_EVENT_TYPES:    "/automation/action-event-types/simpro",
-    ACTION_EVENT_TRIGGERS: "/automation/action-event-types/simpro/triggers",
-    ACTION_EVENT_ACTIONS:  "/automation/action-event-types/simpro/actions",
   },
 
   // ── LeadsHub (GoHighLevel) ────────────────────────────────────────────────
@@ -100,34 +86,37 @@ export const API_ROUTES = {
     ACTION_EVENT_TYPES:    "/automation/action-event-types/leadshub",
     ACTION_EVENT_TRIGGERS: "/automation/action-event-types/leadshub/triggers",
     ACTION_EVENT_ACTIONS:  "/automation/action-event-types/leadshub/actions",
+    CUSTOM_FIELDS:         "/leadshub/customfields/all",
+    PIPELINES:             "/leadshub/pipelines/all",
+    // Location-scoped routes used by the LeadsHub custom-fields test page
+    LOCATION_CUSTOM_FIELDS: (locationId: string) => `/customFields/all/${locationId}`,
+    LOCATION_LEAD_INPUT:    (locationId: string) => `/webhooks/getleadinput/${locationId}`,
+    LOCATION_CREATE_LEAD:   (locationId: string) => `/contacts/createlead/${locationId}`,
   },
 
   // ── SMTP / Mail ───────────────────────────────────────────────────────────
   MAIL: {
-    CONNECTIONS:       `${B}/mail/connections`,
-    CONNECTION:        (id: string) => `${B}/mail/connections/${id}`,
-    // Aliases for backward compat with older hooks
-    GET_CONNECTIONS:   () => `${B}/mail/connections`,
-    CREATE_CONNECTION: `${B}/mail/connections`,
-  },
-
-  // ── Webhooks ───────────────────────────────────────────────────────────────
-  WEBHOOKS: {
-    LIST:   `${B}/webhooks`,
-    CREATE: `${B}/webhooks`,
-    GET:    (id: string) => `${B}/webhooks/${id}`,
-    UPDATE: (id: string) => `${B}/webhooks/${id}`,
-    DELETE: (id: string) => `${B}/webhooks/${id}`,
+    SMTP_CONNECTIONS:  `${B}/mail/getconnections`,
+    SMTP_CREATE:       `${B}/mail/smtpcreate`,
+    PUBLIC_KEY:        `${B}/mail/public-key`,
+    SEND:              `${B}/mail/send`,
+    FIELD_LABELS:      `${B}/mail/field-labels`,
   },
 
   // ── Workflow ───────────────────────────────────────────────────────────────
   WORKFLOW: {
-    LIST:      `${B}/automation/workflows`,
-    CREATE:    `${B}/automation/workflows`,
-    GET:       (id: string) => `${B}/automation/workflows/${id}`,
-    UPDATE:    (id: string) => `${B}/automation/workflows/${id}`,
-    DELETE:    (id: string) => `${B}/automation/workflows/${id}`,
-    EXECUTE:   (id: string) => `${B}/automation/workflows/${id}/execute`,
-    TEMPLATES: `${B}/automation/templates`,
+    TEST_ACTION: `${B}/automation/workflows/test-action`,
+    ACTION_EVENT_TYPES: (integrationSlug: string, eventCategory: string) =>
+      `${B}/automation/action-event-types/${integrationSlug}/${eventCategory}`,
+  },
+
+  // ── WhatsApp ──────────────────────────────────────────────────────────────
+  WHATSAPP: {
+    CONNECT:       "/whatsapp/connect",
+    QR:            "/whatsapp/qr",
+    SEND_TEXT:     "/whatsapp/messages/text",
+    SEND_IMAGE:    "/whatsapp/messages/image",
+    SEND_DOCUMENT: "/whatsapp/messages/document",
+    SEND_LOCATION: "/whatsapp/messages/location",
   },
 } as const;

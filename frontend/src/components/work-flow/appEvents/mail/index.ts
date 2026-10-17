@@ -5,7 +5,7 @@
 import { MailSetupStep } from "./components/setupEmail";
 import { MailConfigureStep } from "./components/configureEmail";
 import { MailTestStep } from "./components/testEmail";
-import { useMail } from "@/src/components/work-flow/appEvents/mail/apiIntegrations/use-mail";
+import { MailAccount, SmtpConfig, useMail } from "@/src/components/work-flow/appEvents/mail/apiIntegrations/use-mail";
 import { useMemo } from "react";
 
 import type { ConfigStep } from "../../components/event-sidebar/eventSidebar";
@@ -77,25 +77,21 @@ function useMailStepProps(step: ConfigStep, context: StepContext) {
       selectedEvent: context.node.eventLabel ?? null,
       onEventSelect: context.onEventSelect, 
       selectedAccount: mail.accounts.find(account => account.id === context.node.config?.accountId) || null,
-      onAccountSelect: (account: any) => {
+      onAccountSelect: (account: MailAccount) => {
         context.onFormDataChange({ accountId: account.id, accountName: account.username || account.name });
       },
       accounts: mail.accounts,
       isLoadingAccounts: mail.isLoading,
-      onAddAccount: async (config: any) => {
-        try {
-          const newAccount = await mail.addAccount(config);
-          // Automatically select the newly created account
-          if (newAccount && newAccount.id) {
-            context.onFormDataChange({ 
-              accountId: newAccount.id, 
-              accountName: newAccount.username || newAccount.name || config.user 
-            });
-          } else {
-            context.onFormDataChange({ accountName: config.user || 'SMTP Account' });
-          }
-        } catch (error: any) {
-          throw error;
+      onAddAccount: async (config: SmtpConfig) => {
+        const newAccount = await mail.addAccount(config);
+        // Automatically select the newly created account
+        if (newAccount?.id) {
+          context.onFormDataChange({
+            accountId: newAccount.id,
+            accountName: newAccount.username || newAccount.name || config.user
+          });
+        } else {
+          context.onFormDataChange({ accountName: config.user || 'SMTP Account' });
         }
       },
 
@@ -106,7 +102,7 @@ function useMailStepProps(step: ConfigStep, context: StepContext) {
     },
     configure: {
       data: restoredConfigData,
-      onChange: (data: any, isValid: boolean) => {
+      onChange: (data: Record<string, unknown>, isValid: boolean) => {
         context.onFormDataChange({ ...data, _formIsValid: isValid });
       },
       webhookId: context.triggerWebhookId,

@@ -5,7 +5,8 @@ import { useState } from "react";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import type { AppDef } from "../types/app-def.types";
-import { commusoftApi } from "@/src/components/app-connections/commusoft/api/commusoft.api";
+import { useConnectCommusoftMutation } from "@/src/components/app-connections/apiIntegrations/integrationsApi";
+import { getApiErrorMessage } from "@/src/lib/api-error";
 
 type CredentialsInlinePanelProps = {
   app: AppDef;
@@ -21,9 +22,9 @@ export function CredentialsInlinePanel({
   const [clientId, setClientId] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [connectCommusoft, { isLoading }] = useConnectCommusoftMutation();
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -32,22 +33,16 @@ export function CredentialsInlinePanel({
       return;
     }
 
-    setIsLoading(true);
     setError(null);
     setSuccess(null);
 
     try {
-      const result = await commusoftApi.connect({ clientId, username, password });
-      setSuccess(result.message || "Commusoft connected successfully.");
+      const result = await connectCommusoft({ clientId, username, password }).unwrap();
+      const responseMessage = (result as { message?: unknown } | null)?.message;
+      setSuccess(typeof responseMessage === "string" ? responseMessage : "Commusoft connected successfully.");
       onSuccess();
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Failed to connect. Please check your credentials.";
-      setError(message);
-    } finally {
-      setIsLoading(false);
+    } catch (connectError) {
+      setError(getApiErrorMessage(connectError, "Failed to connect. Please check your credentials."));
     }
   };
 

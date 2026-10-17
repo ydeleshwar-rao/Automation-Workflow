@@ -15,9 +15,20 @@ import {
   VariableField,
 } from "@/src/components/work-flow/components/WebhookVariablePicker";
 
-import axiosInstance from "@/src/services/apiClient";
-import { API_ROUTES } from "@/src/constants/api.constants";
+import {
+  useGetServiceM8CategoryOptionsQuery,
+  useGetServiceM8QueueOptionsQuery,
+  ServiceM8SelectOption,
+} from "../apiIntegrations/serviceM8Api";
 import { SM8_EVENT_FIELDS, Sm8FieldDef } from "./configure/fields";
+
+/** Events whose form has a queue picker — only these load the queue list. */
+const EVENTS_WITH_QUEUE_FIELD = new Set(["job_queued", "move_job_to_queue", "update_job", "job_quote_accepted"]);
+
+/** Events whose form has a category picker — only these load the category list. */
+const EVENTS_WITH_CATEGORY_FIELD = new Set(["job_queued", "job_completed", "job_quote_sent", "job_quote_accepted"]);
+
+const NO_SELECT_OPTIONS: ServiceM8SelectOption[] = [];
 
 // ─── Select field ─────────────────────────────────────────────────────────────
 
@@ -112,49 +123,14 @@ export function ServiceM8ConfigureStep({
   triggerTestPayload,
   triggerTestSamples,
 }: ServiceM8ConfigureStepProps) {
-  const [queueOptions, setQueueOptions] = useState<{ label: string; value: string }[]>([]);
-  const [categoryOptions, setCategoryOptions] = useState<{ label: string; value: string }[]>([]);
-
-  useEffect(() => {
-    const needsQueues =
-      selectedEvent === "job_queued" ||
-      selectedEvent === "move_job_to_queue" ||
-      selectedEvent === "update_job" ||
-      selectedEvent === "job_quote_accepted";
-    const needsCategories =
-      selectedEvent === "job_queued" ||
-      selectedEvent === "job_completed" ||
-      selectedEvent === "job_quote_sent" ||
-      selectedEvent === "job_quote_accepted";
-
-    if (needsQueues) {
-      axiosInstance
-        .get(API_ROUTES.SERVICEM8.QUEUES)
-        .then((response) => {
-          const queues = response.data?.data ?? response.data ?? [];
-          setQueueOptions(
-            queues
-              .filter((queue: any) => queue?.uuid)
-              .map((queue: any) => ({ label: queue.name, value: queue.uuid }))
-          );
-        })
-        .catch((error) => console.error("Failed to fetch queues:", error));
-    }
-
-    if (needsCategories) {
-      axiosInstance
-        .get(API_ROUTES.SERVICEM8.CATEGORIES)
-        .then((response) => {
-          const categories = response.data?.data ?? response.data ?? [];
-          setCategoryOptions(
-            categories
-              .filter((category: any) => category?.uuid)
-              .map((category: any) => ({ label: category.name, value: category.uuid }))
-          );
-        })
-        .catch((error) => console.error("Failed to fetch categories:", error));
-    }
-  }, [selectedEvent]);
+  const needsQueues = Boolean(selectedEvent && EVENTS_WITH_QUEUE_FIELD.has(selectedEvent));
+  const needsCategories = Boolean(selectedEvent && EVENTS_WITH_CATEGORY_FIELD.has(selectedEvent));
+  const { data: queueOptions = NO_SELECT_OPTIONS } = useGetServiceM8QueueOptionsQuery(undefined, {
+    skip: !needsQueues,
+  });
+  const { data: categoryOptions = NO_SELECT_OPTIONS } = useGetServiceM8CategoryOptionsQuery(undefined, {
+    skip: !needsCategories,
+  });
 
   const fields: Sm8FieldDef[] = useMemo(() => {
     if (!selectedEvent) return [];

@@ -9,6 +9,7 @@
  */
 
 import { baseApi } from "@/src/store/baseApi";
+import { API_ROUTES } from "@/src/constants/api.constants";
 import { ApiResponse } from "./types/integration.types";
 // clientkey removed — all requests are JWT-only (Bearer token via axios interceptor)
 
@@ -144,6 +145,23 @@ export interface PollingSubscriptionStatus {
     error_count: number;
     last_error: string | null;
     total_seen_records: number;
+}
+
+/** Backend returns `data` as an array (multi-sample preview); older handlers return one record. */
+export type PollingSample = Record<string, unknown>;
+
+export interface PollNowResult {
+    found: boolean;
+    data: PollingSample[] | PollingSample | null;
+}
+
+// ── Test Action Types ──────────────────────────────────────────────────────
+
+export interface TestActionPayload {
+    integration_key: string;
+    action_key: string;
+    config: Record<string, unknown>;
+    input: Record<string, unknown>;
 }
 
 // ── RTK Query API ────────────────────────────────────────────────────────────
@@ -402,13 +420,19 @@ export const workflowApi = baseApi.enhanceEndpoints({ addTagTypes: ["Workflow", 
             invalidatesTags: ["PollingSubscription"],
         }),
 
-        pollNow: builder.mutation<
-            ApiResponse<{ found: boolean; data: Record<string, any> | null }>,
-            string
-        >({
+        pollNow: builder.mutation<ApiResponse<PollNowResult>, string>({
             query: (subscriptionId) => ({
                 url: `/automation/polling/subscriptions/${subscriptionId}/poll-now`,
                 method: "POST",
+            }),
+        }),
+
+        // POST /automation/workflows/test-action — runs one action node against the live integration
+        testAction: builder.mutation<ApiResponse<Record<string, unknown> | null>, TestActionPayload>({
+            query: (data) => ({
+                url: API_ROUTES.WORKFLOW.TEST_ACTION,
+                method: "POST",
+                data,
             }),
         }),
 
@@ -451,4 +475,5 @@ export const {
     useDeletePollingSubscriptionMutation,
     usePollNowMutation,
     useGetPollingSubscriptionStatusQuery,
+    useTestActionMutation,
 } = workflowApi;

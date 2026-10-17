@@ -9,6 +9,7 @@ import {
   getEmailLogsController,
   getConnectionsController,
 } from "../controllers/mail.controller.js";
+import { generateFieldLabelsController } from "../../field-labels/field-labels.controller.js";
 
 const router = Router();
 
@@ -28,5 +29,7 @@ router.get("/getconnections", authMiddleware, getConnectionsController);
 // mailSendRateLimiter prevents SMTP abuse — 30 emails/hour per user
 router.post("/send", authMiddleware, mailSendRateLimiter, sendEmailController);
 router.get("/logs", authMiddleware, getEmailLogsController);
+// Readable labels for email-template fields (server-side LLM call; key never reaches the browser)
+router.post("/field-labels", authMiddleware, generateFieldLabelsController);
 
 export default router;

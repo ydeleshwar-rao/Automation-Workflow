@@ -5,7 +5,7 @@ import { Link2 } from "lucide-react";
 import { CommusoftEventSelectorPopup } from "./CommusoftEventSelectorPopup";
 import { AppSection, SelectSection } from "@/src/components/work-flow/appEvents/mail/components/shared/SelectorFields";
 import { useCommusoftStatus } from "@/src/components/app-connections/commusoft/hooks/useCommusoftStatus";
-import { useCommusoftActionEventTypes } from "@/src/components/app-connections/commusoft/hooks/useCommusoftActionEventTypes";
+import { ACTION_EVENT_INTEGRATION_SLUGS, useActionEventOptions } from "@/src/components/work-flow/apiIntegrations/actionEventTypesApi";
 import { ConnectInlineSection } from "@/src/components/work-flow/appEvents/shared/ConnectInlineSection";
 
 interface CommusoftSetupStepProps {
@@ -26,7 +26,7 @@ export function CommusoftSetupStep({
   const [isEventPopupOpen, setIsEventPopupOpen] = useState(false);
 
   const { connected: isConnected } = useCommusoftStatus();
-  const { events, isLoading } = useCommusoftActionEventTypes(isTrigger);
+  const { events, isLoading } = useActionEventOptions(ACTION_EVENT_INTEGRATION_SLUGS.COMMUSOFT, isTrigger);
 
   const AppIcon = selectedApp.icon || Link2;
   const displayLabel = events.find((event) => event.id === selectedEvent)?.label ?? selectedEvent;

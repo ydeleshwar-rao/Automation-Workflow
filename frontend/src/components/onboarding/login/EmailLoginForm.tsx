@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { Building2, Loader2 } from "lucide-react";
 import Link from "next/link";
-import axios from "axios";
-import { API_ROUTES } from "@/src/constants/api.constants";
 import { persistLoginResponse } from "@/src/services/auth.service";
+import { useLoginMutation } from "@/src/components/auth/apiIntegrations/authApi";
+import { getApiErrorMessage } from "@/src/lib/api-error";
 import { SsoButtons } from "../shared/SsoButtons";
 import { CompanySsoForm } from "./CompanySsoForm";
 
@@ -14,7 +14,9 @@ export function EmailLoginForm() {
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [error, setError]       = useState<string | null>(null);
+  // Local flag (not the mutation's) so the button stays busy while the dashboard loads
   const [isLoading, setIsLoading] = useState(false);
+  const [login] = useLoginMutation();
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -23,28 +25,13 @@ export function EmailLoginForm() {
     setError(null);
 
     try {
-      const { data: loginRes } = await axios.post(API_ROUTES.AUTH.LOGIN, {
-        email,
-        password,
-      }, {
-        withCredentials: true,
-      });
+      const loginResponse = await login({ email, password }).unwrap();
+      if (!loginResponse.success) throw new Error(loginResponse.message || "Login failed");
 
-      if (!loginRes?.success) {
-        throw new Error(loginRes?.message || "Login failed");
-      }
-
-      persistLoginResponse(loginRes.data);
-
+      persistLoginResponse(loginResponse.data);
       window.location.assign("/dashboard");
-    } catch (err: unknown) {
-      const message =
-        axios.isAxiosError(err)
-          ? err.response?.data?.message ?? err.message
-          : err instanceof Error
-          ? err.message
-          : "An error occurred";
-      setError(message);
+    } catch (loginError: unknown) {
+      setError(getApiErrorMessage(loginError, "An error occurred"));
       setIsLoading(false);
     }
   };
