@@ -1,5 +1,9 @@
-import type { PrismaClient, Workflow } from "@prisma/client";
+import type { Prisma, PrismaClient, Workflow } from "@prisma/client";
 import prisma from "../../../lib/prisma.js";
+
+const WORKFLOW_TAG_IDS_INCLUDE = { tagLinks: { select: { tag_id: true } } } satisfies Prisma.WorkflowInclude;
+
+export type WorkflowWithTagLinks = Prisma.WorkflowGetPayload<{ include: typeof WORKFLOW_TAG_IDS_INCLUDE }>;
 
 export interface CreateWorkflowInput {
   name: string;
@@ -47,9 +51,10 @@ export class WorkflowRepository {
     return this.database.workflow.findUnique({ where: { id: workflowId } });
   }
 
-  findByOwner(userId: string): Promise<Workflow[]> {
+  findByOwner(userId: string): Promise<WorkflowWithTagLinks[]> {
     return this.database.workflow.findMany({
       where: { user_id: userId },
+      include: WORKFLOW_TAG_IDS_INCLUDE,
       orderBy: [{ position: "asc" }, { created_at: "desc" }],
     });
   }

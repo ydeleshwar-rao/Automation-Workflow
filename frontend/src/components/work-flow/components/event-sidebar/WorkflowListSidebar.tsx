@@ -16,6 +16,12 @@ import {
   MoreVertical,
 } from "lucide-react";
 
+const WORKFLOW_STATUS_LABEL: Record<string, string> = {
+  active: "Active",
+  paused: "Paused",
+  draft: "Draft",
+};
+
 interface TagOption {
   id: string;
   name: string;
@@ -26,6 +32,7 @@ interface Workflow {
   id: string;
   name: string;
   status: string;
+  tagIds?: string[];
 }
 
 interface Props {
@@ -195,7 +202,13 @@ export function WorkflowListSidebar({
     setIsFilterOpen(false);
   };
 
-  const filteredWorkflows = useMemo(() => workflows, [workflows]);
+  // A workflow matches when it carries any of the selected tags
+  const filteredWorkflows = useMemo(() => {
+    if (selectedFilterTags.length === 0) return workflows;
+    return workflows.filter((workflow) =>
+      workflow.tagIds?.some((tagId) => selectedFilterTags.includes(tagId))
+    );
+  }, [workflows, selectedFilterTags]);
 
   const confirmWorkflow = workflows.find((workflow) => workflow.id === confirmDeleteId);
   const activeMenuWorkflow = workflows.find((workflow) => workflow.id === menuOpenId);
@@ -458,7 +471,7 @@ export function WorkflowListSidebar({
                               workflow.status === "active" ? "text-primary" : "text-muted-foreground"
                             )}
                           >
-                            {workflow.status === "active" ? "Active" : "Paused"}
+                            {WORKFLOW_STATUS_LABEL[workflow.status] ?? workflow.status}
                           </span>
                         </>
                       )}

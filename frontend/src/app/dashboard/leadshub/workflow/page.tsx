@@ -116,9 +116,7 @@ export default function CustomFieldsPage() {
         }
       );
 
-      const result = await res.json();
-
-      console.log("Saved Data:", result);
+      await res.json();
       alert("Data Saved Successfully ✅");
     } catch (error) {
       console.error("Save Error:", error);

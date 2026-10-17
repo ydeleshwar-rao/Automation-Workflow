@@ -7,7 +7,6 @@ import {
   Pencil,
   Save,
 } from "lucide-react";
-import { Button } from "@/src/components/ui/button";
 import { cn } from "@/src/lib/utils";
 import { WebhookRequest, WebhookTestStatus } from "../../../uiOrchestrator/types";
 
@@ -15,18 +14,22 @@ import { WebhookRequest, WebhookTestStatus } from "../../../uiOrchestrator/types
 
 interface DataFieldProps {
   label: string;
-  value: any;
+  value: unknown;
   depth?: number;
   path?: string;
-  editedValues?: Record<string, any>;
+  editedValues?: Record<string, string>;
   onEdit?: (path: string, value: string) => void;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Renders an object as a nested group, anything else as an editable leaf. */
 function DataField({ label, value, depth = 0, path = "", editedValues, onEdit }: DataFieldProps) {
-  const isObject = typeof value === "object" && value !== null;
   const currentPath = path ? `${path}.${label}` : label;
 
-  if (isObject && !Array.isArray(value)) {
+  if (isPlainObject(value)) {
     return (
       <div className="space-y-2" style={{ paddingLeft: depth > 0 ? "1rem" : "0" }}>
         <div className="bg-muted/60 border border-border rounded-md px-2 py-1 w-fit">
@@ -49,16 +52,35 @@ function DataField({ label, value, depth = 0, path = "", editedValues, onEdit }:
     );
   }
 
-  const displayValue =
-    editedValues && currentPath in editedValues
-      ? editedValues[currentPath]
-      : isObject
-      ? JSON.stringify(value)
-      : String(value ?? "");
+  return (
+    <DataLeafField
+      label={label}
+      value={value}
+      depth={depth}
+      currentPath={currentPath}
+      editedValues={editedValues}
+      onEdit={onEdit}
+    />
+  );
+}
 
+interface DataLeafFieldProps extends Omit<DataFieldProps, "path"> {
+  currentPath: string;
+}
+
+function DataLeafField({ label, value, depth = 0, currentPath, editedValues, onEdit }: DataLeafFieldProps) {
   const [isEditing, setIsEditing] = React.useState(false);
-  const inputRef = React.useRef<HTMLInputElement>(null);
-  const isEdited = editedValues && currentPath in editedValues;
+  const isEdited = editedValues !== undefined && currentPath in editedValues;
+
+  const displayValue = isEdited
+    ? editedValues[currentPath]
+    : typeof value === "object" && value !== null
+    ? JSON.stringify(value)
+    : String(value ?? "");
+
+  const startEditing = () => {
+    if (onEdit) setIsEditing(true);
+  };
 
   return (
     <div className="flex items-center gap-2" style={{ paddingLeft: depth > 0 ? "1rem" : "0" }}>
@@ -68,7 +90,7 @@ function DataField({ label, value, depth = 0, path = "", editedValues, onEdit }:
       <div className="flex-1 min-w-0 flex items-center gap-1 group/field">
         {isEditing ? (
           <input
-            ref={inputRef}
+            autoFocus
             value={displayValue}
             onChange={(event) => onEdit?.(currentPath, event.target.value)}
             onBlur={() => setIsEditing(false)}
@@ -76,7 +98,7 @@ function DataField({ label, value, depth = 0, path = "", editedValues, onEdit }:
           />
         ) : (
           <span
-            onClick={() => { if (onEdit) { setIsEditing(true); setTimeout(() => inputRef.current?.focus(), 0); } }}
+            onClick={startEditing}
             className={cn(
               "flex-1 min-w-0 text-[13px] font-medium break-words cursor-text rounded-md px-2 py-0.5 transition-all",
               isEdited
@@ -89,7 +111,7 @@ function DataField({ label, value, depth = 0, path = "", editedValues, onEdit }:
         )}
         {onEdit && !isEditing && (
           <Pencil
-            onClick={() => { setIsEditing(true); setTimeout(() => inputRef.current?.focus(), 0); }}
+            onClick={startEditing}
             className="w-3 h-3 text-muted-foreground/30 opacity-0 group-hover/field:opacity-100 transition-opacity cursor-pointer hover:text-primary shrink-0"
           />
         )}

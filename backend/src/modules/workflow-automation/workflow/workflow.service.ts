@@ -42,10 +42,14 @@ export async function getWorkflowByIdService(id: string) {
 
 export async function getWorkflowsService(userId: string) {
   const workflows = await workflowRepository.findByOwner(userId);
-  return enrichWithOwnerNames(workflows);
+  const workflowsWithTagIds = workflows.map(({ tagLinks, ...workflow }) => ({
+    ...workflow,
+    tag_ids: tagLinks.map((tagLink) => tagLink.tag_id),
+  }));
+  return enrichWithOwnerNames(workflowsWithTagIds);
 }
 
-async function enrichWithOwnerNames(workflows: Workflow[]) {
+async function enrichWithOwnerNames<WorkflowShape extends Workflow>(workflows: WorkflowShape[]) {
   const ownerIds = [...new Set(workflows.map((workflow) => workflow.user_id))];
   if (!ownerIds.length) return workflows;
 

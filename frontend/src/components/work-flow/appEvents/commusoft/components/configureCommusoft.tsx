@@ -159,8 +159,6 @@ export function CommusoftConfigureStep({
     ]),
   );
 
-  console.log("PAYLOAD KEYS:", Object.keys(cleanedFlat));
-
   const auto = useAutoMap(fieldKeys, cleanedFlat);
   const webhookPayloadKey = useMemo(() => JSON.stringify(webhookFlat), [webhookFlat]);
   const appliedPayloadRef = useRef<string | null>(null);

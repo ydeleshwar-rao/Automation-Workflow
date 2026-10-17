@@ -13,15 +13,11 @@
  *  • Local state for active selections and in-flight canvas state
  */
 
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "@/src/store/hooks";
 import {
   setWorkflow,
   setWorkflowStatus,
-  setNodes,
-  addNode as addNodeAction,
-  updateNode as updateNodeAction,
-  deleteNode as deleteNodeAction,
   setActiveExecutionId,
   setActiveView,
 } from "../store/workflowBuilderSlice";
@@ -42,6 +38,7 @@ import {
   useSaveMappingsMutation,
   useCreatePollingSubscriptionMutation,
   CreateMappingPayload,
+  WorkflowNodeRecord,
 } from "../apiIntegrations/workflowApi";
 import {
   useGetFoldersQuery,
@@ -180,6 +177,25 @@ const indexToLabel = (index: number): string => {
   }
   return label;
 };
+
+/** Config keys that hold connection/test metadata rather than mappable field values. */
+const INTERNAL_KEYS = new Set(["accountId", "accountName", "webhook_id", "webhook", "testPayload"]);
+
+const NODE_SAVE_FAILED_MESSAGE = "Could not save this step. Check your connection and try again.";
+
+/** Integration keys the backend polling/webhook engine can auto-subscribe on publish. */
+const AUTO_SUBSCRIBE_INTEGRATION_KEYS = new Set(["service_m8", "leadshub", "commusoft", "simpro"]);
+
+/**
+ * Nodes store the lower-cased app label ("servicem8") because the UI registry is looked
+ * up by it, while the polling engine's adapter registry uses its own keys ("service_m8").
+ */
+const NODE_TO_ENGINE_INTEGRATION_KEY: Record<string, string> = { servicem8: "service_m8" };
+
+function toEngineIntegrationKey(nodeIntegrationKey: string): string {
+  return NODE_TO_ENGINE_INTEGRATION_KEY[nodeIntegrationKey] ?? nodeIntegrationKey;
+}
+
 export function useWorkflowOrchestrator() {
   const dispatch = useAppDispatch();
 
@@ -208,7 +224,6 @@ export function useWorkflowOrchestrator() {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(
     sliceWorkflow.id ?? getStoredWorkflowId()
   );
-  // console.log("workflow id from localStorage:", getStoredWorkflowId());
 
   // Persist selected workflow ID whenever it changes
   useEffect(() => {
@@ -239,6 +254,7 @@ export function useWorkflowOrchestrator() {
         id: workflow.id,
         name: workflow.name,
         status: workflow.status,
+        tagIds: workflow.tag_ids ?? [],
       })),
     [workflowsData]
   );
@@ -439,8 +455,8 @@ export function useWorkflowOrchestrator() {
             }).unwrap()
           )
         );
+        refetchWorkflows();
       }
-  
 
       dispatch(setWorkflow({ id: result.data.id, name: result.data.name, status: result.data.status }));
       setSelectedWorkflowId(result.data.id);
@@ -457,7 +473,7 @@ export function useWorkflowOrchestrator() {
     } catch {
       toast.error("Workflow creation failed — backend unavailable");
     }
-  }, [createWorkflowMutation, dispatch, workflowsData]);
+  }, [createWorkflowMutation, assignTagToWorkflowMutation, refetchWorkflows, dispatch, workflowsData]);
 
   const loadWorkflow = useCallback(
     async (id: string) => {
@@ -511,27 +527,11 @@ export function useWorkflowOrchestrator() {
       // Backend wraps polling.controller to route to webhook-engine when the
       // integration supports it (ServiceM8, Leadshub) and falls back to polling
       // (Commusoft). Idempotent on node_id, so re-publishing is safe.
-      const POLLING_INTEGRATIONS = new Set(["service_m8", "leadshub", "commusoft", "simpro"]);
-
-      console.log(
-        `[publishWorkflow] scanning ${nodes.length} node(s) for auto-subscribe`,
-        nodes.map((node) => ({
-          id: node.id,
-          type: node.type,
-          integrationType: node.integrationType,
-          eventLabel: node.eventLabel,
-        }))
-      );
-
       const triggerNodesWithEvent = nodes.filter(
         (node) =>
           node.type === "trigger" &&
-          POLLING_INTEGRATIONS.has(node.integrationType ?? "") &&
+          AUTO_SUBSCRIBE_INTEGRATION_KEYS.has(toEngineIntegrationKey(node.integrationType ?? "")) &&
           node.eventLabel
-      );
-
-      console.log(
-        `[publishWorkflow] ${triggerNodesWithEvent.length} trigger node(s) eligible for auto-subscribe`
       );
 
       for (const eligibleNode of triggerNodesWithEvent) {
@@ -539,14 +539,12 @@ export function useWorkflowOrchestrator() {
         const payload = {
           workflow_id: selectedWorkflowId,
           node_id: eligibleNode.id,
-          integration_key: eligibleNode.integrationType!,
+          integration_key: toEngineIntegrationKey(eligibleNode.integrationType!),
           event_key: eventKey,
           config: eligibleNode.config ?? {},
         };
-        console.log(`[publishWorkflow] → POST /polling/subscriptions`, payload);
         try {
-          const response = await createPollingSubscription(payload).unwrap();
-          console.log(`[publishWorkflow] ✓ subscribed`, response);
+          await createPollingSubscription(payload).unwrap();
         } catch (error) {
           // Surface but don't block publish — user can still click Test to retry
           console.warn(
@@ -712,22 +710,25 @@ export function useWorkflowOrchestrator() {
     async (workflowId: string, tagId: string) => {
       try {
         await assignTagToWorkflowMutation({ workflowId, tag_id: tagId }).unwrap();
+        // Tag links live in folderTagApi's cache; the workflow list carries tag_ids in a separate cache
+        refetchWorkflows();
       } catch {
         toast.error("Could not assign tag");
       }
     },
-    [assignTagToWorkflowMutation]
+    [assignTagToWorkflowMutation, refetchWorkflows]
   );
 
   const removeTagFromWorkflow = useCallback(
     async (workflowId: string, tagId: string) => {
       try {
         await removeTagFromWorkflowMutation({ workflowId, tagId }).unwrap();
+        refetchWorkflows();
       } catch {
         toast.error("Could not remove tag");
       }
     },
-    [removeTagFromWorkflowMutation]
+    [removeTagFromWorkflowMutation, refetchWorkflows]
   );
 
   // ── Test: fire a dry-run ───────────────────────────────────────────────────
@@ -906,9 +907,6 @@ export function useWorkflowOrchestrator() {
   // ── Continue Logic ─────────────────────────────────────────────────────────
 
   // Config keys that are internal bookkeeping — never sent as field mappings
-  const INTERNAL_KEYS = new Set([
-    "accountId", "accountName", "webhook_id", "webhook", "testPayload",
-  ]);
 
   /**
    * Converts a node's config into backend-ready mapping payloads.
@@ -986,6 +984,20 @@ export function useWorkflowOrchestrator() {
     []
   );
 
+  /** Saves a node patch; on failure shows an error and returns false so the step does not advance. */
+  const persistNodePatch = useCallback(
+    async (nodeId: string, patch: Partial<WorkflowNodeRecord>): Promise<boolean> => {
+      try {
+        await updateNodeMutation({ id: nodeId, patch }).unwrap();
+        return true;
+      } catch {
+        toast.error(NODE_SAVE_FAILED_MESSAGE);
+        return false;
+      }
+    },
+    [updateNodeMutation]
+  );
+
   const handleContinue = useCallback(async () => {
     if (!activeNode) return;
     const lifecycle = activeDescriptor?.lifecycle;
@@ -1010,46 +1022,35 @@ export function useWorkflowOrchestrator() {
             )
           );
           // Link webhook_id to the trigger node on the backend
-          try {
-            await updateNodeMutation({
-              id: activeNode.id,
-              patch: { 
-                action_key: activeNode.eventLabel?.toLowerCase().replace(/\s+/g, "_") ?? "",
-                config: { webhook_id: response.id } },
-            });
-          } catch { /* best effort */ }
-
+          const isSaved = await persistNodePatch(activeNode.id, {
+            action_key: activeNode.eventLabel?.toLowerCase().replace(/\s+/g, "_") ?? "",
+            config: { webhook_id: response.id },
+          });
+          if (!isSaved) return;
         }
       }
       // For non-webhook trigger nodes (e.g. ServiceM8 polling), persist action_key during setup
       if (activeNode.type === "trigger" && !activeNode.appLabel?.toLowerCase().includes("webhook")) {
         if (activeNode.eventLabel) {
-          try {
-            await updateNodeMutation({
-              id: activeNode.id,
-              patch: {
-                action_key: activeNode.eventLabel.toLowerCase().replace(/\s+/g, "_"),
-              },
-            });
-          } catch { /* best effort */ }
+          const isSaved = await persistNodePatch(activeNode.id, {
+            action_key: activeNode.eventLabel.toLowerCase().replace(/\s+/g, "_"),
+          });
+          if (!isSaved) return;
         }
       }
 
       // For action nodes, persist credentials/config + action_key collected during setup
       if (activeNode.type === "action") {
-        // When it persists activeNode.config (credentials, account info, etc.) and action_key to the backend:
-        const patch: Record<string, any> = {};
+        const patch: Partial<WorkflowNodeRecord> = {};
         if (activeNode.config && Object.keys(activeNode.config).length > 0) {
-          patch.config = activeNode.config; 
+          patch.config = activeNode.config;
         }
         if (activeNode.eventLabel) {
-          patch.action_key = activeNode.eventLabel.toLowerCase().replace(/\s+/g, "_");  // set the action key
+          patch.action_key = activeNode.eventLabel.toLowerCase().replace(/\s+/g, "_");
         }
         if (Object.keys(patch).length > 0) {
-          try {
-            console.log("Patching node with", patch,);
-            await updateNodeMutation({ id: activeNode.id, patch });
-          } catch { /* best effort */ }
+          const isSaved = await persistNodePatch(activeNode.id, patch);
+          if (!isSaved) return;
         }
       }
 
@@ -1065,17 +1066,12 @@ export function useWorkflowOrchestrator() {
       if (activeNode.config) {
         const { _formIsValid, ...rawConfig } = activeNode.config;
         if (_formIsValid) {
-          try {
-            console.log("SAVING TO BACKEND - htmlBody in config:", rawConfig?.htmlBody?.substring?.(0, 50))
-            await updateNodeMutation({
-              id: activeNode.id,
-              patch: {
-                config: rawConfig,
-                sample_payload: resolveConfigForSave(rawConfig),
-                output_schema: extractOutputSchema(rawConfig),
-              },
-            });
-          } catch { /* best effort */ }
+          const isSaved = await persistNodePatch(activeNode.id, {
+            config: rawConfig,
+            sample_payload: resolveConfigForSave(rawConfig),
+            output_schema: extractOutputSchema(rawConfig),
+          });
+          if (!isSaved) return;
         }
       }
 
@@ -1085,8 +1081,11 @@ export function useWorkflowOrchestrator() {
         const mappings = extractMappings(activeNode.config, triggerNodeId);
         if (mappings.length > 0) {
           try {
-            await saveMappingsMutation({ nodeId: activeNode.id, mappings });
-          } catch { /* best effort */ }
+            await saveMappingsMutation({ nodeId: activeNode.id, mappings }).unwrap();
+          } catch {
+            toast.error(NODE_SAVE_FAILED_MESSAGE);
+            return;
+          }
         }
       }
 
@@ -1128,7 +1127,8 @@ export function useWorkflowOrchestrator() {
     activeDescriptor,
     activeStep,
     nodes,
-    updateNodeMutation,
+    selectedWorkflowId,
+    persistNodePatch,
     saveMappingsMutation,
     extractMappings,
   ]);

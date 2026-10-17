@@ -137,7 +137,6 @@ export function JobsTable({
 
         const params: Record<string, string> = { ...buildFilterParams(filters), limit: "50" };
         if (cur) params.cursor = cur;
-        console.log("[JobsTable] → GET", config.endpoint, "params=", params);
 
         const { data: result } = await axiosInstance.get<{
           success?: boolean;
@@ -157,7 +156,6 @@ export function JobsTable({
         setHasMore(meta?.has_more ?? false);
         setNextCursor(meta?.next_cursor ?? null);
 
-        console.log("[JobsTable] ← raw groups:", rawData.length, "has_more:", meta?.has_more ?? false);
 
         setRawGroups(rawData);
         const mapped: JobRow[] = rawData
@@ -169,7 +167,6 @@ export function JobsTable({
             return jobItems.map((jobItem) => mapItem(jobItem, contact, site, headOffice));
           })
           .filter((row) => row.id !== "");
-        console.log("[JobsTable] ✓ mapped rows after flatten:", mapped.length);
         setJobs(mapped);
         onJobsChange?.(mapped);
         setLastSyncAt(new Date());

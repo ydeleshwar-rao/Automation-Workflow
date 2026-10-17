@@ -216,14 +216,6 @@ export function MailConfigureStep({
   const auto = useAutoMap(fieldKeys, cleanedFlat);
   const webhookPayloadKey = useMemo(() => JSON.stringify(webhookFlat), [webhookFlat]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- debug: log when webhook payload changes; cleanedFlat follows webhookFlat
-  useEffect(() => {
-    console.log("cleanedFlat keys sample:", Object.keys(cleanedFlat).slice(0, 10));
-    console.log(
-      "resolving token test:",
-      resolveTemplateVars("{{355283184__firstname}}", cleanedFlat),
-    );
-  }, [webhookPayloadKey]);
   const appliedPayloadRef = useRef<string | null>(null);
 
   useEffect(() => {

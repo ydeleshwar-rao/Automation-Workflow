@@ -21,6 +21,7 @@ export interface WorkflowRecord {
     user_id?: string;
     status: "draft" | "active" | "paused";
     tag?: string;
+    tag_ids?: string[];
     folder_id?: string | null;
     position?: number;
     created_at?: string;

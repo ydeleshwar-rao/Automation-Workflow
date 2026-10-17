@@ -106,15 +106,6 @@ export function clearProfile(): void {
 // Deprecated stubs — removed concepts kept to avoid import errors during migration
 // ---------------------------------------------------------------------------
 
-/**
- * @deprecated clientkey concept removed. Always returns null.
- * Callers that guard on `if (!clientkey) return` will gracefully skip API calls.
- * Gradually remove all usages and delete this stub.
- */
-export function getActiveClientKey(): null {
-  return null;
-}
-
 /** @deprecated Use clearSession() */
 export function clearSelectedClientId(): void {
   try { localStorage.removeItem("job_mgmt_selected_client_id") } catch { /* ignore */ }
@@ -123,11 +114,6 @@ export function clearSelectedClientId(): void {
 /** @deprecated Use clearSession() */
 export function clearSelectedClientProfile(): void {
   try { localStorage.removeItem("job_mgmt_selected_client_profile") } catch { /* ignore */ }
-}
-
-/** @deprecated clientkey removed. Always returns null. */
-export function loadSelectedClientId(): null {
-  return null;
 }
 
 /**
